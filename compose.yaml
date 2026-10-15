@@ -1,0 +1,27 @@
+services:
+  crypto-trace:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8000"
+      DB_PATH: /app/data/cryptotrace.sqlite
+      PYTHON_BIN: /usr/bin/python3
+      SESSION_TTL_HOURS: "168"
+      RATE_LIMIT_PER_MINUTE: "180"
+      MAX_DEMO_SESSIONS: "1000"
+    volumes:
+      - crypto-trace-data:/app/data
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  crypto-trace-data:

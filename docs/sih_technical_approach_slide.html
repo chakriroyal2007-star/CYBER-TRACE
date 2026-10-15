@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Technical Approach - Crypto-Trace India (SIH 2025/2026)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    background-color: #1a1a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Inter', sans-serif;
+    padding: 20px;
+  }
+
+  /* 16:9 Slide Canvas */
+  .slide-container {
+    width: 1360px;
+    height: 765px;
+    background: #eef6fc;
+    border: 5px solid #1c2b39;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* TOP HEADER */
+  .header {
+    height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 35px;
+    border-bottom: 3.5px solid #111;
+    background: #eef6fc;
+  }
+  .logo-box-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo-icon-shield {
+    width: 54px;
+    height: 54px;
+    background: #0f172a;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #38bdf8;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  }
+  .logo-text-left {
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: 1.5px;
+    line-height: 1.1;
+  }
+  .title-center {
+    text-align: center;
+  }
+  .title-center h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 42px;
+    font-weight: 700;
+    color: #1d5086;
+    letter-spacing: 3px;
+    text-decoration: underline;
+    text-underline-offset: 6px;
+    text-decoration-thickness: 3.5px;
+  }
+  .sih-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sih-text {
+    text-align: right;
+    font-size: 13px;
+    font-weight: 800;
+    color: #334155;
+    line-height: 1.2;
+    letter-spacing: 0.5px;
+  }
+
+  /* MAIN CONTENT AREA */
+  .main-body {
+    flex: 1;
+    display: flex;
+    position: relative;
+    padding: 10px 25px 0 25px;
+  }
+
+  /* LEFT SIDE: METHODOLOGY */
+  .methodology-section {
+    flex: 1.05;
+    padding-right: 25px;
+    display: flex;
+    flex-direction: column;
+  }
+  .section-title {
+    font-family: 'Cinzel', serif;
+    color: #c45500;
+    font-size: 26px;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+  }
+  .methodology-grid {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    flex: 1;
+  }
+  .meth-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding-bottom: 10px;
+  }
+  .meth-step {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .meth-desc {
+    font-size: 10.5px;
+    color: #1e293b;
+    font-weight: 600;
+    line-height: 1.2;
+    margin-bottom: 4px;
+    max-width: 250px;
+    min-height: 25px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .meth-pill {
+    background: #f38323;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 8px;
+    width: 90%;
+    border: 1.5px solid #c45500;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    text-transform: capitalize;
+  }
+  .arrow-down {
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 900;
+    margin: 2px 0;
+  }
+  .arrow-up {
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 900;
+    margin: 2px 0;
+  }
+  .arrow-across {
+    position: absolute;
+    left: 48%;
+    bottom: 25px;
+    font-size: 22px;
+    font-weight: 900;
+    color: #0f172a;
+  }
+
+  /* DIVIDER */
+  .vertical-divider {
+    width: 3.5px;
+    background: #111;
+    height: 98%;
+    margin-top: 5px;
+  }
+
+  /* RIGHT SIDE: FLOW CHART */
+  .flowchart-section {
+    flex: 1.2;
+    padding-left: 25px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .fc-container {
+    position: relative;
+    width: 100%;
+    height: 520px;
+  }
+
+  /* Flowchart Nodes */
+  .oval-node {
+    position: absolute;
+    background: #f38323;
+    color: white;
+    font-weight: 800;
+    font-size: 14px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #a84100;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  }
+  .fc-card {
+    position: absolute;
+    background: #f8943e;
+    color: #ffffff;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-align: center;
+    border-radius: 12px;
+    border: 2px solid #c45500;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    line-height: 1.2;
+  }
+  .decision-diamond {
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    background: #f38323;
+    border: 2px solid #a84100;
+    transform: rotate(45deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+  }
+  .diamond-text {
+    transform: rotate(-45deg);
+    color: white;
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.2;
+    max-width: 85px;
+  }
+  .reject-node {
+    background: #d9483b !important;
+    border-color: #991b1b !important;
+  }
+
+  /* BOTTOM TECH STACK */
+  .tech-stack-bar {
+    height: 85px;
+    border-top: 3.5px solid #111;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    padding: 0 25px;
+    gap: 20px;
+  }
+  .tech-title {
+    font-family: 'Cinzel', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #c45500;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .tech-icons-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    flex: 1;
+    gap: 15px;
+  }
+  .tech-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1e293b;
+    background: #f8fafc;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1.5px solid #cbd5e1;
+  }
+  .tech-badge svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* SVG Connections Overlay */
+  .connections-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .flow-line {
+    fill: none;
+    stroke: #b34700;
+    stroke-width: 2.5;
+    marker-end: url(#arrowhead);
+  }
+</style>
+</head>
+<body>
+
+<div class="slide-container">
+  <!-- TOP HEADER -->
+  <div class="header">
+    <div class="logo-box-left">
+      <div class="logo-icon-shield">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+      </div>
+      <div class="logo-text-left">
+        CRYPTO-TRACE<br><span style="font-size: 11px; color: #64748b; font-weight: 600;">CYBER FORENSICS</span>
+      </div>
+    </div>
+
+    <div class="title-center">
+      <h1>TECHNICAL APPROACH</h1>
+    </div>
+
+    <div class="sih-badge">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 6v6l4 2"/>
+      </svg>
+      <div class="sih-text">
+        SMART INDIA<br>HACKATHON<br><span style="color:#c45500; font-size:14px;">2025-26</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN BODY -->
+  <div class="main-body">
+    
+    <!-- LEFT: METHODOLOGY -->
+    <div class="methodology-section">
+      <div class="section-title">METHODOLOGY</div>
+      <div class="methodology-grid" style="position: relative;">
+        
+        <!-- Column 1 (Steps 1 -> 5) -->
+        <div class="meth-col">
+          <div class="meth-step">
+            <div class="meth-desc">Ingest victim complaint, loss amount, & initial scam wallet</div>
+            <div class="meth-pill">Requirement & Case Intake</div>
+          </div>
+          <div class="arrow-down">↓</div>
+
+          <div class="meth-step">
+            <div class="meth-desc">Relational graph schemas with isolated session scopes</div>
+            <div class="meth-pill">System Architecture Design</div>
+          </div>
+          <div class="arrow-down">↓</div>
+
+          <div class="meth-step">
+            <div class="meth-desc">Normalize multi-chain transaction & address hashes</div>
+            <div class="meth-pill">Data Ingestion & Validation</div>
+          </div>
+          <div class="arrow-down">↓</div>
+
+          <div class="meth-step">
+            <div class="meth-desc">BFS multi-hop traversal with conserved balance tracking</div>
+            <div class="meth-pill">Graph Reconstruction</div>
+          </div>
+          <div class="arrow-down">↓</div>
+
+          <div class="meth-step">
+            <div class="meth-desc">Heuristics for Mixers, Bridges, Mules, and Exchanges</div>
+            <div class="meth-pill">Address Clustering</div>
+          </div>
+        </div>
+
+        <!-- U-Turn Arrow across columns -->
+        <div style="position: absolute; left: 47%; bottom: 12px; font-size: 24px; font-weight: 900; color: #0f172a;">➔</div>
+
+        <!-- Column 2 (Steps 6 -> 10) -->
+        <div class="meth-col">
+          <div class="meth-step">
+            <div class="meth-desc">Nationwide rollout with continuous VASP directory sync</div>
+            <div class="meth-pill">Deployment & Maintenance</div>
+          </div>
+          <div class="arrow-up">↑</div>
+
+          <div class="meth-step">
+            <div class="meth-desc">Synthetic simulation & automated testing pipeline</div>
+            <div class="meth-pill">Validation & Hardening</div>
+          </div>
+          <div class="arrow-up">↑</div>
+
+          <div class="meth-step">
+            <div class="meth-desc">Court-admissible PDF dossier with SHA-256 seal</div>
+            <div class="meth-pill">Evidence Pack & Reporting</div>
+          </div>
+          <div class="arrow-up">↑</div>
+
+          <div class="meth-step">
+            <div class="meth-desc">Correlate shared mules & clusters across complaints</div>
+            <div class="meth-pill">Cross-Case Correlation</div>
+          </div>
+          <div class="arrow-up">↑</div>
+
+          <div class="meth-step">
+            <div class="meth-desc">7-factor weighted scoring for candidate target VASPs</div>
+            <div class="meth-pill">Attribution Scoring</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- VERTICAL DIVIDER -->
+    <div class="vertical-divider"></div>
+
+    <!-- RIGHT: FLOW CHART -->
+    <div class="flowchart-section">
+      <div class="section-title">FLOW CHART:</div>
+
+      <div class="fc-container">
+        <!-- SVG Connections -->
+        <svg class="connections-svg">
+          <defs>
+            <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#b34700" />
+            </marker>
+          </defs>
+          
+          <!-- Top Row Connections -->
+          <path d="M 40 45 L 40 70" class="flow-line"/>
+          <path d="M 85 110 C 100 110, 100 110, 115 110" class="flow-line"/>
+          <path d="M 200 110 C 215 110, 215 110, 230 110" class="flow-line"/>
+          <path d="M 315 110 C 330 110, 330 110, 345 110" class="flow-line"/>
+          <path d="M 430 110 C 450 110, 450 110, 470 110" class="flow-line"/>
+
+          <!-- Top Row to Middle / Decision Branch -->
+          <path d="M 525 155 L 525 210" class="flow-line"/>
+
+          <!-- Decision Diamond: NO (Down to Residual) -->
+          <path d="M 525 310 L 525 365" class="flow-line"/>
+
+          <!-- Decision Diamond: YES (Left to Actionable Exit) -->
+          <path d="M 475 260 L 405 260" class="flow-line"/>
+
+          <!-- Middle Layer Connections -->
+          <path d="M 285 260 L 220 260" class="flow-line"/>
+
+          <!-- Bottom Row Return to END -->
+          <path d="M 160 300 C 160 370, 200 410, 230 410" class="flow-line"/>
+          <path d="M 315 410 L 345 410" class="flow-line"/>
+          <path d="M 430 410 C 445 410, 450 410, 470 410" class="flow-line"/>
+          
+          <!-- Bottom Flow Left to END -->
+          <path d="M 470 410 C 400 470, 120 470, 50 470 L 50 370" class="flow-line"/>
+          
+        </svg>
+
+        <!-- Start Node -->
+        <div class="oval-node" style="left: 10px; top: 10px; width: 60px; height: 35px;">Start</div>
+
+        <!-- Top Row Steps -->
+        <div class="fc-card" style="left: 5px; top: 72px; width: 80px; height: 75px;">
+          Investigator Enters Complaint & Suspect Wallet
+        </div>
+
+        <div class="fc-card" style="left: 115px; top: 72px; width: 85px; height: 75px;">
+          API Validates Format & Normalized Loss Value
+        </div>
+
+        <div class="fc-card" style="left: 230px; top: 72px; width: 85px; height: 75px;">
+          Graph Engine Traverses Multi-Hop Fund Path
+        </div>
+
+        <div class="fc-card" style="left: 345px; top: 72px; width: 85px; height: 75px;">
+          Clustering Tags Mixers, Bridges & Mule Wallets
+        </div>
+
+        <div class="fc-card" style="left: 470px; top: 72px; width: 95px; height: 75px;">
+          Attribution Engine Computes 7-Factor Lead Scores
+        </div>
+
+        <!-- Decision Diamond -->
+        <div class="decision-diamond" style="left: 475px; top: 210px;">
+          <div class="diamond-text">Candidate VASP / Exit Found?</div>
+        </div>
+
+        <!-- Labels for Diamond -->
+        <div style="position: absolute; left: 425px; top: 238px; font-weight: 800; font-size: 12px; color: #b34700;">YES</div>
+        <div style="position: absolute; left: 535px; top: 325px; font-weight: 800; font-size: 12px; color: #b34700;">NO</div>
+
+        <!-- NO Branch: Residual / Unspent -->
+        <div class="fc-card reject-node" style="left: 475px; top: 370px; width: 100px; height: 65px;">
+          Tag as Unspent Residual / Alert Watchlist
+        </div>
+
+        <!-- YES Branch: Identified Terminal Exit -->
+        <div class="fc-card" style="left: 290px; top: 230px; width: 115px; height: 65px;">
+          Pinpoint Terminal Deposit Wallets & Exit Receipts
+        </div>
+
+        <div class="fc-card" style="left: 100px; top: 230px; width: 120px; height: 65px;">
+          Run Cross-Complaint Correlation on Intermediaries
+        </div>
+
+        <!-- Bottom Actions -->
+        <div class="fc-card" style="left: 200px; top: 380px; width: 115px; height: 65px;">
+          Generate Court Dossier (SHA-256 PDF Report)
+        </div>
+
+        <div class="fc-card" style="left: 345px; top: 380px; width: 115px; height: 65px;">
+          Export VASP Account Freeze JSON Package
+        </div>
+
+        <!-- END Node -->
+        <div class="oval-node" style="left: 20px; top: 325px; width: 60px; height: 35px;">END</div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM: TECH STACK -->
+  <div class="tech-stack-bar">
+    <div class="tech-title">TECH STACK</div>
+    <div class="tech-icons-row">
+      
+      <div class="tech-badge">
+        <svg viewBox="0 0 24 24" fill="#00d8ff"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8z"/></svg>
+        <span>React 19</span>
+      </div>
+
+      <div class="tech-badge">
+        <svg viewBox="0 0 24 24" fill="#3178c6"><path d="M3 3h18v18H3V3zm14.5 12.5h-2.5v-7h-2v7h-2.5v-7H8v7H5.5v-9h12v9z"/></svg>
+        <span>TypeScript</span>
+      </div>
+
+      <div class="tech-badge">
+        <svg viewBox="0 0 24 24" fill="#68a063"><path d="M12 2l10 5.77v11.55L12 25.09 2 19.32V7.77L12 2z"/></svg>
+        <span>Node.js 24</span>
+      </div>
+
+      <div class="tech-badge">
+        <svg viewBox="0 0 24 24" fill="#003b57"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        <span>SQLite Relational Graph</span>
+      </div>
+
+      <div class="tech-badge">
+        <svg viewBox="0 0 24 24" fill="#3776ab"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16z"/></svg>
+        <span>Python (ReportLab)</span>
+      </div>
+
+      <div class="tech-badge">
+        <svg viewBox="0 0 24 24" fill="#2496ed"><path d="M13 3v4h4V3h-4zm-6 0v4h4V3H7zm12 6H5v12h14V9zm-2 10H7v-8h10v8z"/></svg>
+        <span>Docker Container</span>
+      </div>
+
+      <div class="tech-badge">
+        <svg viewBox="0 0 24 24" fill="#ea580c"><path d="M12 2L2 7l10 5 10-5-10-5zm0 9l-10-5v9l10 5 10-5v-9l-10 5z"/></svg>
+        <span>Vite + SSE Events</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

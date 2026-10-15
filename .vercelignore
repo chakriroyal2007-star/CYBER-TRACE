@@ -1,0 +1,10 @@
+node_modules
+.git
+.gemini
+dist
+data
+tests
+docs
+examples
+*.sqlite
+*.log

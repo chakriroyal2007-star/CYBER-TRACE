@@ -1,0 +1,20 @@
+name: Validate application
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install PDF runtime
+        run: sudo apt-get update && sudo apt-get install -y python3-reportlab fonts-dejavu-core poppler-utils
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+        env:
+          PYTHON_BIN: /usr/bin/python3

@@ -1,0 +1,77 @@
+{
+  "baseUrl": "http://127.0.0.1:42141",
+  "generatedAt": "2026-09-24T11:01:35.604Z",
+  "results": [
+    {
+      "name": "Clean browser opens the landing page and enters a demo session",
+      "status": "passed",
+      "durationMs": 1506
+    },
+    {
+      "name": "Flagship investigation traces 47 transfers and displays consistent candidate intelligence",
+      "status": "passed",
+      "durationMs": 2999
+    },
+    {
+      "name": "Transaction graph supports node, edge, zoom, cluster and path interactions",
+      "status": "passed",
+      "durationMs": 710
+    },
+    {
+      "name": "Attribution evidence opens linked transactions and records audit metadata",
+      "status": "passed",
+      "durationMs": 201
+    },
+    {
+      "name": "TRACE AI produces case-grounded citations and refuses unsupported evidence",
+      "status": "passed",
+      "durationMs": 4402
+    },
+    {
+      "name": "Investigator exports a real PDF and timeline includes report generation",
+      "status": "passed",
+      "durationMs": 370
+    },
+    {
+      "name": "Related complaint navigation follows an actual linked case",
+      "status": "passed",
+      "durationMs": 80
+    },
+    {
+      "name": "Command palette searches stored evidence and navigates to its case",
+      "status": "passed",
+      "durationMs": 467
+    },
+    {
+      "name": "Wallet search has useful empty results and opens actual stored wallet intelligence",
+      "status": "passed",
+      "durationMs": 974
+    },
+    {
+      "name": "Alert review and dismissal persist through reload",
+      "status": "passed",
+      "durationMs": 362
+    },
+    {
+      "name": "Case creation validates the wallet and persists a newly traced investigation",
+      "status": "passed",
+      "durationMs": 1188
+    },
+    {
+      "name": "Information request preparation keeps the selected case and downloads an unsent package",
+      "status": "passed",
+      "durationMs": 982
+    },
+    {
+      "name": "Every intelligence and operations page renders without an application error",
+      "status": "passed",
+      "durationMs": 1274
+    },
+    {
+      "name": "Mobile landing, dashboard and investigation remain readable without document overflow",
+      "status": "passed",
+      "durationMs": 1662
+    }
+  ],
+  "errors": []
+}
