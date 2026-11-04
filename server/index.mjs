@@ -407,6 +407,13 @@ async function handle(req,res) {
      const depth = Number(url.searchParams.get('depth') || 1);
      return json(res, 200, graph.neighborhood(txId, depth));
    }
+   if(id==='subgraph' && method==='GET') {
+     const txId = url.searchParams.get('txId') || url.searchParams.get('start') || url.searchParams.get('id');
+     if(!txId) fail('Parameter txId is required for subgraph retrieval.', 400);
+     const depth = Number(url.searchParams.get('depth') || 1);
+     const limit = Number(url.searchParams.get('limit') || 60);
+     return json(res, 200, graph.getSubgraph(txId, depth, limit));
+   }
  }
  fail('API endpoint not found.',404);
 }

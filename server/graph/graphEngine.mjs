@@ -155,6 +155,82 @@ export class GraphEngine {
     return getNeighborhood(this, String(txId), depth);
   }
 
+  getSubgraph(centerId, depth = 1, limit = 60) {
+    const id = String(centerId);
+    if (!this.hasNode(id)) return { centerId: id, found: false, nodes: [], edges: [] };
+
+    const visitedNodes = new Set([id]);
+    const queue = [{ id, currentDepth: 0 }];
+    const edges = [];
+    const edgeSet = new Set();
+
+    while (queue.length > 0 && visitedNodes.size < limit) {
+      const { id: currId, currentDepth } = queue.shift();
+      if (currentDepth >= depth) continue;
+
+      // Outgoing neighbors
+      const outNeighbors = this.getNeighbors(currId);
+      for (const nextId of outNeighbors) {
+        const edgeKey = `${currId}->${nextId}`;
+        if (!edgeSet.has(edgeKey)) {
+          edgeSet.add(edgeKey);
+          edges.push({ id: `E-${edgeKey}`, source: currId, target: nextId });
+        }
+        if (!visitedNodes.has(nextId) && visitedNodes.size < limit) {
+          visitedNodes.add(nextId);
+          queue.push({ id: nextId, currentDepth: currentDepth + 1 });
+        }
+      }
+
+      // Incoming neighbors (for depth 1 or direct inputs)
+      if (currentDepth === 0) {
+        const inNeighbors = this.getIncomingNeighbors(currId);
+        for (const prevId of inNeighbors) {
+          const edgeKey = `${prevId}->${currId}`;
+          if (!edgeSet.has(edgeKey)) {
+            edgeSet.add(edgeKey);
+            edges.push({ id: `E-${edgeKey}`, source: prevId, target: currId });
+          }
+          if (!visitedNodes.has(prevId) && visitedNodes.size < limit) {
+            visitedNodes.add(prevId);
+          }
+        }
+      }
+    }
+
+    // Format nodes
+    const nodes = [];
+    for (const nid of visitedNodes) {
+      const nData = this.getNode(nid);
+      nodes.push({
+        id: nid,
+        label: `Tx ${nid}`,
+        timeStep: nData?.timeStep ?? null,
+        knownLabel: nData?.label || 'unknown',
+        predictedClass: nData?.predictedClass || 'licit',
+        probability: nData?.probability ?? 0.5,
+        riskScore: nData?.riskScore ?? (nData?.label === 'illicit' ? 90 : nData?.label === 'licit' ? 20 : 50),
+        inDegree: this.getIncomingNeighbors(nid).length,
+        outDegree: this.getNeighbors(nid).length,
+        isCenter: nid === id
+      });
+    }
+
+    return {
+      centerId: id,
+      found: true,
+      nodes,
+      edges,
+      stats: {
+        totalNodes: nodes.length,
+        totalEdges: edges.length,
+        illicitCount: nodes.filter(n => n.knownLabel === 'illicit').length,
+        licitCount: nodes.filter(n => n.knownLabel === 'licit').length,
+        unknownCount: nodes.filter(n => n.knownLabel === 'unknown').length
+      }
+    };
+  }
+
   getStats() {
     return {
       ...this.stats,
