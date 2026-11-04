@@ -187,6 +187,32 @@ export class DatasetIngestionPipeline {
    * Ingests time steps and indexes feature byte offsets for fast random lookup.
    */
   async indexFeatures(nodeMap) {
+    if (!existsSync(this.featuresPath)) {
+      // In serverless deployment where the 658MB features file is omitted,
+      // extract time steps from model_scores.json [ timeStep, label, pred, prob, score ]
+      if (existsSync(this.scoresPath)) {
+        try {
+          const scores = JSON.parse(readFileSync(this.scoresPath, 'utf8'));
+          const timeStepCounts = {};
+          for (const [txId, data] of Object.entries(scores)) {
+            const timeStep = Array.isArray(data) ? data[0] : (data.timeStep || data.time_step);
+            const node = nodeMap.get(txId);
+            if (node && timeStep !== undefined) {
+              node.timeStep = timeStep;
+            }
+            if (timeStep !== undefined && timeStep !== null) {
+              timeStepCounts[timeStep] = (timeStepCounts[timeStep] || 0) + 1;
+            }
+          }
+          this.stats.timeSteps = timeStepCounts;
+          return;
+        } catch (err) {
+          console.warn('Could not populate time steps from scores:', err.message);
+        }
+      }
+      return;
+    }
+
     const fileStream = createReadStream(this.featuresPath, { encoding: 'utf8' });
     const rl = createInterface({ input: fileStream, crlfDelay: Infinity });
 
