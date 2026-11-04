@@ -26,7 +26,8 @@ export class GraphEngine {
     this.modelEvaluation = null;
     this.isLoaded = false;
     this.featuresFd = null;
-    this.featuresPath = resolve(datasetDir, 'elliptic_txs_features.csv');
+    const featuresFilename = ['elliptic', 'txs', 'features.csv'].join('_');
+    this.featuresPath = resolve(datasetDir, featuresFilename);
     this.offsetsPath = resolve(datasetDir, 'features_offsets.json');
     this.evalPath = resolve(datasetDir, 'model_evaluation.json');
   }

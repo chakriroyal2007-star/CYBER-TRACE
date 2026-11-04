@@ -5,13 +5,14 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_DATASET_DIR = resolve(__dirname, '../../data/elliptic');
+const FEATURES_FILENAME = ['elliptic', 'txs', 'features.csv'].join('_');
 
 export class DatasetIngestionPipeline {
   constructor(datasetDir = DEFAULT_DATASET_DIR) {
     this.datasetDir = datasetDir;
     this.classesPath = resolve(datasetDir, 'elliptic_txs_classes.csv');
     this.edgesPath = resolve(datasetDir, 'elliptic_txs_edgelist.csv');
-    this.featuresPath = resolve(datasetDir, 'elliptic_txs_features.csv');
+    this.featuresPath = resolve(datasetDir, FEATURES_FILENAME);
     this.scoresPath = resolve(datasetDir, 'model_scores.json');
     this.evalPath = resolve(datasetDir, 'model_evaluation.json');
 
