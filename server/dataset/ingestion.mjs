@@ -7,6 +7,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_DATASET_DIR = resolve(__dirname, '../../data/elliptic');
 const FEATURES_FILENAME = ['elliptic', 'txs', 'features.csv'].join('_');
 
+// Static trace anchors for Vercel Serverless Function bundling
+try {
+  readFileSync(resolve(__dirname, '../../data/elliptic/elliptic_txs_classes.csv'), { flag: 'r' });
+  readFileSync(resolve(__dirname, '../../data/elliptic/elliptic_txs_edgelist.csv'), { flag: 'r' });
+  readFileSync(resolve(__dirname, '../../data/elliptic/model_scores.json'), { flag: 'r' });
+  readFileSync(resolve(__dirname, '../../data/elliptic/model_evaluation.json'), { flag: 'r' });
+  readFileSync(resolve(__dirname, '../../data/elliptic/features_offsets.json'), { flag: 'r' });
+} catch {}
+
 export class DatasetIngestionPipeline {
   constructor(datasetDir = DEFAULT_DATASET_DIR) {
     this.datasetDir = datasetDir;
