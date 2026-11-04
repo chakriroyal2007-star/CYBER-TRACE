@@ -2,7 +2,9 @@ node_modules
 .git
 .gemini
 dist
-data
+data/*.sqlite*
+data/*.db*
+data/elliptic/elliptic_txs_features.csv
 tests
 docs
 examples
