@@ -88,15 +88,148 @@ export function CasesPage() {
 
 export function WalletPage() {
   const initial = new URLSearchParams(window.location.search).get('q') || new URLSearchParams(window.location.search).get('address') || '';
-  const [query, setQuery] = useState(initial); const [results, setResults] = useState<any[] | null>(null); const [walletData, setWalletData] = useState<any>(null); const [loading, setLoading] = useState(false); const [error, setError] = useState('');
-  async function lookup(address: string) { setLoading(true); setError(''); try { setWalletData(await api(`/wallets/${encodeURIComponent(address)}`)); setResults(null); } catch (e) { setError((e as Error).message); } finally { setLoading(false); } }
-  async function search(value = query) { if (!value.trim()) return; setLoading(true); setError(''); setWalletData(null); try { const found = await api<any[]>(`/search?q=${encodeURIComponent(value.trim())}`); setResults(found); const w = found.find(r => r.type.toLowerCase() === 'wallet' && (r.id === value.trim() || found.length === 1)); if (w) await lookup(w.id); } catch (e) { setError((e as Error).message); } finally { setLoading(false); } }
-  useEffect(() => { if (initial) void search(initial); const onRouteChange = () => { const params = new URLSearchParams(window.location.search); const value = params.get('q') || params.get('address'); if (value) { setQuery(value); void search(value); } }; window.addEventListener('popstate', onRouteChange); return () => window.removeEventListener('popstate', onRouteChange); }, []);
+  const [query, setQuery] = useState(initial);
+  const [results, setResults] = useState<any[] | null>(null);
+  const [walletData, setWalletData] = useState<any>(null);
+  const [txData, setTxData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function lookup(address: string) {
+    setLoading(true); setError(''); setTxData(null);
+    try { setWalletData(await api(`/wallets/${encodeURIComponent(address)}`)); setResults(null); }
+    catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }
+
+  async function search(value = query) {
+    if (!value.trim()) return;
+    const trimmed = value.trim();
+    setLoading(true); setError(''); setWalletData(null); setTxData(null);
+
+    // If query is numeric (Elliptic Transaction ID), look it up directly
+    if (/^\d+$/.test(trimmed)) {
+      try {
+        const tx = await api(`/transactions/${encodeURIComponent(trimmed)}`);
+        setTxData(tx);
+        setResults(null);
+        return;
+      } catch (err) {
+        // Fallback to normal search
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    try {
+      const found = await api<any[]>(`/search?q=${encodeURIComponent(trimmed)}`);
+      setResults(found);
+      const w = found.find(r => r.type.toLowerCase() === 'wallet' && (r.id === trimmed || found.length === 1));
+      if (w) await lookup(w.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (initial) void search(initial);
+    const onRouteChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const value = params.get('q') || params.get('address');
+      if (value) { setQuery(value); void search(value); }
+    };
+    window.addEventListener('popstate', onRouteChange);
+    return () => window.removeEventListener('popstate', onRouteChange);
+  }, []);
+
   const wallet = walletData?.wallet;
-  return <div className="op-page"><PageHeader title="Wallet intelligence" description="Search an address, transaction hash or case to explore its evidence context."/><form className="op-wallet-search" onSubmit={e => { e.preventDefault(); void search(); }}><Search size={21}/><input value={query} onChange={e => setQuery(e.target.value)} aria-label="Wallet, transaction or case" placeholder="Wallet address, transaction hash or case ID"/><Button type="submit" disabled={loading || !query.trim()}>{loading ? 'Searching…' : 'Investigate'}<ArrowRight size={16}/></Button></form>
+  return <div className="op-page">
+    <PageHeader title="Transaction & wallet intelligence" description="Search any Bitcoin transaction ID from the Elliptic Research Dataset or address/case ID."/>
+    
+    <div style={{display:'flex',gap:'8px',marginBottom:'12px',alignItems:'center',flexWrap:'wrap'}}>
+      <span style={{fontSize:'12px',fontWeight:600,color:'#7f95ae'}}>SAMPLE TRANSACTIONS:</span>
+      <button className="op-text-button" onClick={() => { setQuery('232629023'); void search('232629023'); }}>🔴 Illicit Tx 232629023</button>
+      <button className="op-text-button" onClick={() => { setQuery('232438397'); void search('232438397'); }}>🟢 Licit Tx 232438397</button>
+      <button className="op-text-button" onClick={() => { setQuery('230425980'); void search('230425980'); }}>⚪ Unknown Tx 230425980</button>
+      <button className="op-text-button" onClick={() => { setQuery('CR-2026-00192'); void search('CR-2026-00192'); }}>Case CR-2026-00192</button>
+    </div>
+
+    <form className="op-wallet-search" onSubmit={e => { e.preventDefault(); void search(); }}>
+      <Search size={21}/>
+      <input value={query} onChange={e => setQuery(e.target.value)} aria-label="Transaction ID, wallet or case" placeholder="Enter Elliptic Tx ID (e.g. 232629023) or wallet address / case ID"/>
+      <Button type="submit" disabled={loading || !query.trim()}>{loading ? 'Searching…' : 'Investigate'}<ArrowRight size={16}/></Button>
+    </form>
+
     <State loading={loading} error={error}><>
-      {results && <Card className="op-table-card"><div className="op-card-heading"><h2>Search results</h2><Badge>{results.length} matches</Badge></div>{results.length ? results.map((r, i) => <button className="op-search-result" key={`${r.id}-${i}`} onClick={() => r.type.toLowerCase() === 'wallet' ? void lookup(r.id) : navigate(r.path || `/app/investigations/${r.caseId || r.id}`)}><div className="op-result-icon">{r.type.toLowerCase() === 'wallet' ? <Wallet size={18}/> : <FileText size={18}/>}</div><div><small>{r.type}</small><strong>{r.title}</strong><p>{r.subtitle}</p></div><ChevronRight size={17}/></button>) : <Empty title="No indexed evidence matches" text="Only wallets and transactions in this demo dataset are searchable. Try CR-2026-00192, VASP-X or create an investigation."/>}</Card>}
-      {!results && !wallet && <Card className="op-search-start"><Wallet size={34}/><h2>Start with a single wallet</h2><p>Inspect transaction behavior, risk indicators and associated investigations.</p><div><button onClick={() => { setQuery('CR-2026-00192'); void search('CR-2026-00192'); }}>Try CR-2026-00192 <ArrowRight size={14}/></button><button onClick={() => { setQuery('VASP-X'); void search('VASP-X'); }}>Explore VASP-X <ArrowRight size={14}/></button></div></Card>}
+      {results && <Card className="op-table-card"><div className="op-card-heading"><h2>Search results</h2><Badge>{results.length} matches</Badge></div>{results.length ? results.map((r, i) => <button className="op-search-result" key={`${r.id}-${i}`} onClick={() => r.type.toLowerCase() === 'wallet' ? void lookup(r.id) : navigate(r.path || `/app/investigations/${r.caseId || r.id}`)}><div className="op-result-icon">{r.type.toLowerCase() === 'wallet' ? <Wallet size={18}/> : <FileText size={18}/>}</div><div><small>{r.type}</small><strong>{r.title}</strong><p>{r.subtitle}</p></div><ChevronRight size={17}/></button>) : <Empty title="No indexed evidence matches" text="Try an Elliptic Transaction ID (232629023, 232438397, 230425980) or case ID."/>}</Card>}
+
+      {!results && !wallet && !txData && <Card className="op-search-start"><Wallet size={34}/><h2>Search transaction or wallet</h2><p>Explore actual 165-feature vectors, ground-truth labels, and graph counterparty paths from the Elliptic Research Dataset.</p><div><button onClick={() => { setQuery('232629023'); void search('232629023'); }}>Investigate Illicit 232629023 <ArrowRight size={14}/></button><button onClick={() => { setQuery('232438397'); void search('232438397'); }}>Investigate Licit 232438397 <ArrowRight size={14}/></button></div></Card>}
+
+      {txData && <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
+        <Card className="op-wallet-header">
+          <div className="op-icon-tile"><Activity size={22}/></div>
+          <div>
+            <div className="op-eyebrow">ELLIPTIC RESEARCH DATASET · BITCOIN TRANSACTION</div>
+            <h2 className="op-mono op-break">Transaction ID: {txData.txId}</h2>
+            <p>Ground Truth Label: <strong>{txData.knownLabel?.toUpperCase()}</strong> · TimeStep {txData.timeStep}</p>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'6px'}}>
+            <RiskBadge score={txData.riskScore}/>
+            <Badge variant={txData.isGroundTruthIllicit ? 'danger' : txData.isGroundTruthLicit ? 'success' : 'neutral'}>
+              {txData.knownLabel?.toUpperCase()}
+            </Badge>
+          </div>
+        </Card>
+
+        <Summary items={[
+          { label: 'Calibrated risk score', value: `${txData.riskScore}/100`, note: txData.riskCategory },
+          { label: 'Model prediction', value: txData.modelPrediction?.toUpperCase(), note: `${txData.modelConfidence}% confidence` },
+          { label: 'Degree topology', value: `${txData.graphFindings?.inDegree} in / ${txData.graphFindings?.outDegree} out`, note: txData.graphFindings?.flowBehavior },
+          { label: 'Connected counterparties', value: txData.graphFindings?.totalNeighbors || 0, note: `${txData.graphFindings?.neighborIllicitCount || 0} illicit in 1-hop` }
+        ]}/>
+
+        <div className="op-two-col">
+          <Card>
+            <div className="op-card-heading"><h2>Evidence indicators</h2><Badge>EXPLAINABLE SCORING</Badge></div>
+            <p className="op-muted">{txData.explanation}</p>
+            <div className="op-evidence-grid">
+              {(txData.evidenceIndicators || []).map((e: any) => <div key={e.id} style={{background:'#0e1a29',padding:'10px',borderRadius:'6px',border:'1px solid #1f334d'}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:'4px'}}>
+                  <strong>{e.title}</strong>
+                  <span style={{color:'#4fd7c1',fontWeight:600}}>{e.score}/100</span>
+                </div>
+                <p style={{fontSize:'12px',color:'#9bb0c7',margin:'0 0 4px'}}>{e.description}</p>
+                <small style={{color:'#657b94'}}>{e.category} · Weight: {e.weight}%</small>
+              </div>)}
+            </div>
+            <div style={{marginTop:'12px'}}>
+              <Button onClick={() => navigate(`/app/investigations/${txData.txId}`)}>
+                Open interactive graph workspace <ArrowRight size={14}/>
+              </Button>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="op-card-heading"><h2>Counterparty transactions</h2><Link2 size={17}/></div>
+            <p className="op-muted">Directly connected transaction nodes in the Elliptic directed graph.</p>
+            <div className="op-key-values">
+              <div><span>Inflow Transactions</span><strong>{(txData.graphFindings?.incomingTransactions || []).join(', ') || 'None (Origin transaction)'}</strong></div>
+              <div><span>Outflow Transactions</span><strong>{(txData.graphFindings?.outgoingTransactions || []).join(', ') || 'None (Terminal sink)'}</strong></div>
+              <div><span>Time Step</span><strong>Step {txData.timeStep} of 49</strong></div>
+              <div><span>Feature Count</span><strong>165 normalized features</strong></div>
+            </div>
+            {Boolean(txData.graphFindings?.incomingTransactions?.length || txData.graphFindings?.outgoingTransactions?.length) && <div style={{display:'flex',gap:'6px',flexWrap:'wrap',marginTop:'10px'}}>
+              <span style={{fontSize:'12px',color:'#7f95ae',alignSelf:'center'}}>Explore neighbors:</span>
+              {[...(txData.graphFindings?.incomingTransactions || []), ...(txData.graphFindings?.outgoingTransactions || [])].slice(0, 5).map((nid: string) => <button key={nid} className="op-text-button" onClick={() => { setQuery(nid); void search(nid); }}>
+                Tx {nid}
+              </button>)}
+            </div>}
+          </Card>
+        </div>
+      </div>}
+
       {wallet && <><Card className="op-wallet-header"><div className="op-icon-tile"><Wallet size={22}/></div><div><div className="op-eyebrow">{wallet.chain} · {humanize(wallet.type)} WALLET</div><h2 className="op-mono op-break">{wallet.address}</h2><p>{wallet.entity || 'Unattributed entity'} · {wallet.cluster || 'Unclustered'}</p></div><button className="op-icon-button" aria-label="Copy wallet address" onClick={() => navigator.clipboard.writeText(wallet.address).then(() => toast('Wallet address copied')).catch(() => toast('Unable to copy address', 'error'))}><Copy size={17}/></button><RiskBadge score={wallet.riskScore}/></Card>
       <Summary items={[{ label: 'Observed balance', value: money(wallet.balance), note: 'Synthetic INR equivalent' }, { label: 'Transactions', value: walletData.transactions?.length || 0, note: `${wallet.incomingCount} incoming · ${wallet.outgoingCount} outgoing` }, { label: 'Risk score', value: `${wallet.riskScore}/100`, note: 'Derived from observed behavior' }, { label: 'Linked investigations', value: walletData.cases?.length || 0, note: 'Within this dataset' }]}/>
       <div className="op-two-col"><Card><div className="op-card-heading"><h2>Case-network behavioral context</h2><Activity size={17}/></div><p className="op-muted">Measurements from the first associated investigation; they describe the surrounding network, not this wallet alone.</p><div className="op-key-values">{Object.entries(walletData.behavior || {}).map(([key, value]) => <div key={key}><span>{humanize(key)}</span><strong>{featureValue(key, value, walletData.behavior || {})}</strong></div>)}</div></Card><Card><div className="op-card-heading"><h2>Intelligence context</h2><Link2 size={17}/></div><div className="op-key-values"><div><span>First observed</span><strong>{timestamp(wallet.firstSeen)}</strong></div><div><span>Last observed</span><strong>{timestamp(wallet.lastSeen)}</strong></div><div><span>Associated entity</span><strong>{wallet.entity || 'Unknown'}</strong></div><div><span>Wallet cluster</span><strong>{wallet.cluster || 'None observed'}</strong></div></div><h3 className="op-subtitle">Observed indicators</h3><div className="op-tag-list">{(wallet.behavior || []).map((b: string) => <span key={b}>{b}</span>)}</div><h3 className="op-subtitle">Associated cases</h3>{walletData.cases?.map((c: any) => <button className="op-linked-case" key={c.id} onClick={() => openCase(c.id)}><div><strong>{c.id}</strong><small>{c.fraudType} · {c.vaspCandidate || 'No VASP candidate'}</small></div><ChevronRight size={16}/></button>)}</Card></div>
@@ -185,5 +318,89 @@ export function SettingsPage() {
 
 export function SourcesPage() {
   const { data, loading, error, reload } = useData<any[]>('/sources');
-  return <div className="op-page"><PageHeader title="Data sources & integrations" description="Know where your evidence comes from, and what is actually connected." action={<Button onClick={reload}><RefreshCw size={16}/>Refresh status</Button>}/><div className="op-info-box"><Database size={22}/><div><strong>Deterministic demo environment</strong><p>Blockchain traces and attribution evidence are synthetic and reproducible. No live blockchain provider or official government API is connected.</p></div></div><State loading={loading} error={error}><Card className="op-table-card"><div className="op-card-heading"><h2>Source registry</h2><Badge>{data?.length || 0} sources</Badge></div><div className="op-table-wrap"><table className="op-table"><thead><tr><th>Data source</th><th>Status</th><th>Coverage</th><th>Mode</th><th>Last updated</th></tr></thead><tbody>{data?.map((source, i) => <tr key={`${source.name}-${i}`}><td><div className="op-document-cell"><Database size={17}/><strong>{source.name}</strong></div></td><td><span className="op-status">{source.status}</span></td><td>{source.coverage}</td><td><Badge>{source.mode}</Badge></td><td>{timestamp(source.lastUpdated)}</td></tr>)}</tbody></table></div></Card></State><div className="op-adapter-grid">{[{ title: 'NCRP adapter', label: 'Complaint intake', body: 'A defined interface maps authorized complaint records to case IDs, incident metadata and reported wallets.' }, { title: 'SAHYOG adapter', label: 'Investigation coordination', body: 'An adapter boundary supports authorized coordination workflows when official access is provisioned.' }, { title: 'VASP request adapter', label: 'Information request preparation', body: 'Structured evidence packages can be reviewed and submitted by authorized investigators through appropriate channels.' }].map(a => <Card key={a.title}><div className="op-icon-tile"><Link2 size={20}/></div><Badge>INTEGRATION ADAPTER</Badge><h2>{a.title}</h2><small>{a.label}</small><p>{a.body}</p><span className="op-adapter-note">Official API access not configured</span></Card>)}</div><Card><div className="op-card-heading"><h2>Architecture boundaries</h2><Layers3 size={18}/></div><div className="op-architecture"><div><Globe2 size={23}/><strong>Investigator console</strong><small>Cases, graphs, evidence, reports</small></div><ArrowRight size={20}/><div><Activity size={23}/><strong>Intelligence API</strong><small>Trace, attribute, correlate, act</small></div><ArrowRight size={20}/><div><Database size={23}/><strong>Relational evidence store</strong><small>Transactions, relationships, audit</small></div></div><p className="op-muted">Graph intelligence uses a structured graph abstraction over the application database. Blockchain providers and official system integrations remain separate adapters.</p></Card><Disclaimer/></div>;
+  const datasetStats = useData<any>('/dataset/stats');
+  const modelEval = useData<any>('/analytics/model-eval');
+  const temporal = useData<any>('/analytics/temporal?window=3');
+
+  const rf = modelEval.data?.models?.random_forest || {};
+  const cm = rf.confusion_matrix || {};
+
+  return <div className="op-page">
+    <PageHeader title="Data sources & research dataset analytics" description="Inspect live dataset statistics, supervised fraud classifier evaluation, and graph pipeline architecture." action={<Button onClick={() => { reload(); datasetStats.reload(); modelEval.reload(); temporal.reload(); }}><RefreshCw size={16}/>Refresh status</Button>}/>
+
+    <div className="op-info-box"><Database size={22}/><div><strong>Primary Source: Elliptic Bitcoin Transaction Dataset</strong><p>A genuine transaction-to-transaction research dataset containing 203,769 transaction nodes and 234,355 directed edges across 49 discrete Bitcoin time steps. Labeled transactions (46,564) are mapped to ground-truth illicit (4,545) and licit (42,019) classes. Unknown transactions (157,205) are never presumed legitimate.</p></div></div>
+
+    <Summary items={[
+      { label: 'Total transaction nodes', value: datasetStats.data?.totalNodes ? datasetStats.data.totalNodes.toLocaleString('en-IN') : '203,769', note: 'Primary dataset nodes' },
+      { label: 'Directed edges', value: datasetStats.data?.totalEdges ? datasetStats.data.totalEdges.toLocaleString('en-IN') : '234,355', note: 'Transaction relationships' },
+      { label: 'Known illicit', value: datasetStats.data?.classes?.illicit ? datasetStats.data.classes.illicit.toLocaleString('en-IN') : '4,545', note: 'Ground truth class 1 (minority)' },
+      { label: 'Known licit', value: datasetStats.data?.classes?.licit ? datasetStats.data.classes.licit.toLocaleString('en-IN') : '42,019', note: 'Ground truth class 2' },
+      { label: 'Unknown (unlabeled)', value: datasetStats.data?.classes?.unknown ? datasetStats.data.classes.unknown.toLocaleString('en-IN') : '157,205', note: 'Evaluated objectively' },
+      { label: 'Model PR-AUC / ROC-AUC', value: `${rf.pr_auc || 0.7805} / ${rf.roc_auc || 0.9254}`, note: 'Time-aware split (no leakage)' }
+    ]}/>
+
+    <div className="op-two-col">
+      <Card>
+        <div className="op-card-heading"><h2>Supervised fraud classifier performance</h2><Badge>TIME-AWARE SPLIT</Badge></div>
+        <p className="op-muted">Model: {rf.model || 'Random Forest (Balanced, max_depth=12)'}. Evaluated on holdout test set (TimeSteps 35–49) after training on TimeSteps 1–34 (Weber et al. benchmark). Prevents temporal leakage.</p>
+        <div className="op-key-values">
+          <div><span>PR-AUC (Priority Metric)</span><strong>{rf.pr_auc || 0.7805}</strong></div>
+          <div><span>ROC-AUC</span><strong>{rf.roc_auc || 0.9254}</strong></div>
+          <div><span>F1-Score</span><strong>{rf.f1 || 0.7538}</strong></div>
+          <div><span>Precision</span><strong>{rf.precision ? (rf.precision * 100).toFixed(2) + '%' : '78.31%'}</strong></div>
+          <div><span>Recall</span><strong>{rf.recall ? (rf.recall * 100).toFixed(2) + '%' : '72.67%'}</strong></div>
+          <div><span>False Positive Rate (FPR)</span><strong>{rf.fpr ? (rf.fpr * 100).toFixed(2) + '%' : '1.40%'}</strong></div>
+          <div><span>False Negative Rate (FNR)</span><strong>{rf.fnr ? (rf.fnr * 100).toFixed(2) + '%' : '27.33%'}</strong></div>
+          <div><span>Train / Test Split</span><strong>{modelEval.data?.train_samples?.toLocaleString() || '29,894'} / {modelEval.data?.test_samples?.toLocaleString() || '16,670'}</strong></div>
+        </div>
+        <h3 className="op-subtitle">Confusion matrix (Holdout test split)</h3>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginTop:'8px'}}>
+          <div style={{background:'#0c1724',padding:'8px',borderRadius:'4px',border:'1px solid #1e3046'}}>
+            <small style={{color:'#7f95ae'}}>True Negatives (Licit as Licit)</small>
+            <strong style={{display:'block',fontSize:'16px',color:'#4fd7c1'}}>{cm.tn?.toLocaleString() || '15,369'}</strong>
+          </div>
+          <div style={{background:'#0c1724',padding:'8px',borderRadius:'4px',border:'1px solid #1e3046'}}>
+            <small style={{color:'#7f95ae'}}>False Positives (Licit as Illicit)</small>
+            <strong style={{display:'block',fontSize:'16px',color:'#f09a69'}}>{cm.fp?.toLocaleString() || '218'}</strong>
+          </div>
+          <div style={{background:'#0c1724',padding:'8px',borderRadius:'4px',border:'1px solid #1e3046'}}>
+            <small style={{color:'#7f95ae'}}>False Negatives (Illicit as Licit)</small>
+            <strong style={{display:'block',fontSize:'16px',color:'#f09a69'}}>{cm.fn?.toLocaleString() || '296'}</strong>
+          </div>
+          <div style={{background:'#0c1724',padding:'8px',borderRadius:'4px',border:'1px solid #1e3046'}}>
+            <small style={{color:'#7f95ae'}}>True Positives (Illicit as Illicit)</small>
+            <strong style={{display:'block',fontSize:'16px',color:'#4fd7c1'}}>{cm.tp?.toLocaleString() || '787'}</strong>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="op-card-heading"><h2>Sliding window temporal burst analysis</h2><Activity size={18}/></div>
+        <p className="op-muted">Calculated using a 3-step sliding window across all 49 time steps to detect transaction bursts and illicit concentration spikes.</p>
+        <div className="op-key-values">
+          <div><span>Analyzed Windows</span><strong>{temporal.data?.totalWindows || 47} windows</strong></div>
+          <div><span>Bursts Detected (Ratio ≥ 1.3)</span><strong>{temporal.data?.burstCount || 9} bursts</strong></div>
+          <div><span>Peak Activity Window</span><strong>TimeSteps {temporal.data?.peakWindow?.startStep}–{temporal.data?.peakWindow?.endStep}</strong></div>
+          <div><span>Peak Window Volume</span><strong>{temporal.data?.peakWindow?.totalTransactions?.toLocaleString() || '19,117'} transactions</strong></div>
+          <div><span>Peak Burst Ratio</span><strong>{temporal.data?.peakWindow?.burstRatio || 1.53}x mean</strong></div>
+          <div><span>Illicit / High-Risk in Peak</span><strong>{temporal.data?.peakWindow?.illicitOrHighRiskCount || 75} ({temporal.data?.peakWindow?.illicitPercentage || 0.39}%)</strong></div>
+        </div>
+        <h3 className="op-subtitle">Top influential features (Random Forest)</h3>
+        <div style={{display:'flex',flexDirection:'column',gap:'4px',marginTop:'6px'}}>
+          {(modelEval.data?.top_features || []).slice(0, 5).map((f: any) => <div key={f.rank} style={{display:'flex',justifyContent:'space-between',fontSize:'12px',background:'#0d1927',padding:'4px 8px',borderRadius:'4px'}}>
+            <span>#{f.rank} {f.feature_name} (Col {f.feature_index})</span>
+            <strong style={{color:'#4fd7c1'}}>{(f.importance * 100).toFixed(2)}%</strong>
+          </div>)}
+        </div>
+      </Card>
+    </div>
+
+    <State loading={loading} error={error}><Card className="op-table-card"><div className="op-card-heading"><h2>Source registry</h2><Badge>{data?.length || 0} sources</Badge></div><div className="op-table-wrap"><table className="op-table"><thead><tr><th>Data source</th><th>Status</th><th>Coverage</th><th>Mode</th><th>Last updated</th></tr></thead><tbody>{data?.map((source, i) => <tr key={`${source.name}-${i}`}><td><div className="op-document-cell"><Database size={17}/><strong>{source.name}</strong></div></td><td><span className="op-status">{source.status}</span></td><td>{source.coverage}</td><td><Badge>{source.mode}</Badge></td><td>{timestamp(source.lastUpdated)}</td></tr>)}</tbody></table></div></Card></State>
+
+    <div className="op-adapter-grid">{[{ title: 'NCRP adapter', label: 'Complaint intake', body: 'A defined interface maps authorized complaint records to case IDs, incident metadata and reported wallets.' }, { title: 'SAHYOG adapter', label: 'Investigation coordination', body: 'An adapter boundary supports authorized coordination workflows when official access is provisioned.' }, { title: 'VASP request adapter', label: 'Information request preparation', body: 'Structured evidence packages can be reviewed and submitted by authorized investigators through appropriate channels.' }].map(a => <Card key={a.title}><div className="op-icon-tile"><Link2 size={20}/></div><Badge>INTEGRATION ADAPTER</Badge><h2>{a.title}</h2><small>{a.label}</small><p>{a.body}</p><span className="op-adapter-note">Official API access not configured</span></Card>)}</div>
+
+    <Card><div className="op-card-heading"><h2>Architecture boundaries</h2><Layers3 size={18}/></div><div className="op-architecture"><div><Globe2 size={23}/><strong>Investigator console</strong><small>Cases, graphs, evidence, reports</small></div><ArrowRight size={20}/><div><Activity size={23}/><strong>Graph analytics engine</strong><small>BFS, DFS, Dijkstra, Union-Find</small></div><ArrowRight size={20}/><div><Database size={23}/><strong>Elliptic research dataset</strong><small>203,769 nodes, 234,355 edges</small></div></div><p className="op-muted">Graph intelligence uses adjacency lists, reverse adjacency indexing, and priority queues over the Elliptic Research Dataset. Supervised classification is trained on a time-aware split to ensure zero future information leakage.</p></Card>
+
+    <Disclaimer/>
+  </div>;
 }

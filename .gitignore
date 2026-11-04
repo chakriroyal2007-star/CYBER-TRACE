@@ -1,6 +1,8 @@
 node_modules/
 dist/
-data/
+data/*.sqlite*
+data/*.db*
+data/elliptic/elliptic_txs_features.csv
 .env
 .env.*
 !.env.example

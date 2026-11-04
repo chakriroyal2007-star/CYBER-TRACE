@@ -145,6 +145,33 @@ export class Store {
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
+    if (!this.db.prepare('SELECT version FROM schema_migrations WHERE version=2').get()) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS dataset_metadata (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL,
+            total_nodes INTEGER NOT NULL, total_edges INTEGER NOT NULL,
+            illicit_count INTEGER NOT NULL, licit_count INTEGER NOT NULL, unknown_count INTEGER NOT NULL,
+            payload TEXT NOT NULL, ingested_at TEXT NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS model_evaluations (
+            id TEXT PRIMARY KEY, model_name TEXT NOT NULL,
+            precision REAL NOT NULL, recall REAL NOT NULL, f1 REAL NOT NULL,
+            roc_auc REAL NOT NULL, pr_auc REAL NOT NULL, payload TEXT NOT NULL, evaluated_at TEXT NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS transaction_investigations (
+            id TEXT PRIMARY KEY, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+            tx_id TEXT NOT NULL, risk_score REAL NOT NULL, risk_category TEXT NOT NULL,
+            known_label TEXT, model_prediction TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS tx_inv_txid ON transaction_investigations(tx_id);
+          CREATE INDEX IF NOT EXISTS tx_inv_session ON transaction_investigations(session_id, created_at);
+        `);
+        this.db.prepare('INSERT INTO schema_migrations VALUES(2,?)').run(now());
+        this.db.exec('COMMIT');
+      } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+    }
   }
   close() { try { this.db.close(); } catch {} }
   session(token) {
@@ -319,4 +346,91 @@ export class Store {
     return {id,caseId,createdAt,version,filename,sha256,url:`/api/reports/${id}`};
   }
   report(sessionId,id) { return this.db.prepare('SELECT * FROM reports WHERE session_id=? AND id=?').get(sessionId,id); }
+
+  saveDatasetMetadata(meta) {
+    const id = meta.id || 'elliptic-dataset-v1';
+    const stamp = meta.ingestedAt || now();
+    this.db.prepare(`
+      INSERT OR REPLACE INTO dataset_metadata (id, name, version, total_nodes, total_edges, illicit_count, licit_count, unknown_count, payload, ingested_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      meta.name || 'Elliptic Bitcoin Transaction Dataset',
+      meta.version || '1.0',
+      meta.totalNodes || 0,
+      meta.totalEdges || 0,
+      meta.classes?.illicit || 0,
+      meta.classes?.licit || 0,
+      meta.classes?.unknown || 0,
+      JSON.stringify(meta),
+      stamp
+    );
+    return meta;
+  }
+
+  getDatasetMetadata(id = 'elliptic-dataset-v1') {
+    const row = this.db.prepare('SELECT payload FROM dataset_metadata WHERE id=?').get(id);
+    return row ? JSON.parse(row.payload) : null;
+  }
+
+  saveModelEvaluation(evalData) {
+    const id = evalData.id || 'rf-time-aware-v1';
+    const stamp = evalData.generated_at || now();
+    const rf = evalData.models?.random_forest || {};
+    this.db.prepare(`
+      INSERT OR REPLACE INTO model_evaluations (id, model_name, precision, recall, f1, roc_auc, pr_auc, payload, evaluated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      rf.model || 'Random Forest',
+      rf.precision || 0,
+      rf.recall || 0,
+      rf.f1 || 0,
+      rf.roc_auc || 0,
+      rf.pr_auc || 0,
+      JSON.stringify(evalData),
+      stamp
+    );
+    return evalData;
+  }
+
+  getModelEvaluation(id = 'rf-time-aware-v1') {
+    const row = this.db.prepare('SELECT payload FROM model_evaluations WHERE id=?').get(id);
+    return row ? JSON.parse(row.payload) : null;
+  }
+
+  saveTxInvestigation(sessionId, txId, report) {
+    const id = randomUUID();
+    const stamp = now();
+    this.db.prepare(`
+      INSERT INTO transaction_investigations (id, session_id, tx_id, risk_score, risk_category, known_label, model_prediction, payload, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      sessionId,
+      String(txId),
+      report.riskScore || 0,
+      report.riskCategory || 'LOW RISK',
+      report.knownLabel || 'unknown',
+      report.modelPrediction || 'licit',
+      JSON.stringify(report),
+      stamp
+    );
+    return { id, txId, createdAt: stamp, ...report };
+  }
+
+  listTxInvestigations(sessionId, limit = 50) {
+    return this.db.prepare('SELECT id, tx_id, risk_score, risk_category, known_label, model_prediction, payload, created_at FROM transaction_investigations WHERE session_id=? ORDER BY created_at DESC LIMIT ?')
+      .all(sessionId, limit)
+      .map(row => ({
+        id: row.id,
+        txId: row.tx_id,
+        riskScore: row.risk_score,
+        riskCategory: row.risk_category,
+        knownLabel: row.known_label,
+        modelPrediction: row.model_prediction,
+        createdAt: row.created_at,
+        report: JSON.parse(row.payload)
+      }));
+  }
 }

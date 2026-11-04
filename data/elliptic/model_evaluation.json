@@ -1,0 +1,146 @@
+{
+  "generated_at": "2026-11-03T14:10:36Z",
+  "dataset_name": "Elliptic Bitcoin Transaction Dataset",
+  "split_strategy": "Time-aware split (Train steps 1-34, Test steps 35-49, Weber et al. 2019)",
+  "train_samples": 29894,
+  "train_illicit": 3462,
+  "train_licit": 26432,
+  "test_samples": 16670,
+  "test_illicit": 1083,
+  "test_licit": 15587,
+  "selected_model": "Random Forest",
+  "models": {
+    "random_forest": {
+      "model": "Random Forest (max_depth=12, n_estimators=100, class_weight='balanced')",
+      "train_time_sec": 1.727,
+      "precision": 0.7831,
+      "recall": 0.7267,
+      "f1": 0.7538,
+      "roc_auc": 0.9254,
+      "pr_auc": 0.7805,
+      "fpr": 0.014,
+      "fnr": 0.2733,
+      "confusion_matrix": {
+        "tn": 15369,
+        "fp": 218,
+        "fn": 296,
+        "tp": 787
+      }
+    },
+    "logistic_regression": {
+      "model": "Logistic Regression (Class-Weighted)",
+      "train_time_sec": 0.976,
+      "precision": 0.1837,
+      "recall": 0.88,
+      "f1": 0.3039,
+      "roc_auc": 0.8819,
+      "pr_auc": 0.2932,
+      "fpr": 0.2717,
+      "fnr": 0.12,
+      "confusion_matrix": {
+        "tn": 11352,
+        "fp": 4235,
+        "fn": 130,
+        "tp": 953
+      }
+    }
+  },
+  "top_features": [
+    {
+      "rank": 1,
+      "feature_index": 54,
+      "feature_name": "feat_55_local",
+      "importance": 0.05899
+    },
+    {
+      "rank": 2,
+      "feature_index": 46,
+      "feature_name": "feat_47_local",
+      "importance": 0.05399
+    },
+    {
+      "rank": 3,
+      "feature_index": 48,
+      "feature_name": "feat_49_local",
+      "importance": 0.04299
+    },
+    {
+      "rank": 4,
+      "feature_index": 40,
+      "feature_name": "feat_41_local",
+      "importance": 0.03845
+    },
+    {
+      "rank": 5,
+      "feature_index": 89,
+      "feature_name": "feat_90_local",
+      "importance": 0.03579
+    },
+    {
+      "rank": 6,
+      "feature_index": 52,
+      "feature_name": "feat_53_local",
+      "importance": 0.03521
+    },
+    {
+      "rank": 7,
+      "feature_index": 42,
+      "feature_name": "feat_43_local",
+      "importance": 0.03421
+    },
+    {
+      "rank": 8,
+      "feature_index": 4,
+      "feature_name": "feat_5_local",
+      "importance": 0.02632
+    },
+    {
+      "rank": 9,
+      "feature_index": 17,
+      "feature_name": "feat_18_local",
+      "importance": 0.02576
+    },
+    {
+      "rank": 10,
+      "feature_index": 22,
+      "feature_name": "feat_23_local",
+      "importance": 0.02411
+    },
+    {
+      "rank": 11,
+      "feature_index": 1,
+      "feature_name": "feat_2_local",
+      "importance": 0.0239
+    },
+    {
+      "rank": 12,
+      "feature_index": 28,
+      "feature_name": "feat_29_local",
+      "importance": 0.02308
+    },
+    {
+      "rank": 13,
+      "feature_index": 65,
+      "feature_name": "feat_66_local",
+      "importance": 0.02161
+    },
+    {
+      "rank": 14,
+      "feature_index": 13,
+      "feature_name": "feat_14_local",
+      "importance": 0.02087
+    },
+    {
+      "rank": 15,
+      "feature_index": 66,
+      "feature_name": "feat_67_local",
+      "importance": 0.01998
+    }
+  ],
+  "risk_thresholds": {
+    "high": 70,
+    "medium": 40,
+    "low": 0
+  },
+  "disclaimer": "Model predictions represent analytical risk scores calibrated from the Elliptic Research Dataset. They do not constitute verified evidence of criminal activity."
+}

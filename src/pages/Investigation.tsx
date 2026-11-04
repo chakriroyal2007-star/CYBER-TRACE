@@ -21,6 +21,202 @@ const statuses=['New','Analyzing','Investigating','Action Required','Monitoring'
 
 function SectionTitle({icon:Icon,title,aside}:{icon:typeof Activity;title:string;aside?:React.ReactNode}){return <div className="ws-section-heading"><h3><Icon size={15}/>{title}</h3>{aside}</div>}
 
+function transformTxToInvestigation(tx: any): InvestigationData {
+  const isIllicit = tx.isGroundTruthIllicit;
+  const isLicit = tx.isGroundTruthLicit;
+  const incoming = tx.graphFindings?.incomingTransactions || [];
+  const outgoing = tx.graphFindings?.outgoingTransactions || [];
+
+  const centerNode: GraphNode = {
+    id: tx.txId,
+    address: `tx:${tx.txId}`,
+    label: `Tx ${tx.txId}`,
+    type: isIllicit ? 'suspect' : isLicit ? 'intermediary' : 'unknown',
+    chain: 'Bitcoin',
+    balance: 0,
+    riskScore: tx.riskScore,
+    entity: `Ground truth: ${tx.knownLabel.toUpperCase()}`,
+    cluster: `TimeStep ${tx.timeStep}`,
+    firstSeen: `TimeStep ${tx.timeStep}`,
+    lastSeen: `TimeStep ${tx.timeStep}`,
+    incomingCount: tx.graphFindings?.inDegree || 0,
+    outgoingCount: tx.graphFindings?.outDegree || 0,
+    behavior: [
+      tx.graphFindings?.flowBehavior || 'Standard transaction flow',
+      `Model prediction: ${tx.modelPrediction?.toUpperCase()} (${tx.modelConfidence}% confidence)`,
+      `Ground truth label: ${tx.knownLabel?.toUpperCase()}`,
+      `TimeStep: ${tx.timeStep}`
+    ],
+    evidenceIds: (tx.evidenceIndicators || []).map((e: any) => e.id),
+    x: 520,
+    y: 220
+  };
+
+  const inNodes: GraphNode[] = incoming.map((inId: string, idx: number) => ({
+    id: inId,
+    address: `tx:${inId}`,
+    label: `Tx ${inId}`,
+    type: 'intermediary',
+    chain: 'Bitcoin',
+    balance: 0,
+    riskScore: 50,
+    entity: 'Inflow counterparty',
+    cluster: `TimeStep ${tx.timeStep}`,
+    firstSeen: `TimeStep ${tx.timeStep}`,
+    lastSeen: `TimeStep ${tx.timeStep}`,
+    incomingCount: 0,
+    outgoingCount: 1,
+    behavior: ['Inflow counterparty transaction'],
+    evidenceIds: [],
+    x: 180,
+    y: Math.max(50, 100 + idx * 75)
+  }));
+
+  const outNodes: GraphNode[] = outgoing.map((outId: string, idx: number) => ({
+    id: outId,
+    address: `tx:${outId}`,
+    label: `Tx ${outId}`,
+    type: 'intermediary',
+    chain: 'Bitcoin',
+    balance: 0,
+    riskScore: 50,
+    entity: 'Outflow counterparty',
+    cluster: `TimeStep ${tx.timeStep}`,
+    firstSeen: `TimeStep ${tx.timeStep}`,
+    lastSeen: `TimeStep ${tx.timeStep}`,
+    incomingCount: 1,
+    outgoingCount: 0,
+    behavior: ['Outflow counterparty transaction'],
+    evidenceIds: [],
+    x: 840,
+    y: Math.max(50, 100 + idx * 75)
+  }));
+
+  const inEdges: GraphEdge[] = incoming.map((inId: string, idx: number) => ({
+    id: `EDGE-IN-${idx + 1}`,
+    source: inId,
+    target: tx.txId,
+    amount: 1,
+    timestamp: `2026-09-24T00:0${tx.timeStep || 1}:00.000Z`,
+    hash: `${inId}->${tx.txId}`,
+    chain: 'Bitcoin',
+    asset: 'BTC',
+    highlighted: true
+  }));
+
+  const outEdges: GraphEdge[] = outgoing.map((outId: string, idx: number) => ({
+    id: `EDGE-OUT-${idx + 1}`,
+    source: tx.txId,
+    target: outId,
+    amount: 1,
+    timestamp: `2026-09-24T00:0${tx.timeStep || 1}:00.000Z`,
+    hash: `${tx.txId}->${outId}`,
+    chain: 'Bitcoin',
+    asset: 'BTC',
+    highlighted: true
+  }));
+
+  const caseData: CaseData = {
+    id: tx.txId,
+    complaintId: `ELLIPTIC-${tx.txId}`,
+    fraudType: isIllicit ? 'Confirmed Illicit Bitcoin Activity' : isLicit ? 'Verified Licit Bitcoin Flow' : 'Unlabeled Bitcoin Research Node',
+    victimLoss: 0,
+    currency: 'BTC',
+    reportedWallet: `tx:${tx.txId}`,
+    chain: 'Bitcoin',
+    transactionHash: `0x${tx.txId}`,
+    priority: tx.riskScore >= 70 ? 'High' : tx.riskScore >= 40 ? 'Medium' : 'Low',
+    description: tx.explanation || 'Analyzed via Elliptic Research Dataset graph analytics and supervised classification.',
+    status: isIllicit ? 'Action Required' : 'Analyzing',
+    riskScore: tx.riskScore,
+    tracedAmount: 0,
+    confidence: tx.modelConfidence,
+    vaspCandidate: `Random Forest: ${tx.modelPrediction?.toUpperCase()}`,
+    transactionCount: incoming.length + outgoing.length,
+    walletCount: 1 + incoming.length + outgoing.length,
+    chains: ['Bitcoin (Elliptic Research Dataset)'],
+    updatedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    source: 'Elliptic Research Dataset'
+  };
+
+  const attribution: Attribution = {
+    id: `ATTR-${tx.txId}`,
+    candidate: `Prediction: ${tx.modelPrediction?.toUpperCase()} (${tx.modelConfidence}%)`,
+    confidence: tx.modelConfidence,
+    tracedAmount: 0,
+    transactionCount: incoming.length + outgoing.length,
+    chains: ['Bitcoin'],
+    firstInteraction: `TimeStep ${tx.timeStep}`,
+    lastInteraction: `TimeStep ${tx.timeStep}`,
+    hops: 1,
+    evidence: tx.evidenceIndicators || []
+  };
+
+  return {
+    case: caseData,
+    nodes: [centerNode, ...inNodes, ...outNodes],
+    edges: [...inEdges, ...outEdges],
+    attributions: [attribution],
+    fingerprint: {
+      features: {
+        timeStep: tx.timeStep,
+        inDegree: tx.graphFindings?.inDegree || 0,
+        outDegree: tx.graphFindings?.outDegree || 0,
+        totalNeighbors: tx.graphFindings?.totalNeighbors || 0,
+        riskScore: tx.riskScore,
+        modelConfidence: tx.modelConfidence,
+        neighborIllicitCount: tx.graphFindings?.neighborIllicitCount || 0
+      },
+      patterns: [
+        {
+          name: 'Supervised Fraud Classifier',
+          score: tx.riskScore,
+          reason: `Model predicts ${tx.modelPrediction?.toUpperCase()} with ${tx.modelConfidence}% confidence. Ground truth is ${tx.knownLabel?.toUpperCase()}.`,
+          evidenceIds: ['EV-MODEL-PREDICTION']
+        },
+        {
+          name: 'Graph Neighborhood Risk',
+          score: Math.min(100, (tx.graphFindings?.neighborIllicitCount || 0) * 35),
+          reason: `Connected to ${tx.graphFindings?.neighborIllicitCount || 0} confirmed illicit counterparty node(s).`,
+          evidenceIds: ['EV-NEIGHBOR-EXPOSURE']
+        }
+      ]
+    },
+    relatedCases: [],
+    crossChain: [],
+    timeline: [
+      {
+        id: 'EV-TIMESTEP',
+        timestamp: `2026-09-24T00:0${tx.timeStep || 1}:00.000Z`,
+        action: `TimeStep ${tx.timeStep} Recorded`,
+        description: `Transaction node captured in the Elliptic Bitcoin dataset at time step ${tx.timeStep}.`,
+        evidenceIds: ['EV-DATASET-LABEL']
+      }
+    ],
+    recommendations: [
+      `Ground truth status: ${tx.knownLabel?.toUpperCase()} in research records.`,
+      `Model classification: ${tx.modelPrediction?.toUpperCase()} (${tx.modelConfidence}% confidence).`,
+      tx.graphFindings?.neighborIllicitCount > 0
+        ? `Alert: connected to ${tx.graphFindings.neighborIllicitCount} confirmed illicit counterparties.`
+        : 'No confirmed illicit counterparties observed in immediate neighborhood.',
+      'Risk score represents statistical pattern resemblance and requires independent verification.'
+    ],
+    riskIndicators: tx.evidenceIndicators || [],
+    knowledgeGraph: {
+      nodes: [
+        { id: `tx:${tx.txId}`, label: `Tx ${tx.txId}`, type: 'Transaction' },
+        { id: `step:${tx.timeStep}`, label: `TimeStep ${tx.timeStep}`, type: 'TimeStep' },
+        { id: `label:${tx.knownLabel}`, label: `Label: ${tx.knownLabel}`, type: 'GroundTruth' }
+      ],
+      edges: [
+        { source: `tx:${tx.txId}`, target: `step:${tx.timeStep}`, type: 'RECORDED_AT' },
+        { source: `tx:${tx.txId}`, target: `label:${tx.knownLabel}`, type: 'CLASSIFIED_AS' }
+      ]
+    }
+  };
+}
+
 export default function Investigation({id}:{id:string}) {
   const [data,setData]=useState<InvestigationData|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState('');
   const [selectedNode,setSelectedNode]=useState<GraphNode|null>(null),[selectedEdge,setSelectedEdge]=useState<GraphEdge|null>(null),[evidence,setEvidence]=useState<Evidence|null>(null);
@@ -29,7 +225,107 @@ export default function Investigation({id}:{id:string}) {
   const [queryString,setQueryString]=useState(window.location.search);
   useEffect(()=>{const sync=()=>setQueryString(window.location.search);window.addEventListener('popstate',sync);window.addEventListener('navigation',sync);return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('navigation',sync)}},[]);
   const [txFilter,setTxFilter]=useState(''),[txPage,setTxPage]=useState(1),[savingStatus,setSavingStatus]=useState(false),[activeEvidenceId,setActiveEvidenceId]=useState('');
-  const load=async()=>{setLoading(true);setError('');try{const result=await api<InvestigationData>(`/investigations/${encodeURIComponent(id)}`);setData(result);setSelectedNode(null);setSelectedEdge(null);}catch(err){setError(err instanceof Error?err.message:'The investigation could not be loaded.')}finally{setLoading(false)}};
+  const [pathTarget,setPathTarget]=useState(''),[pathWeight,setPathWeight]=useState<'hop'|'time'|'risk'>('hop'),[tracingPath,setTracingPath]=useState(false),[pathResult,setPathResult]=useState<any>(null);
+  const [searchTx,setSearchTx]=useState('');
+
+  const load=async()=>{
+    setLoading(true);setError('');setPathResult(null);
+    try {
+      if(/^\d+$/.test(id)) {
+        const tx = await api(`/transactions/${encodeURIComponent(id)}`);
+        setData(transformTxToInvestigation(tx));
+        setSelectedNode(null);setSelectedEdge(null);
+        return;
+      }
+      const result = await api<InvestigationData>(`/investigations/${encodeURIComponent(id)}`);
+      setData(result);setSelectedNode(null);setSelectedEdge(null);
+    } catch(err) {
+      try {
+        const tx = await api(`/transactions/${encodeURIComponent(id)}`);
+        setData(transformTxToInvestigation(tx));
+        setSelectedNode(null);setSelectedEdge(null);
+      } catch {
+        setError(err instanceof Error?err.message:'The investigation could not be loaded.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTracePath = async (algo: 'dijkstra' | 'bfs') => {
+    if(!pathTarget.trim() || tracingPath) return;
+    setTracingPath(true);
+    try {
+      const endpoint = algo === 'dijkstra'
+        ? `/analytics/dijkstra?start=${encodeURIComponent(id)}&target=${encodeURIComponent(pathTarget.trim())}&weight=${pathWeight}`
+        : `/analytics/bfs?start=${encodeURIComponent(id)}&target=${encodeURIComponent(pathTarget.trim())}&depth=8`;
+      const res = await api(endpoint);
+      setPathResult(res);
+      if(res.found && res.path?.length && data) {
+        // Integrate path nodes and edges into graph with highlight
+        const newNodes: GraphNode[] = [...data.nodes];
+        const newEdges: GraphEdge[] = [...data.edges];
+        for(let i=0; i<res.path.length; i++) {
+          const tid = res.path[i];
+          if(!newNodes.some(n => n.id === tid)) {
+            newNodes.push({
+              id: tid,
+              address: `tx:${tid}`,
+              label: `Tx ${tid}`,
+              type: i === 0 ? 'suspect' : i === res.path.length-1 ? 'vasp' : 'intermediary',
+              chain: 'Bitcoin',
+              balance: 0,
+              riskScore: 50,
+              entity: `Path node (Hop ${i})`,
+              cluster: 'Traced route',
+              firstSeen: '',
+              lastSeen: '',
+              incomingCount: 1,
+              outgoingCount: 1,
+              behavior: [`Path node ${i}`],
+              evidenceIds: [],
+              x: 180 + (i / (res.path.length - 1 || 1)) * 680,
+              y: 220 + ((i % 2 === 1) ? 60 : -40)
+            });
+          }
+          if(i > 0) {
+            const prevId = res.path[i-1];
+            if(!newEdges.some(e => e.source === prevId && e.target === tid)) {
+              newEdges.push({
+                id: `PATH-${prevId}-${tid}`,
+                source: prevId,
+                target: tid,
+                amount: 1,
+                timestamp: new Date().toISOString(),
+                hash: `${prevId}->${tid}`,
+                chain: 'Bitcoin',
+                asset: 'BTC',
+                highlighted: true
+              });
+            }
+          }
+        }
+        setData({ ...data, nodes: newNodes, edges: newEdges });
+        setTab('graph');
+        notify(`Shortest path found: ${res.hops} hops via ${algo.toUpperCase()} (${res.traversalTimeMs}ms)`);
+      } else {
+        notify(res.explanation || 'No directed path found within traversal limit.', 'info');
+      }
+    } catch(err) {
+      notify(err instanceof Error ? err.message : 'Path trace failed', 'error');
+    } finally {
+      setTracingPath(false);
+    }
+  };
+
+  const handleSaveTxInvestigation = async () => {
+    try {
+      await api(`/transactions/${encodeURIComponent(id)}/investigate`, { method: 'POST', body: '{}' });
+      notify(`Transaction investigation for ${id} saved to audit records.`);
+    } catch(err) {
+      notify(err instanceof Error ? err.message : 'Could not save investigation', 'error');
+    }
+  };
   useEffect(()=>{void load();setMessages([]);setEvidence(null);setTab('graph');},[id]);
   useEffect(()=>{const handler=(event:Event)=>{const custom=event as CustomEvent;if(custom.detail?.action==='ask'||custom.detail==='ask')setShowAssistant(true)};window.addEventListener('trace-ai',handler);return()=>window.removeEventListener('trace-ai',handler)},[]);
   useEffect(()=>{const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setEvidence(null);setShowAssistant(false)}};window.addEventListener('keydown',onEscape);return()=>window.removeEventListener('keydown',onEscape)},[]);
@@ -69,7 +365,19 @@ export default function Investigation({id}:{id:string}) {
   const c=data.case;
   return <div className="investigation-page">
     <div className="ws-breadcrumb"><button onClick={()=>navigate('/app/cases')}>Investigations</button><ChevronRight size={12}/><span>{c.id}</span><span className="ws-demo-tag">SIMULATED INVESTIGATION DATA</span></div>
-    <header className="ws-page-header"><div><div className="ws-eyebrow">INVESTIGATION WORKSPACE</div><h1>{c.id}<span className={`ws-risk ${c.riskScore>=70?'high':c.riskScore>=40?'medium':'low'}`}><span/>{riskLabel(c.riskScore)}</span></h1><p>{c.fraudType}<i/> {c.chains.join(' → ')}<i/> Updated {dateTime(c.updatedAt)}</p></div><div className="ws-header-actions"><button className="ws-btn" onClick={()=>setShowAssistant(true)}><Sparkles size={15}/> TRACE AI</button><button className="ws-btn" onClick={generateReport} disabled={generating}>{generating?<LoaderCircle className="ws-spin" size={15}/>:<Download size={15}/>}<span>{generating?'Generating…':'Export report'}</span></button><button className="ws-btn primary" onClick={runTrace} disabled={isTracing}>{isTracing?<LoaderCircle className="ws-spin" size={15}/>:<Play size={14}/>}<span>{isTracing?'Tracing…':'Start trace'}</span></button></div></header>
+    <header className="ws-page-header"><div><div className="ws-eyebrow">INVESTIGATION WORKSPACE</div><h1>{c.id}<span className={`ws-risk ${c.riskScore>=70?'high':c.riskScore>=40?'medium':'low'}`}><span/>{riskLabel(c.riskScore)}</span></h1><p>{c.fraudType}<i/> {c.chains.join(' → ')}<i/> Updated {dateTime(c.updatedAt)}</p></div><div className="ws-header-actions"><button className="ws-btn" onClick={()=>setShowAssistant(true)}><Sparkles size={15}/> TRACE AI</button>{c.source === 'Elliptic Research Dataset' ? <button className="ws-btn" onClick={handleSaveTxInvestigation}><ShieldCheck size={15}/> Save to Audit</button> : <button className="ws-btn" onClick={generateReport} disabled={generating}>{generating?<LoaderCircle className="ws-spin" size={15}/>:<Download size={15}/>}<span>{generating?'Generating…':'Export report'}</span></button>}<button className="ws-btn primary" onClick={runTrace} disabled={isTracing}>{isTracing?<LoaderCircle className="ws-spin" size={15}/>:<Play size={14}/>}<span>{isTracing?'Tracing…':'Start trace'}</span></button></div></header>
+
+    <div className="ws-tx-quickbar" style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap',padding:'0.6rem 1rem',background:'#0d1b2a',border:'1px solid #1f334d',borderRadius:'8px',marginBottom:'1rem',fontSize:'13px'}}>
+      <span style={{color:'#7f95ae',fontWeight:600}}>EXPLORE DATASET:</span>
+      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/investigations/232629023')}>🔴 Illicit Tx: 232629023</button>
+      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/investigations/232438397')}>🟢 Licit Tx: 232438397</button>
+      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/investigations/230425980')}>⚪ Unknown Tx: 230425980</button>
+      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/investigations/CR-2026-00192')}>📋 Case: CR-2026-00192</button>
+      <div style={{display:'flex',gap:'4px',marginLeft:'auto'}}>
+        <input style={{background:'#16263b',border:'1px solid #2d4563',borderRadius:'4px',color:'#fff',padding:'4px 8px',fontSize:'12px',width:'170px'}} placeholder="Enter any Tx ID…" value={searchTx} onChange={e=>setSearchTx(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&searchTx.trim())navigate(`/app/investigations/${searchTx.trim()}`)}}/>
+        <button className="ws-btn primary" style={{padding:'3px 10px',fontSize:'12px'}} onClick={()=>{if(searchTx.trim())navigate(`/app/investigations/${searchTx.trim()}`)}}>Go</button>
+      </div>
+    </div>
     <div className="ws-workflow"><span className="complete"><CheckCircle2 size={14}/> REPORTED WALLET</span><ArrowRight size={12}/>{['TRACE','ATTRIBUTE','CORRELATE','ACT'].map((s,i)=><span key={s} className={`ws-workflow-step ${traceStage>=0&&traceStage===i+1?'current':''}`}><b>0{i+1}</b>{s}{i<3&&<ArrowRight size={12}/>}</span>)}<span className="ws-workflow-status"><span className="ws-pulse"/>{isTracing?'Replaying deterministic demo analysis':'Evidence-backed intelligence'}</span></div>
     {traceStage>=0&&<div className="ws-trace-progress" role="status"><LoaderCircle size={15} className={isTracing?'ws-spin':''}/><span>{['Normalizing reported wallet','Tracing synthetic transaction network','Analyzing cross-chain evidence','Calculating explainable attribution','Correlating independent complaints','Analysis complete · all evidence persisted'][traceStage]}</span><div><i style={{width:`${(traceStage+1)/6*100}%`}}/></div><small>DEMO REPLAY</small></div>}
     <div className="ws-metrics">{[{label:'REPORTED LOSS',value:money(c.victimLoss),icon:Wallet,note:'Victim-reported amount'},{label:'TRACED TO EXIT',value:money(c.tracedAmount),icon:Target,note:`${c.victimLoss?Math.round(c.tracedAmount/c.victimLoss*100):0}% of reported loss`,accent:true},{label:'TRANSACTIONS',value:c.transactionCount || data.edges?.length || 0,icon:Activity,note:'Evidence-linked transfers'},{label:'WALLET NETWORK',value:c.walletCount || data.nodes?.length || 0,icon:Network,note:`Across ${(c.chains || []).length} blockchain${(c.chains || []).length===1?'':'s'}`},{label:'RELATED COMPLAINTS',value:data.relatedCases?.length || 0,icon:Link2,note:'Shared fund-flow network'},{label:'VASP CONFIDENCE',value:attribution?`${attribution.confidence}%`:'Unresolved',icon:ShieldCheck,note:attribution?.candidate||'No supported candidate',accent:true}].map(m=><div className={`ws-metric ${m.accent?'accent':''}`} key={m.label}><div><span>{m.label}</span><m.icon size={14}/></div><strong>{m.value}</strong><small>{m.note}</small></div>)}</div>
@@ -78,7 +386,22 @@ export default function Investigation({id}:{id:string}) {
       <aside className="ws-case-rail ws-card"><SectionTitle icon={FileText} title="Case overview"/><div className="ws-case-rail-body"><label>CASE STATUS</label><select aria-label="Case status" value={c.status} disabled={savingStatus} onChange={e=>updateStatus(e.target.value)}>{statuses.map(s=><option key={s}>{s}</option>)}</select><label>COMPLAINT REFERENCE</label><strong className="ws-mono">{c.complaintId||'Not provided'}</strong><label>REPORTED WALLET</label><div className="ws-address-box"><span title={c.reportedWallet}>{shortAddress(c.reportedWallet)}</span><button aria-label="Copy reported wallet" title="Copy wallet address" onClick={()=>copy(c.reportedWallet)}><Copy size={12}/></button></div><span className="ws-chain-pill"><span/>{c.chain}</span><label>INVESTIGATION PRIORITY</label><strong className="ws-priority"><span/>{c.priority}</strong><label>REPORTED AT</label><p>{dateTime(c.createdAt)}</p><label>CASE NOTES</label><p>{c.description||'No additional investigator notes.'}</p>{Boolean(c.attachments?.length)&&<><label>ATTACHMENT METADATA</label>{c.attachments!.map((file,i)=><p key={i}><FileText size={12}/>{file.name||`Attachment ${i+1}`}</p>)}</>}</div><div className="ws-case-integrity"><ShieldCheck size={20}/><span>Evidence integrity<strong>Audited case workflow</strong></span></div><button className="ws-text-button" onClick={()=>navigate(`/app/wallets?address=${encodeURIComponent(c.reportedWallet)}`)}>Open wallet intelligence <ArrowUpRight size={13}/></button></aside>
 
       <section className="ws-network-column"><div className="ws-card ws-network-card"><div className="ws-network-tabs"><div role="tablist" aria-label="Investigation view"><button role="tab" aria-selected={tab==='graph'} className={tab==='graph'?'active':''} onClick={()=>setTab('graph')}><Network size={14}/>Transaction graph</button><button role="tab" aria-selected={tab==='knowledge'} className={tab==='knowledge'?'active':''} onClick={()=>setTab('knowledge')}><Layers size={14}/>Knowledge graph</button><button role="tab" aria-selected={tab==='transactions'} className={tab==='transactions'?'active':''} onClick={()=>setTab('transactions')}><Activity size={14}/>Transactions <span>{data.edges?.length || 0}</span></button></div><span className="ws-verified-label"><ShieldCheck size={12}/>TRACE</span></div>
-        {tab==='graph'&&<GraphPanel nodes={data.nodes || []} edges={data.edges || []} onNodeSelect={selectNode} onEdgeSelect={selectEdge} selectedId={selectedNode?.id||selectedEdge?.id}/>}
+        {tab==='graph'&&<>
+          <div style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap',padding:'0.5rem 1rem',background:'#0a1420',borderBottom:'1px solid #1a2a3e',fontSize:'12px'}}>
+            <Network size={14} style={{color:'#4fd7c1'}}/>
+            <span style={{fontWeight:600,color:'#8ba1b8'}}>SHORTEST PATH TRACER:</span>
+            <input style={{background:'#122030',border:'1px solid #23374d',borderRadius:'4px',color:'#fff',padding:'3px 8px',fontSize:'12px',width:'160px'}} placeholder="Target Tx ID (e.g. 5530458)…" value={pathTarget} onChange={e=>setPathTarget(e.target.value)}/>
+            <select style={{background:'#122030',border:'1px solid #23374d',borderRadius:'4px',color:'#fff',padding:'3px 6px',fontSize:'12px'}} value={pathWeight} onChange={e=>setPathWeight(e.target.value as any)}>
+              <option value="hop">Hop Count (Uniform)</option>
+              <option value="time">Time Step Gap</option>
+              <option value="risk">Risk Traversal Cost</option>
+            </select>
+            <button className="ws-btn primary" style={{padding:'2px 8px',fontSize:'11px'}} disabled={tracingPath} onClick={()=>handleTracePath('dijkstra')}>{tracingPath?'Tracing…':'Dijkstra (Priority Queue)'}</button>
+            <button className="ws-btn" style={{padding:'2px 8px',fontSize:'11px'}} disabled={tracingPath} onClick={()=>handleTracePath('bfs')}>BFS Traversal</button>
+            {pathResult&&pathResult.found&&<span style={{marginLeft:'auto',color:'#4fd7c1',fontSize:'12px'}}>✓ {pathResult.hops} hops | Cost: {pathResult.cumulativeCost} ({pathResult.traversalTimeMs}ms)</span>}
+          </div>
+          <GraphPanel nodes={data.nodes || []} edges={data.edges || []} onNodeSelect={selectNode} onEdgeSelect={selectEdge} selectedId={selectedNode?.id||selectedEdge?.id}/>
+        </>}
         {tab==='knowledge'&&<><p className="ws-knowledge-note">Entities, cases and evidence relationships. Select an edge to inspect its relationship.</p><GraphPanel nodes={knowledge.nodes} edges={knowledge.edges} onNodeSelect={selectNode} onEdgeSelect={selectEdge} selectedId={selectedNode?.id||selectedEdge?.id}/></>}
         {tab==='transactions'&&<div className="ws-tx-panel"><div className="ws-tx-search"><Search size={15}/><input value={txFilter} onChange={e=>{setTxFilter(e.target.value);setTxPage(1)}} placeholder="Filter by hash, wallet, chain or evidence ID" aria-label="Filter transactions"/></div><div className="ws-table-scroll"><table className="ws-table"><thead><tr><th>Reference / hash</th><th>From → To</th><th>Value (INR)</th><th>Chain</th><th>Time UTC</th></tr></thead><tbody>{filteredTransactions.slice((txPage-1)*10,txPage*10).map(tx=><tr key={tx.id} tabIndex={0} onClick={()=>selectEdge(tx)} onKeyDown={e=>e.key==='Enter'&&selectEdge(tx)} className={selectedEdge?.id===tx.id?'selected':''}><td><strong>{tx.id}</strong><small className="ws-mono">{shortAddress(tx.hash)}</small></td><td><small>{(data.nodes || []).find(n=>n.id===tx.source)?.label||tx.source}</small><small>→ {(data.nodes || []).find(n=>n.id===tx.target)?.label||tx.target}</small></td><td>{money(tx.amount)}</td><td>{tx.chain}</td><td>{clock(tx.timestamp)}</td></tr>)}</tbody></table>{!filteredTransactions.length&&<div className="ws-empty">No transactions match this search.</div>}</div><div className="ws-pagination"><span>{filteredTransactions.length} transactions</span><button disabled={txPage<=1} onClick={()=>setTxPage(p=>p-1)}>Previous</button><span>{txPage} / {Math.max(1,Math.ceil(filteredTransactions.length/10))}</span><button disabled={txPage>=Math.ceil(filteredTransactions.length/10)} onClick={()=>setTxPage(p=>p+1)}>Next</button></div></div>}
       </div>

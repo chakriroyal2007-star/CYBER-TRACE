@@ -9,6 +9,8 @@ import { answerQuestion } from './assistant.mjs';
 import { openapi, docsHtml } from './openapi.mjs';
 import { validateCase, validateWeights, validateTransaction, normalizeWallet, enumField, textField, object, STATUSES, CHAINS, fail } from './validation.mjs';
 import { generatePdfNode } from './pdf.mjs';
+import { getGraphEngine } from './graph/graphEngine.mjs';
+import { RiskEngine } from './ml/riskEngine.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
@@ -274,7 +276,7 @@ async function handle(req,res) {
    if(id && method==='PATCH') {const data=await body(req),status=enumField(data.status,['Reviewed','Dismissed'],'Alert status');return json(res,200,requireValue(store.updateAlert(sid,id,status),'Alert'));}
  }
  if(group==='evidence' && id && sub && segments[4]==='view' && method==='POST') {const evidence=requireValue(store.evidence(sid,id,sub),'Evidence');store.audit(sid,'Evidence Viewed',`${id}/${sub}`);return json(res,200,evidence);}
- if(group==='assistant' && id && method==='POST') {const data=await body(req),question=textField(data.question,'Question',1200,{required:true}),inv=requireValue(store.getInvestigation(sid,id),'Case');store.audit(sid,'TRACE AI Consulted',id,{mode:'case-grounded deterministic assistant'});return json(res,200,answerQuestion(inv,question));}
+ if(group==='assistant' && id && method==='POST') {const data=await body(req),question=textField(data.question,'Question',1200,{required:true}),inv=requireValue(store.getInvestigation(sid,id),'Case');store.audit(sid,'TRACE AI Consulted',id,{mode:'case-grounded deterministic assistant'});return json(res,200,await answerQuestion(inv,question));}
  if(group==='search' && method==='GET') return json(res,200,search(sid,textField(url.searchParams.get('q')||'','Search query',200)));
  if(group==='settings') {
    if(method==='GET') return json(res,200,store.settings(session));
@@ -309,6 +311,102 @@ async function handle(req,res) {
  if(group==='patterns' && method==='GET') {
    const all=store.listCases(sid).map(c=>store.getInvestigation(sid,c.id)).filter(Boolean).map(inv=>({caseId:inv.case?.id,case:inv.case,fingerprint:inv.fingerprint || {features:{},patterns:[]},riskIndicators:inv.riskIndicators || []}));
    return json(res,200,all);
+ }
+ // Dataset Analytics & Ingestion
+ if(group==='dataset') {
+   const graph = await getGraphEngine();
+   if(id==='stats' && method==='GET') {
+     const stats = graph.getStats();
+     store.saveDatasetMetadata(stats);
+     return json(res, 200, stats);
+   }
+   if(id==='ingest' && method==='POST') {
+     const result = await graph.pipeline.execute();
+     graph.nodeIndex = result.nodeMap;
+     graph.adjacency = result.adjacency;
+     graph.reverseAdjacency = result.reverseAdjacency;
+     graph.stats = result.stats;
+     store.saveDatasetMetadata(result.stats);
+     store.audit(sid, 'Dataset Ingestion Executed', 'elliptic-dataset', { nodes: result.stats.totalNodes, edges: result.stats.totalEdges });
+     return json(res, 200, { message: 'Dataset ingested successfully', stats: result.stats });
+   }
+ }
+ // Transaction Lookup & Risk Evaluation
+ if(group==='transactions') {
+   if(id==='investigations' && method==='GET') {
+     return json(res, 200, store.listTxInvestigations(sid));
+   }
+   if(id && sub==='investigate' && method==='POST') {
+     const graph = await getGraphEngine();
+     const risk = new RiskEngine(graph);
+     const report = risk.evaluateTransaction(id);
+     if(!report.found) fail(report.error || `Transaction ${id} not found in Elliptic dataset.`, 404);
+     const saved = store.saveTxInvestigation(sid, id, report);
+     store.audit(sid, 'Transaction Investigation Saved', id, { riskScore: report.riskScore, riskCategory: report.riskCategory });
+     return json(res, 201, saved);
+   }
+   if(id && method==='GET' && id!=='ingest') {
+     const graph = await getGraphEngine();
+     const risk = new RiskEngine(graph);
+     const report = risk.evaluateTransaction(id);
+     if(!report.found) fail(report.error || `Transaction ${id} not found in Elliptic dataset.`, 404);
+     return json(res, 200, report);
+   }
+ }
+ // Graph Analytics & Algorithms
+ if(group==='analytics') {
+   const graph = await getGraphEngine();
+   if(id==='bfs' && method==='GET') {
+     const start = url.searchParams.get('start');
+     if(!start) fail('Parameter start is required for BFS.', 400);
+     const target = url.searchParams.get('target') || undefined;
+     const depth = Number(url.searchParams.get('depth') || 5);
+     const limit = Number(url.searchParams.get('limit') || 100);
+     return json(res, 200, graph.bfs(start, { targetTxId: target, maxDepth: depth, limit }));
+   }
+   if(id==='dfs' && method==='GET') {
+     const start = url.searchParams.get('start');
+     if(!start) fail('Parameter start is required for DFS.', 400);
+     const target = url.searchParams.get('target') || undefined;
+     const depth = Number(url.searchParams.get('depth') || 8);
+     const limit = Number(url.searchParams.get('limit') || 100);
+     return json(res, 200, graph.dfs(start, { targetTxId: target, maxDepth: depth, limit }));
+   }
+   if(id==='dijkstra' && method==='GET') {
+     const start = url.searchParams.get('start');
+     const target = url.searchParams.get('target');
+     const weight = url.searchParams.get('weight') || 'hop';
+     if(!start || !target) fail('Parameters start and target are required for Dijkstra shortest path.', 400);
+     return json(res, 200, graph.dijkstra(start, target, weight));
+   }
+   if(id==='components' && method==='POST') {
+     const data = await body(req);
+     const ids = Array.isArray(data.transactionIds) ? data.transactionIds : [];
+     if(!ids.length) fail('Provide an array of transactionIds for component analysis.', 400);
+     return json(res, 200, graph.connectedComponents(ids));
+   }
+   if(id==='top-suspicious' && method==='GET') {
+     const k = Number(url.searchParams.get('k') || 10);
+     const timestep = url.searchParams.get('timestep') || undefined;
+     const label = url.searchParams.get('label') || undefined;
+     return json(res, 200, graph.topSuspicious(k, { timeStep: timestep, label }));
+   }
+   if(id==='temporal' && method==='GET') {
+     const window = Number(url.searchParams.get('window') || 3);
+     const threshold = Number(url.searchParams.get('threshold') || 1.3);
+     return json(res, 200, graph.slidingWindow(window, threshold));
+   }
+   if(id==='model-eval' && method==='GET') {
+     if(!graph.modelEvaluation) fail('Model evaluation not available.', 404);
+     store.saveModelEvaluation(graph.modelEvaluation);
+     return json(res, 200, graph.modelEvaluation);
+   }
+   if(id==='neighborhood' && method==='GET') {
+     const txId = url.searchParams.get('txId');
+     if(!txId) fail('Parameter txId is required for neighborhood retrieval.', 400);
+     const depth = Number(url.searchParams.get('depth') || 1);
+     return json(res, 200, graph.neighborhood(txId, depth));
+   }
  }
  fail('API endpoint not found.',404);
 }
