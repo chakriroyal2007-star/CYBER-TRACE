@@ -418,18 +418,18 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
             </span>
           </h1>
           <p style={{ margin: 0, color: '#7a92ad', fontSize: '12px' }}>
-            Direct adjacency graph of Bitcoin transaction dependencies. Nodes model transaction hashes ($V=203,769$, $E=234,355$).
+            Direct adjacency graph of Bitcoin transaction dependencies. Nodes model transaction hashes (V = 203,769, E = 234,355).
           </p>
         </div>
 
         {/* Global Dataset Stats Counter Badges */}
         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
           <div style={{ background: '#111f30', border: '1px solid #1f344e', borderRadius: '8px', padding: '6px 12px', fontSize: '12px' }}>
-            <span style={{ color: '#8ca1b8', display: 'block', fontSize: '10px' }}>TOTAL NODES ($V$)</span>
+            <span style={{ color: '#8ca1b8', display: 'block', fontSize: '10px' }}>TOTAL NODES (V)</span>
             <strong style={{ color: '#fff', fontSize: '14px' }}>{stats?.totalNodes?.toLocaleString() || '203,769'}</strong>
           </div>
           <div style={{ background: '#111f30', border: '1px solid #1f344e', borderRadius: '8px', padding: '6px 12px', fontSize: '12px' }}>
-            <span style={{ color: '#8ca1b8', display: 'block', fontSize: '10px' }}>TOTAL EDGES ($E$)</span>
+            <span style={{ color: '#8ca1b8', display: 'block', fontSize: '10px' }}>TOTAL EDGES (E)</span>
             <strong style={{ color: '#fff', fontSize: '14px' }}>{stats?.totalEdges?.toLocaleString() || '234,355'}</strong>
           </div>
           <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '6px 12px', fontSize: '12px' }}>
@@ -843,7 +843,7 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
               <button className="ws-icon-button" onClick={() => setShowTopModal(false)}>✕</button>
             </div>
             <p style={{ color: '#8ca1b8', fontSize: '12px', margin: '0.6rem 0' }}>
-              Extracted via $O(N \log K)$ binary min-heap ranking across the 203,769 transactions. Click any transaction to inspect its directed graph.
+              Extracted via O(N log K) binary min-heap ranking across the 203,769 transactions. Click any transaction to inspect its directed graph.
             </p>
             <div style={{ maxHeight: '360px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               {topSuspicious.map((item, idx) => (
@@ -888,7 +888,7 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
               <button className="ws-icon-button" onClick={() => setShowBurstModal(false)}>✕</button>
             </div>
             <p style={{ color: '#8ca1b8', fontSize: '12px', margin: '0.6rem 0' }}>
-              Sliding window temporal rate analysis ($O(W + T)$) over 49 discrete intervals detecting transaction bursts and rapid forwarding spikes.
+              Sliding window temporal rate analysis O(W + T) over 49 discrete intervals detecting transaction bursts and rapid forwarding spikes.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', marginBottom: '0.8rem' }}>
               <div style={{ background: '#0e1b2b', padding: '8px', borderRadius: '6px' }}>

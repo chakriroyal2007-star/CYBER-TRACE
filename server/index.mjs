@@ -122,8 +122,20 @@ function dashboard(sessionId) {
 }
 function search(sessionId,q) {
   if(!q || q.length<2) return [];
-  q=q.toLowerCase();
+  q=q.toLowerCase().trim();
   const hits=[],match=(...values)=>values.some(v=>String(v??'').toLowerCase().includes(q));
+
+  if (/^\d{2,15}$/.test(q)) {
+    hits.push({
+      type: 'Bitcoin Dataset Tx',
+      title: `Tx ${q}`,
+      subtitle: 'Elliptic Research Dataset · Graph Forensics Node',
+      id: q,
+      caseId: q,
+      path: `/app/graph/${encodeURIComponent(q)}`
+    });
+  }
+
   const cases=store.listCases(sessionId);
   for(const c of cases) {
     if(match(c.id,c.complaintId,c.fraudType,c.description,c.reportedWallet)) hits.push({type:'Case',title:c.id,subtitle:`${c.fraudType} · ${c.chain}`,id:c.id,caseId:c.id,path:`/app/investigations/${encodeURIComponent(c.id)}`});

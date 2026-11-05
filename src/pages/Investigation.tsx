@@ -365,17 +365,17 @@ export default function Investigation({id}:{id:string}) {
   const c=data.case;
   return <div className="investigation-page">
     <div className="ws-breadcrumb"><button onClick={()=>navigate('/app/cases')}>Investigations</button><ChevronRight size={12}/><span>{c.id}</span><span className="ws-demo-tag">SIMULATED INVESTIGATION DATA</span></div>
-    <header className="ws-page-header"><div><div className="ws-eyebrow">INVESTIGATION WORKSPACE</div><h1>{c.id}<span className={`ws-risk ${c.riskScore>=70?'high':c.riskScore>=40?'medium':'low'}`}><span/>{riskLabel(c.riskScore)}</span></h1><p>{c.fraudType}<i/> {c.chains.join(' → ')}<i/> Updated {dateTime(c.updatedAt)}</p></div><div className="ws-header-actions"><button className="ws-btn" onClick={()=>setShowAssistant(true)}><Sparkles size={15}/> TRACE AI</button>{c.source === 'Elliptic Research Dataset' ? <button className="ws-btn" onClick={handleSaveTxInvestigation}><ShieldCheck size={15}/> Save to Audit</button> : <button className="ws-btn" onClick={generateReport} disabled={generating}>{generating?<LoaderCircle className="ws-spin" size={15}/>:<Download size={15}/>}<span>{generating?'Generating…':'Export report'}</span></button>}<button className="ws-btn primary" onClick={runTrace} disabled={isTracing}>{isTracing?<LoaderCircle className="ws-spin" size={15}/>:<Play size={14}/>}<span>{isTracing?'Tracing…':'Start trace'}</span></button></div></header>
+    <header className="ws-page-header"><div><div className="ws-eyebrow">INVESTIGATION WORKSPACE</div><h1>{c.id}<span className={`ws-risk ${c.riskScore>=70?'high':c.riskScore>=40?'medium':'low'}`}><span/>{riskLabel(c.riskScore)}</span></h1><p>{c.fraudType}<i/> {c.chains.join(' → ')}<i/> Updated {dateTime(c.updatedAt)}</p></div><div className="ws-header-actions"><button className="ws-btn" onClick={()=>setShowAssistant(true)}><Sparkles size={15}/> TRACE AI</button>{c.source === 'Elliptic Research Dataset' ? <button className="ws-btn" onClick={handleSaveTxInvestigation}><ShieldCheck size={15}/> Save to Audit</button> : <button className="ws-btn" onClick={generateReport} disabled={generating}>{generating?<LoaderCircle className="ws-spin" size={15}/>:<Download size={15}/>}<span>{generating?'Generating…':'Export report'}</span></button>}{c.source === 'Elliptic Research Dataset' ? <button className="ws-btn primary" onClick={()=>navigate(`/app/graph/${encodeURIComponent(id)}`)}><Network size={14}/><span>Explore Subgraph</span></button> : <button className="ws-btn primary" onClick={runTrace} disabled={isTracing}>{isTracing?<LoaderCircle className="ws-spin" size={15}/>:<Play size={14}/>}<span>{isTracing?'Tracing…':'Start trace'}</span></button>}</div></header>
 
     <div className="ws-tx-quickbar" style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap',padding:'0.6rem 1rem',background:'#0d1b2a',border:'1px solid #1f334d',borderRadius:'8px',marginBottom:'1rem',fontSize:'13px'}}>
       <span style={{color:'#7f95ae',fontWeight:600}}>EXPLORE DATASET:</span>
-      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/investigations/232629023')}>🔴 Illicit Tx: 232629023</button>
-      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/investigations/232438397')}>🟢 Licit Tx: 232438397</button>
-      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/investigations/230425980')}>⚪ Unknown Tx: 230425980</button>
+      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/graph/232629023')}>🔴 Illicit Tx: 232629023</button>
+      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/graph/232438397')}>🟢 Licit Tx: 232438397</button>
+      <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/graph/230425980')}>⚪ Unknown Tx: 230425980</button>
       <button className="ws-btn" style={{padding:'3px 8px',fontSize:'12px'}} onClick={()=>navigate('/app/investigations/CR-2026-00192')}>📋 Case: CR-2026-00192</button>
       <div style={{display:'flex',gap:'4px',marginLeft:'auto'}}>
-        <input style={{background:'#16263b',border:'1px solid #2d4563',borderRadius:'4px',color:'#fff',padding:'4px 8px',fontSize:'12px',width:'170px'}} placeholder="Enter any Tx ID…" value={searchTx} onChange={e=>setSearchTx(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&searchTx.trim())navigate(`/app/investigations/${searchTx.trim()}`)}}/>
-        <button className="ws-btn primary" style={{padding:'3px 10px',fontSize:'12px'}} onClick={()=>{if(searchTx.trim())navigate(`/app/investigations/${searchTx.trim()}`)}}>Go</button>
+        <input style={{background:'#16263b',border:'1px solid #2d4563',borderRadius:'4px',color:'#fff',padding:'4px 8px',fontSize:'12px',width:'170px'}} placeholder="Enter any Tx ID…" value={searchTx} onChange={e=>setSearchTx(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&searchTx.trim())navigate(`/app/graph/${searchTx.trim()}`)}}/>
+        <button className="ws-btn primary" style={{padding:'3px 10px',fontSize:'12px'}} onClick={()=>{if(searchTx.trim())navigate(`/app/graph/${searchTx.trim()}`)}}>Go</button>
       </div>
     </div>
     <div className="ws-workflow"><span className="complete"><CheckCircle2 size={14}/> REPORTED WALLET</span><ArrowRight size={12}/>{['TRACE','ATTRIBUTE','CORRELATE','ACT'].map((s,i)=><span key={s} className={`ws-workflow-step ${traceStage>=0&&traceStage===i+1?'current':''}`}><b>0{i+1}</b>{s}{i<3&&<ArrowRight size={12}/>}</span>)}<span className="ws-workflow-status"><span className="ws-pulse"/>{isTracing?'Replaying deterministic demo analysis':'Evidence-backed intelligence'}</span></div>
@@ -387,19 +387,31 @@ export default function Investigation({id}:{id:string}) {
 
       <section className="ws-network-column"><div className="ws-card ws-network-card"><div className="ws-network-tabs"><div role="tablist" aria-label="Investigation view"><button role="tab" aria-selected={tab==='graph'} className={tab==='graph'?'active':''} onClick={()=>setTab('graph')}><Network size={14}/>Transaction graph</button><button role="tab" aria-selected={tab==='knowledge'} className={tab==='knowledge'?'active':''} onClick={()=>setTab('knowledge')}><Layers size={14}/>Knowledge graph</button><button role="tab" aria-selected={tab==='transactions'} className={tab==='transactions'?'active':''} onClick={()=>setTab('transactions')}><Activity size={14}/>Transactions <span>{data.edges?.length || 0}</span></button></div><span className="ws-verified-label"><ShieldCheck size={12}/>TRACE</span></div>
         {tab==='graph'&&<>
-          <div style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap',padding:'0.5rem 1rem',background:'#0a1420',borderBottom:'1px solid #1a2a3e',fontSize:'12px'}}>
-            <Network size={14} style={{color:'#4fd7c1'}}/>
-            <span style={{fontWeight:600,color:'#8ba1b8'}}>SHORTEST PATH TRACER:</span>
-            <input style={{background:'#122030',border:'1px solid #23374d',borderRadius:'4px',color:'#fff',padding:'3px 8px',fontSize:'12px',width:'160px'}} placeholder="Target Tx ID (e.g. 5530458)…" value={pathTarget} onChange={e=>setPathTarget(e.target.value)}/>
-            <select style={{background:'#122030',border:'1px solid #23374d',borderRadius:'4px',color:'#fff',padding:'3px 6px',fontSize:'12px'}} value={pathWeight} onChange={e=>setPathWeight(e.target.value as any)}>
-              <option value="hop">Hop Count (Uniform)</option>
-              <option value="time">Time Step Gap</option>
-              <option value="risk">Risk Traversal Cost</option>
-            </select>
-            <button className="ws-btn primary" style={{padding:'2px 8px',fontSize:'11px'}} disabled={tracingPath} onClick={()=>handleTracePath('dijkstra')}>{tracingPath?'Tracing…':'Dijkstra (Priority Queue)'}</button>
-            <button className="ws-btn" style={{padding:'2px 8px',fontSize:'11px'}} disabled={tracingPath} onClick={()=>handleTracePath('bfs')}>BFS Traversal</button>
-            {pathResult&&pathResult.found&&<span style={{marginLeft:'auto',color:'#4fd7c1',fontSize:'12px'}}>✓ {pathResult.hops} hops | Cost: {pathResult.cumulativeCost} ({pathResult.traversalTimeMs}ms)</span>}
-          </div>
+          {/^\d+$/.test(id) ? (
+            <div style={{display:'flex',gap:'0.5rem',alignItems:'center',flexWrap:'wrap',padding:'0.5rem 1rem',background:'#0a1420',borderBottom:'1px solid #1a2a3e',fontSize:'12px'}}>
+              <Network size={14} style={{color:'#4fd7c1'}}/>
+              <span style={{fontWeight:600,color:'#8ba1b8'}}>SHORTEST PATH TRACER:</span>
+              <input style={{background:'#122030',border:'1px solid #23374d',borderRadius:'4px',color:'#fff',padding:'3px 8px',fontSize:'12px',width:'160px'}} placeholder="Target Tx ID (e.g. 5530458)…" value={pathTarget} onChange={e=>setPathTarget(e.target.value)}/>
+              <select style={{background:'#122030',border:'1px solid #23374d',borderRadius:'4px',color:'#fff',padding:'3px 6px',fontSize:'12px'}} value={pathWeight} onChange={e=>setPathWeight(e.target.value as any)}>
+                <option value="hop">Hop Count (Uniform)</option>
+                <option value="time">Time Step Gap</option>
+                <option value="risk">Risk Traversal Cost</option>
+              </select>
+              <button className="ws-btn primary" style={{padding:'2px 8px',fontSize:'11px'}} disabled={tracingPath} onClick={()=>handleTracePath('dijkstra')}>{tracingPath?'Tracing…':'Dijkstra (Priority Queue)'}</button>
+              <button className="ws-btn" style={{padding:'2px 8px',fontSize:'11px'}} disabled={tracingPath} onClick={()=>handleTracePath('bfs')}>BFS Traversal</button>
+              {pathResult&&pathResult.found&&<span style={{marginLeft:'auto',color:'#4fd7c1',fontSize:'12px'}}>✓ {pathResult.hops} hops | Cost: {pathResult.cumulativeCost} ({pathResult.traversalTimeMs}ms)</span>}
+            </div>
+          ) : (
+            <div style={{display:'flex',gap:'0.6rem',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',padding:'0.5rem 1rem',background:'#0a1420',borderBottom:'1px solid #1a2a3e',fontSize:'12px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:'6px',color:'#8ba1b8'}}>
+                <Network size={14} style={{color:'#4fd7c1'}}/>
+                <span>Viewing complaint-case fund graph. Advanced Dijkstra and BFS pathfinding are available in the Bitcoin Graph Explorer.</span>
+              </div>
+              <button className="ws-btn primary" style={{padding:'2px 10px',fontSize:'11px',display:'flex',alignItems:'center',gap:'4px'}} onClick={()=>navigate('/app/graph')}>
+                <Network size={12}/> Open Bitcoin Graph Explorer
+              </button>
+            </div>
+          )}
           <GraphPanel nodes={data.nodes || []} edges={data.edges || []} onNodeSelect={selectNode} onEdgeSelect={selectEdge} selectedId={selectedNode?.id||selectedEdge?.id}/>
         </>}
         {tab==='knowledge'&&<><p className="ws-knowledge-note">Entities, cases and evidence relationships. Select an edge to inspect its relationship.</p><GraphPanel nodes={knowledge.nodes} edges={knowledge.edges} onNodeSelect={selectNode} onEdgeSelect={selectEdge} selectedId={selectedNode?.id||selectedEdge?.id}/></>}
