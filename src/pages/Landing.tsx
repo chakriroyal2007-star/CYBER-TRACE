@@ -1,295 +1,385 @@
-import {useState} from 'react';
-import {ArrowRight,ArrowUpRight,ShieldCheck,Network,GitBranch,Landmark,Fingerprint,FileCheck2,Search,Waypoints,ChevronRight,Scale,Layers3,LockKeyhole,Eye,EyeOff,KeyRound,Mail} from 'lucide-react';
-import {api,navigate} from '../api';
-import {Button,Badge} from '../components/ui';
+import React, { useState } from 'react';
+import {
+  ArrowRight, ArrowUpRight, ShieldCheck, Network, GitBranch, Landmark, Fingerprint,
+  FileCheck2, Search, Waypoints, ChevronRight, Scale, Layers3, LockKeyhole, Eye,
+  EyeOff, KeyRound, Mail, User, Phone, CheckCircle2, AlertCircle, FileText, UserCheck, Inbox
+} from 'lucide-react';
+import { api, navigate } from '../api';
+import { Button, Badge } from '../components/ui';
 
-export default function Landing({login=false}:{login?:boolean}){
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
-  const [email,setEmail]=useState('investigator@cryptotrace.gov.in');
-  const [password,setPassword]=useState('Admin@2026');
-  const [showPassword,setShowPassword]=useState(false);
+export default function Landing({ login = false }: { login?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  async function enter(path:string){
+  // Mode: 'officer-login' | 'reporter-login' | 'reporter-register'
+  const [authMode, setAuthMode] = useState<'officer-login' | 'reporter-login' | 'reporter-register'>('officer-login');
+
+  // Form states
+  const [email, setEmail] = useState('officer.sharma@cbi.gov.in');
+  const [password, setPassword] = useState('Sharma@2026');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  async function enterDemoInvestigator() {
     setBusy(true);
     setError('');
-    try{
-      await api('/auth/demo',{method:'POST',body:'{}'});
-      navigate(path);
-    }catch(e:any){
+    try {
+      await api('/auth/demo-officer', { method: 'POST', body: '{}' });
+      navigate('/app/dashboard');
+    } catch {
+      try {
+        await api('/auth/demo', { method: 'POST', body: '{}' });
+        navigate('/app/dashboard');
+      } catch (e: any) {
+        setError(e.message);
+        setBusy(false);
+      }
+    }
+  }
+
+  async function enterDemoReporter() {
+    setBusy(true);
+    setError('');
+    try {
+      await api('/auth/demo-reporter', { method: 'POST', body: '{}' });
+      navigate('/reporter/dashboard');
+    } catch (e: any) {
       setError(e.message);
       setBusy(false);
     }
   }
 
-  async function handleLogin(e: React.FormEvent){
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError('');
-    try{
-      await api('/auth/login',{
-        method:'POST',
+    try {
+      const res = await api('/auth/login', {
+        method: 'POST',
         body: JSON.stringify({ email, password })
       });
-      navigate('/app/dashboard');
-    }catch(e:any){
+      if (res?.user?.role === 'reporter') {
+        navigate('/reporter/dashboard');
+      } else {
+        navigate('/app/dashboard');
+      }
+    } catch (e: any) {
       setError(e.message || 'Authentication failed');
       setBusy(false);
     }
   }
 
-  return <div className="landing">
-    <header className="landing-nav">
-      <a href="/" onClick={e=>{e.preventDefault();navigate('/')}} className="brand">
-        <div className="brand-mark"><Waypoints size={24}/></div>
-        <div>CRYPTO-TRACE <em>INDIA</em><small>INVESTIGATION INTELLIGENCE</small></div>
-      </a>
-      <nav>
-        <a href="#approach">Our approach</a>
-        <a href="#intelligence">Intelligence</a>
-        <a href="#architecture">Architecture</a>
-      </nav>
-      <div style={{display:'flex',gap:10}}>
-        <Button variant="secondary" onClick={()=>navigate('/login')}>Officer Login<LockKeyhole size={14}/></Button>
-        <Button onClick={()=>enter('/app/dashboard')} disabled={busy}>Enter demo console<ArrowUpRight size={15}/></Button>
-      </div>
-    </header>
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, password, phone, role: 'reporter' })
+      });
+      navigate('/reporter/dashboard');
+    } catch (e: any) {
+      setError(e.message || 'Registration failed');
+      setBusy(false);
+    }
+  }
 
-    {login ? (
-      <main className="login-panel" style={{maxWidth: 460}}>
-        <div className="brand-mark" style={{background: 'linear-gradient(135deg, #087f94, #0b182b)'}}><ShieldCheck size={32}/></div>
-        <div className="eyebrow" style={{letterSpacing: '1.5px', color: '#087f94', fontWeight: 700}}>INVESTIGATOR PORTAL</div>
-        <h1 style={{fontSize: 28, margin: '12px 0 6px'}}>Secure Officer Access</h1>
-        <p style={{fontSize: 12, color: '#8ca6b8', marginBottom: 16}}>Sign in with your authorized agency email to access the evidence & intelligence workspace.</p>
-
-        <form onSubmit={handleLogin} style={{width: '100%', display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left'}}>
-          <div>
-            <label style={{display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600}}>
-              <Mail size={12} style={{display:'inline', marginRight: 4, verticalAlign: 'middle'}}/>
-              Investigator Email ID
-            </label>
-            <input 
-              type="email" 
-              required
-              value={email} 
-              onChange={e=>setEmail(e.target.value)} 
-              placeholder="name@agency.gov.in"
-              style={{
-                width: '100%', 
-                padding: '10px 12px', 
-                background: '#0a1421', 
-                border: '1px solid #294052', 
-                borderRadius: 6, 
-                color: '#f8fafc',
-                fontSize: 13,
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-
-          <div>
-            <label style={{display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600}}>
-              <KeyRound size={12} style={{display:'inline', marginRight: 4, verticalAlign: 'middle'}}/>
-              Password / Access Key
-            </label>
-            <div style={{position: 'relative'}}>
-              <input 
-                type={showPassword ? 'text' : 'password'} 
-                required
-                value={password} 
-                onChange={e=>setPassword(e.target.value)} 
-                placeholder="••••••••"
-                style={{
-                  width: '100%', 
-                  padding: '10px 38px 10px 12px', 
-                  background: '#0a1421', 
-                  border: '1px solid #294052', 
-                  borderRadius: 6, 
-                  color: '#f8fafc',
-                  fontSize: 13,
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
-              <button 
-                type="button" 
-                onClick={()=>setShowPassword(v=>!v)}
-                style={{
-                  position: 'absolute', 
-                  right: 10, 
-                  top: '50%', 
-                  transform: 'translateY(-50%)', 
-                  background: 'none', 
-                  border: 'none', 
-                  color: '#64748b', 
-                  cursor: 'pointer',
-                  padding: 4
-                }}
-              >
-                {showPassword ? <EyeOff size={15}/> : <Eye size={15}/>}
-              </button>
-            </div>
-          </div>
-
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: '#64748b', margin: '2px 0'}}>
-            <button 
-              type="button" 
-              onClick={()=>{ setEmail('investigator@cryptotrace.gov.in'); setPassword('Admin@2026'); }}
-              style={{background: 'none', border: 'none', color: '#087f94', cursor: 'pointer', fontSize: 11, textDecoration: 'underline', padding: 0}}
-            >
-              Auto-fill Officer Credentials
-            </button>
-            <span>256-bit Evidence Guard</span>
-          </div>
-
-          {error && <div style={{padding: '8px 12px', background: '#450a0a', border: '1px solid #991b1b', color: '#fca5a5', borderRadius: 6, fontSize: 11}}>{error}</div>}
-
-          <Button type="submit" disabled={busy} style={{width: '100%', marginTop: 8, padding: '12px', justifyContent: 'center'}}>
-            {busy ? 'Authenticating Officer…' : 'Sign In to Intelligence Console'}
-            <ArrowRight size={16}/>
+  return (
+    <div className="landing">
+      {/* Navigation */}
+      <header className="landing-nav">
+        <a href="/" onClick={e => { e.preventDefault(); navigate('/'); }} className="brand">
+          <div className="brand-mark"><Waypoints size={24} /></div>
+          <div>CRYPTO-TRACE <em>INDIA</em><small>INVESTIGATION INTELLIGENCE</small></div>
+        </a>
+        <nav>
+          <a href="#workflow">Investigation Workflow</a>
+          <a href="#intelligence">Analytics &amp; DSA</a>
+          <a href="#disclaimer">Project Disclosure</a>
+        </nav>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <Button variant="secondary" onClick={() => navigate('/reporter/submit')}>
+            <FileText size={14} /> File Complaint
           </Button>
-
-          <div style={{display:'flex', alignItems:'center', gap: 10, margin: '8px 0'}}>
-            <hr style={{flex: 1, borderColor: '#1e293b', borderStyle: 'solid', borderWidth: '1px 0 0'}}/>
-            <span style={{fontSize: 10, color: '#64748b'}}>OR</span>
-            <hr style={{flex: 1, borderColor: '#1e293b', borderStyle: 'solid', borderWidth: '1px 0 0'}}/>
-          </div>
-
-          <Button type="button" variant="secondary" disabled={busy} onClick={()=>enter('/app/dashboard')} style={{width: '100%', padding: '10px', justifyContent: 'center'}}>
-            One-Click Demo Investigator Session
-            <ArrowUpRight size={15}/>
+          <Button onClick={() => navigate('/login')}>
+            <LockKeyhole size={14} /> Portal Sign In
           </Button>
-        </form>
-
-        <div className="login-info" style={{marginTop: 18, fontSize: 9.5, color: '#64748b', lineHeight: 1.5}}>
-          <LockKeyhole size={16} style={{color: '#087f94'}}/>
-          <span>Law Enforcement Section 91 & BNSS Forensic Readiness Sandbox. Sessions are strictly scoped with automated evidence audit logging.</span>
         </div>
-      </main>
-    ) : (
-      <>
-        <main className="landing-hero">
-          <div className="hero-copy">
-            <div className="eyebrow"><span className="tiny-square"/> COMPLAINT → INTELLIGENCE → ACTION</div>
-            <h1>From reported wallet<br/>to <span>actionable<br className="hero-break"/> intelligence.</span></h1>
-            <p>Evidence-backed blockchain intelligence for cybercrime investigations. Trace the flow, connect related complaints, and identify the next actionable lead.</p>
-            <div className="hero-buttons">
-              <Button disabled={busy} onClick={()=>enter('/app/new')}>Start investigation<ArrowRight size={16}/></Button>
-              <Button variant="secondary" disabled={busy} onClick={()=>enter('/app/investigations/CR-2026-00192')}>Explore demo case<ArrowUpRight size={16}/></Button>
-            </div>
-            {error && <p className="error-text">{error}</p>}
-            <div className="hero-meta">
-              <span><ShieldCheck size={14}/>Evidence you can inspect</span>
-              <span><Layers3 size={14}/>Cross-chain by design</span>
-            </div>
+      </header>
+
+      {/* Login / Registration Panel */}
+      {login ? (
+        <main className="login-panel" style={{ maxWidth: 480, margin: '40px auto' }}>
+          <div className="brand-mark" style={{ background: 'linear-gradient(135deg, #087f94, #0b182b)', margin: '0 auto 12px' }}>
+            <ShieldCheck size={32} />
           </div>
 
-          <div className="hero-console">
-            <div className="console-top">
-              <span><i/><i/><i/></span>
-              <span>INVESTIGATION WORKSPACE</span>
-              <Badge>OFFICIAL INTELLIGENCE</Badge>
-            </div>
-            <div className="console-case">
-              <div><small>CASE CR-2026-00192</small><h3>Follow the evidence.</h3></div>
-              <Badge variant="danger">HIGH RISK</Badge>
-            </div>
-            <div className="hero-network">
-              <div className="hero-chain eth">ETHEREUM</div>
-              <div className="hero-chain polygon">POLYGON</div>
-              <svg viewBox="0 0 540 300">
-                <defs><linearGradient id="flowStroke"><stop stopColor="#74a1d5"/><stop offset="1" stopColor="#55cbb9"/></linearGradient></defs>
-                <path className="path-major" d="M65 145L190 145L295 78L425 145L490 145"/>
-                <path d="M190 145L245 239M190 145L148 44M425 145L398 247M295 78L330 20"/>
-                <circle cx="245" cy="239" r="7"/><circle cx="148" cy="44" r="7"/><circle cx="398" cy="247" r="7"/><circle cx="330" cy="20" r="5"/>
-              </svg>
-              <div className="hnode n1"><span><Search size={20}/></span><strong>Reported wallet</strong><small>₹8,12,450</small></div>
-              <div className="hnode n2"><span><Network size={20}/></span><strong>Intermediary</strong></div>
-              <div className="hnode n3"><span><GitBranch size={20}/></span><strong>Bridge</strong></div>
-              <div className="hnode n4"><span><Landmark size={22}/></span><strong>VASP-X</strong><small>Candidate exit</small></div>
-              <div className="network-label">CROSS-CHAIN CONVERGENCE</div>
-            </div>
-            <div className="hero-exit">
-              <span className="exit-icon"><Landmark size={22}/></span>
+          {/* Mode Switcher Tabs */}
+          <div style={{ display: 'flex', background: '#0a1726', borderRadius: 8, padding: 4, marginBottom: 20, border: '1px solid #1a2d42' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('officer-login');
+                setEmail('officer.sharma@cbi.gov.in');
+                setPassword('Sharma@2026');
+                setError('');
+              }}
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                background: authMode === 'officer-login' ? '#087f94' : 'transparent',
+                color: authMode === 'officer-login' ? '#fff' : '#94a3b8'
+              }}
+            >
+              CBI Officer Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('reporter-login');
+                setEmail('priya.nair@example.in');
+                setPassword('Reporter@2026');
+                setError('');
+              }}
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                background: authMode === 'reporter-login' ? '#087f94' : 'transparent',
+                color: authMode === 'reporter-login' ? '#fff' : '#94a3b8'
+              }}
+            >
+              Citizen Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('reporter-register');
+                setEmail('');
+                setPassword('');
+                setError('');
+              }}
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                background: authMode === 'reporter-register' ? '#087f94' : 'transparent',
+                color: authMode === 'reporter-register' ? '#fff' : '#94a3b8'
+              }}
+            >
+              New Citizen
+            </button>
+          </div>
+
+          {/* Disclaimer for CBI Officer */}
+          <div style={{ fontSize: 11, color: '#94a3b8', background: '#08121f', padding: '8px 12px', borderRadius: 6, border: '1px solid #14273b', marginBottom: 16, lineHeight: 1.45 }}>
+            <strong style={{ color: '#38bdf8' }}>Role Label Disclosure:</strong> &ldquo;CBI Officer&rdquo; is a simulation role label for cryptocurrency fraud investigation workflows. Not officially connected to CBI or government authorities.
+          </div>
+
+          {/* Forms */}
+          {authMode === 'reporter-register' ? (
+            <form onSubmit={handleRegister} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
               <div>
-                <div className="eyebrow">ACTIONABLE EXIT IDENTIFIED</div>
-                <strong>VASP-X <small>· Probable association</small></strong>
+                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600 }}>
+                  <User size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> Full Legal Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Priya Nair"
+                  style={{ width: '100%', padding: '10px 12px', background: '#0a1421', border: '1px solid #294052', borderRadius: 6, color: '#fff', fontSize: 13 }}
+                />
               </div>
-              <div className="exit-confidence">91<small>%</small><span>confidence</span></div>
-            </div>
-            <div className="console-stats">
-              <span><strong>47</strong> transactions</span>
-              <span><strong>18</strong> wallets</span>
-              <span><strong>3</strong> related complaints</span>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600 }}>
+                  <Mail size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  style={{ width: '100%', padding: '10px 12px', background: '#0a1421', border: '1px solid #294052', borderRadius: 6, color: '#fff', fontSize: 13 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600 }}>
+                  <Phone size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> Contact Phone (Optional)
+                </label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  style={{ width: '100%', padding: '10px 12px', background: '#0a1421', border: '1px solid #294052', borderRadius: 6, color: '#fff', fontSize: 13 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600 }}>
+                  <KeyRound size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Create secure password"
+                  style={{ width: '100%', padding: '10px 12px', background: '#0a1421', border: '1px solid #294052', borderRadius: 6, color: '#fff', fontSize: 13 }}
+                />
+              </div>
+
+              {error && <div style={{ padding: '8px 12px', background: '#450a0a', border: '1px solid #991b1b', color: '#fca5a5', borderRadius: 6, fontSize: 11 }}>{error}</div>}
+
+              <Button type="submit" disabled={busy} style={{ width: '100%', padding: '12px', justifyContent: 'center', marginTop: 8 }}>
+                {busy ? 'Registering…' : 'Register as Citizen Reporter'} <ArrowRight size={16} />
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleLogin} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600 }}>
+                  <Mail size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+                  {authMode === 'officer-login' ? 'CBI Investigator Email' : 'Citizen Email Address'}
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder={authMode === 'officer-login' ? 'officer.sharma@cbi.gov.in' : 'priya.nair@example.in'}
+                  style={{ width: '100%', padding: '10px 12px', background: '#0a1421', border: '1px solid #294052', borderRadius: 6, color: '#fff', fontSize: 13 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4, fontWeight: 600 }}>
+                  <KeyRound size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> Password
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    style={{ width: '100%', padding: '10px 38px 10px 12px', background: '#0a1421', border: '1px solid #294052', borderRadius: 6, color: '#fff', fontSize: 13 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 4 }}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              {error && <div style={{ padding: '8px 12px', background: '#450a0a', border: '1px solid #991b1b', color: '#fca5a5', borderRadius: 6, fontSize: 11 }}>{error}</div>}
+
+              <Button type="submit" disabled={busy} style={{ width: '100%', padding: '12px', justifyContent: 'center', marginTop: 8 }}>
+                {busy ? 'Authenticating…' : authMode === 'officer-login' ? 'Sign In as CBI Officer' : 'Sign In as Reporter'}
+                <ArrowRight size={16} />
+              </Button>
+            </form>
+          )}
+
+          {/* Quick 1-Click Demo Buttons */}
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #1a2d42' }}>
+            <span style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'block', marginBottom: 10, textAlign: 'center' }}>
+              Instant One-Click Demo Access
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoInvestigator} style={{ width: '100%', padding: '10px', justifyContent: 'center', fontSize: 12 }}>
+                <ShieldCheck size={14} color="#38bdf8" /> Demo CBI Officer (Insp. Rajesh Sharma)
+              </Button>
+              <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoReporter} style={{ width: '100%', padding: '10px', justifyContent: 'center', fontSize: 12 }}>
+                <UserCheck size={14} color="#4fd7c1" /> Demo Citizen Reporter (Priya Nair)
+              </Button>
             </div>
           </div>
         </main>
+      ) : (
+        /* Standard Landing Page Hero & Content */
+        <main>
+          <section className="hero">
+            <div className="hero-content">
+              <Badge variant="primary">END-TO-END CRIME REPORTING &amp; FORENSIC GRAPH ANALYTICS</Badge>
+              <h1>Cryptocurrency Fraud Detection &amp; Case Management</h1>
+              <p>
+                From citizen complaint filing to forensic transaction graph tracing. Connect on-chain evidence with legal Section 91 information requests and explainable risk scores powered by DSA graph algorithms and the Elliptic Bitcoin dataset.
+              </p>
 
-        <section className="pillar-strip" id="approach">
-          {[[Search,'01','TRACE','Follow the fund flow'],[Fingerprint,'02','ATTRIBUTE','Explain every lead'],[Network,'03','CORRELATE','Connect the complaints'],[FileCheck2,'04','ACT','Prepare the evidence']].map(([Icon,n,title,desc]:any)=>(
-            <div key={title}>
-              <span className="pillar-number">{n}</span>
-              <Icon size={21}/>
-              <div><strong>{title}</strong><span>{desc}</span></div>
-              <ChevronRight size={16}/>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 24 }}>
+                <Button onClick={() => navigate('/reporter/submit')} style={{ padding: '14px 22px', fontSize: 14 }}>
+                  <FileText size={16} /> File Cybercrime Complaint
+                </Button>
+                <Button variant="secondary" onClick={enterDemoInvestigator} style={{ padding: '14px 22px', fontSize: 14 }}>
+                  <ShieldCheck size={16} color="#38bdf8" /> Enter CBI Officer Console <ArrowRight size={16} />
+                </Button>
+                <Button variant="secondary" onClick={enterDemoReporter} style={{ padding: '14px 20px', fontSize: 14 }}>
+                  <UserCheck size={16} color="#4fd7c1" /> Reporter Tracking Portal
+                </Button>
+              </div>
             </div>
-          ))}
-        </section>
+          </section>
 
-        <section className="landing-section" id="intelligence">
-          <div className="section-intro">
-            <div className="eyebrow">ONE WALLET. A CLEARER PICTURE.</div>
-            <h2>An investigation starts with an address.<br/>It shouldn’t end with a transaction list.</h2>
-            <p>Crypto fraud investigations often begin with a single wallet address. CRYPTO-TRACE INDIA turns it into an investigation graph, correlates independent complaints and produces confidence-ranked VASP intelligence.</p>
-          </div>
-          <div className="feature-grid">
-            {[[GitBranch,'Cross-chain investigation','Follow linked movements across chains, with bridge evidence and a visible confidence boundary.'],
-              [Fingerprint,'Fraud flow fingerprint','Review transaction velocity, consolidation and service exposure as explainable behavioral signals.'],
-              [Network,'Cross-complaint correlation','Find shared intermediaries and clusters across independently reported cases.'],
-              [Landmark,'Actionable exit engine','Prioritize candidate service endpoints using weighted, inspectable evidence.']
-            ].map(([Icon,title,desc]:any)=>(
-              <article key={title}><Icon size={23}/><h3>{title}</h3><p>{desc}</p></article>
-            ))}
-          </div>
-        </section>
-
-        <section className="architecture-section" id="architecture">
-          <div>
-            <div className="eyebrow">DESIGNED FOR INVESTIGATOR WORKFLOWS</div>
-            <h2>Evidence at every step.<br/>Human judgment at the center.</h2>
-            <p>A modular case and graph architecture connects reported wallets, behavioral signals and candidate attribution. Integration adapters demonstrate the path to authorized NCRP, SAHYOG and VASP workflows.</p>
-            <div className="security-note">
-              <Scale size={20}/>
-              <span>Investigative intelligence supports verification. It does not make legal determinations or send information requests automatically.</span>
+          {/* Workflow Section */}
+          <section id="workflow" style={{ padding: '48px 32px', maxWidth: 1100, margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: 36 }}>
+              <span style={{ fontSize: 12, color: '#38bdf8', fontWeight: 700, letterSpacing: '1.5px' }}>END-TO-END LIFECYCLE</span>
+              <h2 style={{ fontSize: 28, color: '#fff', margin: '8px 0' }}>Role-Based Investigation Workflow</h2>
+              <p style={{ color: '#94a3b8', fontSize: 14, maxWidth: 600, margin: '0 auto' }}>
+                Strict role-based access control protecting complainant privacy while giving law enforcement powerful forensic graph tracing tools.
+              </p>
             </div>
-          </div>
-          <div className="architecture-flow">
-            <div><span>01 / INTAKE</span><strong>Complaint + reported wallet</strong></div>
-            <div><span>02 / INTELLIGENCE</span><strong>Trace → fingerprint → correlate</strong></div>
-            <div><span>03 / ATTRIBUTION</span><strong>Candidate VASP + evidence + confidence</strong></div>
-            <div><span>04 / ACTION</span><strong>Reviewable investigation package</strong></div>
-          </div>
-        </section>
 
-        <section className="landing-cta">
-          <div>
-            <div className="eyebrow">THE 3-MINUTE INVESTIGATION</div>
-            <h2>One reported wallet. Your next lead.</h2>
-            <p>Open the complete synthetic investigation. Inspect the graph. Download the evidence report.</p>
-          </div>
-          <div style={{display:'flex',gap:12}}>
-            <Button variant="secondary" onClick={()=>navigate('/login')}>Officer Login<LockKeyhole size={16}/></Button>
-            <Button disabled={busy} onClick={()=>enter('/app/dashboard')}>Try live demo<ArrowUpRight size={17}/></Button>
-          </div>
-        </section>
-      </>
-    )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+              <div style={{ background: '#0a1624', padding: 22, borderRadius: 8, border: '1px solid #1a2d42' }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(56, 189, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#38bdf8', fontWeight: 800, marginBottom: 14 }}>1</div>
+                <h3 style={{ fontSize: 16, color: '#fff', margin: '0 0 8px' }}>Citizen Complaint Filing</h3>
+                <p style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.5, margin: 0 }}>
+                  Victims submit incident details, fraudulent wallet addresses, transaction hashes, and upload bank statements/evidence. A unique Case ID (<code>CR-2026-XXXXX</code>) is generated immediately.
+                </p>
+              </div>
 
-    <footer className="landing-footer">
-      <span>CRYPTO-TRACE INDIA <small>From Reported Wallet to Actionable Intelligence</small></span>
-      <p>Independent SIH-style prototype. Fictional data and entities. Law enforcement intelligence engine.</p>
-      <span>TRACE · ATTRIBUTE · CORRELATE · ACT</span>
-    </footer>
-  </div>;
+              <div style={{ background: '#0a1624', padding: 22, borderRadius: 8, border: '1px solid #1a2d42' }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(234, 179, 8, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308', fontWeight: 800, marginBottom: 14 }}>2</div>
+                <h3 style={{ fontSize: 16, color: '#fff', margin: '0 0 8px' }}>CBI Officer Queue &amp; Triage</h3>
+                <p style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.5, margin: 0 }}>
+                  Officers review incoming reports, verify preliminary facts, accept or formally reject with reason, assign cases to specialized investigators, or request additional documentation from the citizen.
+                </p>
+              </div>
+
+              <div style={{ background: '#0a1624', padding: 22, borderRadius: 8, border: '1px solid #1a2d42' }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(79, 215, 193, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4fd7c1', fontWeight: 800, marginBottom: 14 }}>3</div>
+                <h3 style={{ fontSize: 16, color: '#fff', margin: '0 0 8px' }}>DSA Graph Forensics</h3>
+                <p style={{ fontSize: 12.5, color: '#94a3b8', lineHeight: 1.5, margin: 0 }}>
+                  Run BFS/DFS multi-hop traversal, Dijkstra shortest path, and 6-parameter Investigation Readiness Scoring on the 203,769-node Elliptic Bitcoin transaction graph, preserving confidential internal notes.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* Legal / Project Disclosure */}
+          <section id="disclaimer" style={{ padding: '32px', maxWidth: 1100, margin: '0 auto 40px', background: '#08121f', borderRadius: 8, border: '1px solid #15273b' }}>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+              <Scale size={24} color="#38bdf8" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div>
+                <h4 style={{ margin: '0 0 6px', fontSize: 14, color: '#fff' }}>Academic &amp; Forensic Research Disclosure</h4>
+                <p style={{ margin: 0, fontSize: 12, color: '#8ca6b8', lineHeight: 1.5 }}>
+                  <strong>CBI Officer</strong> is used strictly as a project role label within this cryptocurrency fraud detection and analysis demonstrator. This software is not connected to, endorsed by, or operated on behalf of the Central Bureau of Investigation or any government agency. The research utilizes the Elliptic Bitcoin dataset and deterministic forensic simulation fixtures.
+                </p>
+              </div>
+            </div>
+          </section>
+        </main>
+      )}
+    </div>
+  );
 }

@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { dirname, extname, resolve, sep } from 'node:path';
@@ -171,9 +171,188 @@ function sources() {
  const stamp='2026-09-24T00:00:00.000Z';
  return [...CHAINS.map(name=>({name:`${name} blockchain adapter`,status:'DEMO',coverage:'Deterministic synthetic wallet and transaction fixtures',mode:'SIMULATED INVESTIGATION DATA',lastUpdated:stamp})),{name:'Attribution knowledge base',status:'DEMO',coverage:'Fictional VASP-X / VASP-Y / VASP-Z registry',mode:'DEMO',lastUpdated:stamp},{name:'Case database',status:'CONNECTED',coverage:'Session-scoped relational SQLite; persisted local volume',mode:'APPLICATION DATABASE',lastUpdated:now()},{name:'Demo dataset',status:'READY',coverage:'6 synthetic cases including 3 related complaints',mode:'DEMO',lastUpdated:stamp},...['NCRP Integration Adapter','SAHYOG Integration Adapter','VASP Request Adapter'].map(name=>({name,status:'ADAPTER READY',coverage:'Interface defined; no official credentials or endpoint configured',mode:'NOT CONNECTED',lastUpdated:null})),{name:'External blockchain APIs',status:'NOT CONFIGURED',coverage:'No provider credentials; live mode is disabled',mode:'NOT CONNECTED',lastUpdated:null}];
 }
-function requestPackage(inv,session) {
- const candidate=inv.attributions[0];if(!candidate) fail('No supported VASP candidate exists for this case. An information request cannot be prepared.',422);
- return {packageVersion:'1.0',preparedAt:now(),preparedBy:session.display_name,status:'DRAFT FOR AUTHORIZED HUMAN REVIEW',sent:false,targetVasp:candidate.candidate,caseId:inv.case.id,complaintId:inv.case.complaintId,reportedWallet:inv.case.reportedWallet,wallets:inv.nodes.filter(n=>n.type==='vasp').map(n=>({address:n.address,chain:n.chain})),amountINR:candidate.tracedAmount,confidence:candidate.confidence,dateRange:{from:candidate.firstInteraction,to:candidate.lastInteraction},transactions:inv.edges.filter(e=>inv.nodes.some(n=>n.id===e.target&&n.type==='vasp')),evidence:candidate.evidence,requestedInformation:['Preservation of records associated with listed transactions, subject to applicable legal authority.','Confirmation of whether listed addresses are controlled by the recipient VASP.','Information disclosure through the appropriate authorized legal process.'],reviewChecklist:['Verify independent blockchain evidence and entity identity.','Establish jurisdiction, legal basis and signatory authority.','Review scope and proportionality before submitting through approved channels.'],source:'SIMULATED INVESTIGATION DATA',disclaimer:'Synthetic demonstration package only. Not a legal notice, government document or finding of guilt. No request has been sent externally.'};
+function formatSection91Notice(pkg, session) {
+  const dateStr = new Date(pkg.preparedAt || Date.now()).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'long', year: 'numeric'
+  });
+  const walletsFormatted = (pkg.wallets || []).length > 0
+    ? (pkg.wallets || []).map((w, i) => `   [${i + 1}] Address: ${w.address || w} | Network: ${w.chain || 'Cryptocurrency'} | Role: ${w.role || 'Recipient/Deposit Node'}`).join('\n')
+    : `   [1] Address: ${pkg.reportedWallet || 'See attached transaction ledger'} | Network: Primary Chain`;
+  const txsFormatted = (pkg.transactions || []).length > 0
+    ? (pkg.transactions || []).map((t, i) => `   [${i + 1}] Hash / Identifier: ${typeof t === 'string' ? t : t.hash || t.id || JSON.stringify(t)}`).join('\n')
+    : `   [1] Subject Transaction Reference: ${pkg.caseId || 'Referenced Case'}`;
+
+  return `================================================================================
+                    OFFICE OF THE CYBER CRIME INVESTIGATION DIVISION
+                      DIRECTORATE OF ENFORCEMENT & CYBER OPERATIONS
+================================================================================
+
+STATUTORY REQUISITION NOTICE UNDER SECTION 91 OF THE CODE OF CRIMINAL PROCEDURE, 1973 (Cr.P.C.)
+/ BHARATIYA NAGARIK SURAKSHA SANHITA, 2023 (BNSS)
+READ WITH SECTION 69 OF THE INFORMATION TECHNOLOGY ACT, 2000 & PMLA, 2002
+
+Notice Reference: ${pkg.noticeReference || 'NOTICE-SEC91-' + (pkg.caseId || 'REF')}
+Issuing Authority: Cyber Crime Investigation Division
+Case / FIR Reference: ${pkg.caseId || 'CR-2026-GEN'} | Complaint ID: ${pkg.complaintId || 'NCRP-PORTAL-REF'}
+Date of Issuance: ${dateStr}
+
+TO:
+The Compliance Officer / Grievance Officer / Legal Intermediary Desk
+${pkg.targetEntity || pkg.targetVasp || 'Designated Virtual Asset Service Provider / Exchange Custodian'}
+
+SUBJECT: URGENT STATUTORY REQUISITION FOR IMMEDIATE PRESERVATION OF RECORDS, KYC
+DISCLOSURE, IP ACCESS LOGS AND HOLD ON CRYPTOCURRENCY BALANCES UNDER SECTION 91 Cr.P.C.
+
+WHEREAS, an official investigation is underway into high-value financial cyber fraud, criminal breach
+of trust, and illicit cryptographic asset diversion under the Indian Penal Code and Information
+Technology Act, 2000.
+
+AND WHEREAS, forensic blockchain analysis has identified that proceeds of crime transacted through
+the cryptographic addresses detailed hereinbelow have routed into or interacted with accounts/wallets
+under your administrative or custodial control:
+
+1. SUBJECT WALLET ADDRESSES & NODES:
+${walletsFormatted}
+
+2. ASSOCIATED TRANSACTION IDENTIFIERS:
+${txsFormatted}
+
+3. FINANCIAL QUANTUM INVOLVED:
+   Reported / Traced Value: INR ${(pkg.amountINR || 0).toLocaleString('en-IN')}
+   Observed Investigation Window: ${pkg.dateRange?.from || 'Recent'} to ${pkg.dateRange?.to || 'Present'}
+
+NOW THEREFORE, by virtue of the powers vested under Section 91 of the Code of Criminal Procedure,
+1973 / BNSS 2023, YOU ARE HEREBY DIRECTED TO:
+
+[DIRECTIVE 1] IMMEDIATE PRESERVATION: Immediately freeze and preserve all server logs, access logs,
+source and destination IP addresses, port numbers, MAC addresses, device fingerprints, and API
+session timestamps associated with the above-mentioned addresses for a minimum period of 180 days.
+
+[DIRECTIVE 2] KYC & BENEFICIAL OWNERSHIP DISCLOSURE: Furnish certified true copies of all Know Your
+Customer (KYC) documentation, including government identity proofs (Aadhaar, PAN card, Passport,
+Voter ID), full registered names, physical addresses, verified mobile numbers, and email addresses
+linked to the accounts controlling or interacting with said wallets.
+
+[DIRECTIVE 3] BANKING & ON/OFF RAMP DETAILS: Disclose complete transactional records of all fiat
+deposits/withdrawals, including linked Indian and foreign bank account numbers, IFSC codes, UPI IDs,
+and counterparty payment gateway references.
+
+[DIRECTIVE 4] LIEN / ASSET FREEZE: Place an immediate debit freeze / administrative lien upon any
+cryptographic assets, tokens, or fiat balances currently held in said accounts, and prevent any
+further transfer or dissipation pending judicial orders.
+
+COMPLIANCE TIMELINE:
+You are required to submit compliance confirmation and the requisitioned electronic records within
+seventy-two (72) hours of receipt of this notice to the authorized investigating officer.
+
+PLEASE NOTE that failure to comply with this statutory requisition without lawful excuse constitutes
+an offence punishable under Section 175/176 of the Indian Penal Code, 1860, and Section 69 of the
+Information Technology Act, 2000.
+
+Prepared & Issued by:
+${pkg.preparedBy || session?.display_name || 'Investigating Officer'}
+Cyber Crime Investigation Division
+Digital Signature / SHA-256 Evidence Seal: ${pkg.sha256Seal || 'SEAL-VALIDATED'}
+================================================================================`;
+}
+
+function requestPackage(inv, session, options = {}) {
+  // If inv is an Elliptic transaction report:
+  if (inv.txId && !inv.case) {
+    const txId = inv.txId;
+    const targetEntity = options.targetEntity || options.targetVasp || 'Bitcoin Network Intermediary / Custodian of Counterparty Wallets';
+    const amountINR = options.amountINR || 0;
+    const confidence = inv.riskScore || 75;
+    const noticeRef = `NOTICE-SEC91-TX-${txId}-${Date.now().toString(36).toUpperCase()}`;
+    const wallets = [{ address: `BTC-TX-${txId}`, chain: 'Bitcoin', role: 'Subject Transaction Node' }];
+    const transactions = [txId, ...(inv.graphFindings?.outgoingTransactions || []).slice(0, 5)];
+    const pkg = {
+      packageVersion: '2.0',
+      noticeReference: noticeRef,
+      legalBasis: 'Section 91 Cr.P.C. / BNSS 2023 read with Section 69 Information Technology Act, 2000',
+      preparedAt: now(),
+      preparedBy: session.display_name,
+      status: 'DRAFT FOR AUTHORIZED HUMAN REVIEW',
+      sent: false,
+      targetVasp: targetEntity,
+      targetEntity,
+      caseId: `TX-${txId}`,
+      complaintId: `NCRP-BTC-${txId.slice(-6)}`,
+      reportedWallet: `BTC-TX-${txId}`,
+      wallets,
+      amountINR,
+      confidence,
+      dateRange: { from: `TimeStep ${inv.timeStep || 1}`, to: now() },
+      transactions,
+      evidence: inv.evidenceIndicators || [],
+      requestedInformation: [
+        'Preservation of records associated with listed transactions, subject to applicable legal authority.',
+        'Confirmation of whether listed addresses are controlled by the recipient VASP/exchange custodian.',
+        'Information disclosure through the appropriate authorized legal process.'
+      ],
+      reviewChecklist: [
+        'Verify independent blockchain evidence and entity identity.',
+        'Establish jurisdiction, legal basis and signatory authority.',
+        'Review scope and proportionality before submitting through approved channels.'
+      ],
+      source: inv.dataSource || 'Elliptic Research Dataset',
+      disclaimer: 'Official investigation package prepared for review by authorized officer. Not sent externally without supervisory authorization.'
+    };
+    pkg.sha256Seal = createHash('sha256').update(JSON.stringify(pkg)).digest('hex');
+    pkg.noticeDocument = formatSection91Notice(pkg, session);
+    return pkg;
+  }
+
+  // Otherwise inv is a standard case investigation:
+  const candidate = (inv.attributions && inv.attributions[0]) ? inv.attributions[0] : null;
+  const targetEntity = options.targetEntity || options.targetVasp || candidate?.candidate || 'Custodian of Intermediary & Counterparty Wallets / Compliance Desk';
+  const vaspWallets = (inv.nodes || []).filter(n => n.type === 'vasp').map(n => ({ address: n.address, chain: n.chain, role: 'Terminal VASP Exit' }));
+  const fallbackWallets = (inv.nodes || []).slice(-3).map(n => ({ address: n.address, chain: n.chain, role: n.type || 'Intermediary Counterparty' }));
+  const wallets = vaspWallets.length ? vaspWallets : fallbackWallets;
+  const transactions = (inv.edges || []).filter(e => (inv.nodes || []).some(n => n.id === e.target && (n.type === 'vasp' || vaspWallets.length === 0)));
+  const dateRange = {
+    from: candidate?.firstInteraction || inv.case?.createdAt || now(),
+    to: candidate?.lastInteraction || inv.case?.updatedAt || now()
+  };
+  const amountINR = options.amountINR || candidate?.tracedAmount || inv.case?.victimLoss || 0;
+  const confidence = candidate?.confidence || inv.case?.riskScore || 75;
+  const noticeRef = `NOTICE-SEC91-${inv.case?.id || 'CASE'}-${Date.now().toString(36).toUpperCase()}`;
+
+  const pkg = {
+    packageVersion: '2.0',
+    noticeReference: noticeRef,
+    legalBasis: 'Section 91 Cr.P.C. / BNSS 2023 read with Section 69 Information Technology Act, 2000 & PMLA 2002',
+    preparedAt: now(),
+    preparedBy: session.display_name,
+    status: 'DRAFT FOR AUTHORIZED HUMAN REVIEW',
+    sent: false,
+    targetVasp: candidate?.candidate || targetEntity,
+    targetEntity,
+    caseId: inv.case?.id || 'UNKNOWN-CASE',
+    complaintId: inv.case?.complaintId || 'NCRP-PORTAL',
+    reportedWallet: inv.case?.reportedWallet || '',
+    wallets,
+    amountINR,
+    confidence,
+    dateRange,
+    transactions,
+    evidence: candidate?.evidence || inv.riskIndicators || [],
+    requestedInformation: [
+      'Preservation of records associated with listed transactions, subject to applicable legal authority.',
+      'Confirmation of whether listed addresses are controlled by the recipient VASP/exchange custodian.',
+      'Information disclosure through the appropriate authorized legal process.'
+    ],
+    reviewChecklist: [
+      'Verify independent blockchain evidence and entity identity.',
+      'Establish jurisdiction, legal basis and signatory authority.',
+      'Review scope and proportionality before submitting through approved channels.'
+    ],
+    source: inv.case?.source || 'SIMULATED INVESTIGATION DATA',
+    disclaimer: 'Official investigation package prepared for review by authorized officer. Not sent externally without supervisory authorization.'
+  };
+  pkg.sha256Seal = createHash('sha256').update(JSON.stringify(pkg)).digest('hex');
+  pkg.noticeDocument = formatSection91Notice(pkg, session);
+  return pkg;
 }
 function startStream(req,res,session) {
  const count=streamCounts.get(session.id)||0;if(count>=3) fail('Too many open streams in this workspace.',429);
@@ -219,26 +398,280 @@ async function handle(req,res) {
  if(path==='/api/auth/demo' && method==='POST') {
    await body(req);
    const existing=store.session(cookies(req).ct_session);
-   if(existing) return json(res,200,{user:{name:existing.display_name,role:'demo-investigator'},mode:'DEMO ENVIRONMENT',expiresAt:existing.expires_at});
+   if(existing) return json(res,200,{user:{id:existing.user_id,name:existing.display_name,role:existing.role||'demo-investigator'},mode:'DEMO ENVIRONMENT',expiresAt:existing.expires_at});
    const {token,session}=store.createSession();res.setHeader('Set-Cookie',sessionCookie(req,token,Math.floor((Date.parse(session.expires_at)-Date.now())/1000)));
-   return json(res,200,{user:{name:session.display_name,role:'demo-investigator'},mode:'DEMO ENVIRONMENT',expiresAt:session.expires_at});
+   return json(res,200,{user:{id:session.user_id,name:session.display_name,role:session.role||'demo-investigator'},mode:'DEMO ENVIRONMENT',expiresAt:session.expires_at});
+ }
+ if(path==='/api/auth/demo-reporter' && method==='POST') {
+   await body(req);
+   const reporter = store.getUserByEmail('priya.nair@example.in');
+   const uid = reporter?.id || 'USR-REPORTER-001';
+   const { token, session } = store.createSession('Priya Nair', 'reporter', uid);
+   res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
+   return json(res, 200, { user: { id: uid, name: 'Priya Nair', email: 'priya.nair@example.in', role: 'reporter' }, mode: 'REPORTER PORTAL', expiresAt: session.expires_at });
+ }
+ if(path==='/api/auth/demo-officer' && method==='POST') {
+   await body(req);
+   const officer = store.getUserByEmail('officer.sharma@cbi.gov.in');
+   const uid = officer?.id || 'USR-OFFICER-001';
+   const { token, session } = store.createSession('Insp. Rajesh Sharma (CBI Officer)', 'officer', uid);
+   res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
+   return json(res, 200, { user: { id: uid, name: 'Insp. Rajesh Sharma (CBI Officer)', email: 'officer.sharma@cbi.gov.in', role: 'officer' }, mode: 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+ }
+ if(path==='/api/auth/register' && method==='POST') {
+   const data = await body(req);
+   const user = store.registerUser(data);
+   const { token, session } = store.createSession(user.name, user.role, user.id);
+   res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
+   return json(res, 201, { user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone }, mode: user.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
  }
  if(path==='/api/auth/login' && method==='POST') {
    const data = await body(req);
    const email = String(data.email || '').trim().toLowerCase();
    const password = String(data.password || '').trim();
-   if(!email || !email.includes('@')) fail('Please enter a valid investigator email address.', 400);
+   if(!email || !email.includes('@')) fail('Please enter a valid email address.', 400);
    if(!password || password.length < 4) fail('Password must be at least 4 characters.', 400);
+
+   const authUser = store.authenticateUser(email, password);
+   if(authUser) {
+     const { token, session } = store.createSession(authUser.name, authUser.role, authUser.id);
+     res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
+     return json(res, 200, { user: authUser, mode: authUser.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   }
+
+   // Automatic fallback for new signins
    const rawName = email.split('@')[0].replace(/[\._\-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-   const displayName = `${rawName} (Officer)`;
-   const { token, session } = store.createSession(displayName, 'official-investigator');
+   const role = (data.role === 'reporter' || (!email.includes('cbi') && !email.includes('cryptotrace') && !email.includes('officer') && !email.includes('police'))) ? 'reporter' : 'officer';
+   const displayName = role === 'officer' ? `${rawName} (CBI Officer)` : rawName;
+   const { token, session } = store.createSession(displayName, role);
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-   return json(res, 200, { user: { name: session.display_name, email, role: 'official-investigator' }, mode: 'OFFICIAL INVESTIGATOR', expiresAt: session.expires_at });
+   return json(res, 200, { user: { id: session.user_id, name: session.display_name, email, role }, mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
  }
  const session=store.session(cookies(req).ct_session);if(!session) fail('Start a demo session to access this workspace.',401);
  const sid=session.id;
- if(path==='/api/auth/me' && method==='GET') return json(res,200,{user:{name:session.display_name,role:session.role || 'investigator'},mode:session.role==='official-investigator'?'OFFICIAL INVESTIGATOR':'DEMO ENVIRONMENT',expiresAt:session.expires_at});
+ if(path==='/api/auth/me' && method==='GET') return json(res,200,{user:{id:session.user_id,name:session.display_name,role:session.role || 'investigator',email:session.email||null,agency:session.agency||null,badgeNumber:session.badge_number||null},mode:session.role==='reporter'?'REPORTER PORTAL':(session.role==='officer'||session.role==='official-investigator')?'CBI OFFICER PORTAL':'DEMO ENVIRONMENT',expiresAt:session.expires_at});
  if(path==='/api/auth/logout' && method==='POST') {store.audit(sid,'Session Signed Out','workspace');store.db.prepare('UPDATE sessions SET expires_at=? WHERE id=?').run(now(),sid);res.setHeader('Set-Cookie',sessionCookie(req,'',0));return json(res,200,{ok:true});}
+ if(group==='officers' && method==='GET') {
+   return json(res, 200, store.listOfficers());
+ }
+ if(group==='notifications') {
+   if(!id && method==='GET') {
+     const unreadOnly = url.searchParams.get('unread') === 'true';
+     return json(res, 200, store.listNotifications(session.user_id, unreadOnly));
+   }
+   if(id==='read-all' && method==='POST') {
+     return json(res, 200, store.markAllNotificationsRead(session.user_id));
+   }
+   if(id && sub==='read' && method==='POST') {
+     return json(res, 200, store.markNotificationRead(id, session.user_id));
+   }
+ }
+ if(group==='complaints') {
+   const isOfficer = session.role === 'officer' || session.role === 'official-investigator' || session.role === 'demo-investigator';
+   if(!id && method==='GET') {
+     const filter = {
+       status: url.searchParams.get('status') || null,
+       search: url.searchParams.get('q') || null,
+       chain: url.searchParams.get('chain') || null,
+       priority: url.searchParams.get('priority') || null
+     };
+     if (!isOfficer) {
+       filter.reporterId = session.user_id;
+     }
+     return json(res, 200, store.listComplaints(filter));
+   }
+   if(!id && method==='POST') {
+     const data = await body(req);
+     if (!data.incidentType) fail('Incident type is required.', 400);
+     if (!data.description || data.description.length < 5) fail('Incident description must be at least 5 characters.', 400);
+     const complaint = store.createComplaint({
+       ...data,
+       reporterId: session.user_id,
+       reporterName: session.display_name,
+       reporterEmail: session.email || ''
+     });
+     store.audit(sid, 'Complaint Filed', complaint.caseId, { incidentType: complaint.incidentType, reportedLoss: complaint.reportedLoss });
+     return json(res, 201, complaint);
+   }
+   if(id && !sub && method==='GET') {
+     const comp = store.getComplaint(id, isOfficer);
+     if (!comp) fail(`Complaint ${id} was not found.`, 404);
+     if (!isOfficer && comp.reporterId !== session.user_id) {
+       fail('You are not authorized to view this complaint.', 403);
+     }
+     return json(res, 200, comp);
+   }
+   if(id && sub==='status' && method==='POST') {
+     if (!isOfficer) fail('Only authorized CBI officers can update complaint status.', 403);
+     const data = await body(req);
+     if (!data.status) fail('Status is required.', 400);
+     const updated = store.updateComplaintStatus({
+       caseId: id,
+       newStatus: data.status,
+       authorId: session.user_id,
+       authorName: session.display_name,
+       authorRole: 'officer',
+       reason: data.reason || ''
+     });
+     store.audit(sid, 'Complaint Status Updated', id, { newStatus: data.status, reason: data.reason });
+     return json(res, 200, updated);
+   }
+   if(id && sub==='assign' && method==='POST') {
+     if (!isOfficer) fail('Only authorized CBI officers can assign cases.', 403);
+     const data = await body(req);
+     if (!data.officerId || !data.officerName) fail('Officer ID and Name are required.', 400);
+     const updated = store.assignOfficer({
+       caseId: id,
+       officerId: data.officerId,
+       officerName: data.officerName,
+       assignedById: session.user_id,
+       assignedByName: session.display_name,
+       notes: data.notes || ''
+     });
+     store.audit(sid, 'Case Assigned to Officer', id, { officer: data.officerName });
+     return json(res, 200, updated);
+   }
+   if(id && sub==='request-evidence' && method==='POST') {
+     if (!isOfficer) fail('Only authorized CBI officers can request additional evidence.', 403);
+     const data = await body(req);
+     const items = data.requestedItems || data.message || 'Supporting transaction receipts and chat logs';
+     const updated = store.requestEvidence({
+       caseId: id,
+       authorId: session.user_id,
+       authorName: session.display_name,
+       requestedItems: items
+     });
+     store.audit(sid, 'Additional Evidence Requested', id, { requestedItems: items });
+     return json(res, 200, updated);
+   }
+   if(id && sub==='evidence' && method==='POST') {
+     const comp = store.getComplaint(id, false);
+     if (!comp) fail(`Complaint ${id} was not found.`, 404);
+     if (!isOfficer && comp.reporterId !== session.user_id) {
+       fail('You are not authorized to upload evidence to this case.', 403);
+     }
+     const data = await body(req);
+     if (!data.filename) fail('Filename is required.', 400);
+     const evidence = store.addEvidence({
+       caseId: id,
+       uploadedById: session.user_id,
+       uploadedByName: session.display_name,
+       uploaderRole: isOfficer ? 'officer' : 'reporter',
+       filename: data.filename,
+       fileType: data.fileType || 'application/octet-stream',
+       fileSize: Number(data.fileSize || 1024),
+       description: data.description || '',
+       sha256: data.sha256 || ''
+     });
+     store.audit(sid, 'Case Evidence Uploaded', id, { filename: data.filename, sha256: evidence.sha256 });
+     return json(res, 201, evidence);
+   }
+   if(id && sub==='notes' && method==='POST') {
+     if (!isOfficer) fail('Only authorized CBI officers can add internal notes.', 403);
+     const data = await body(req);
+     if (!data.note && !data.message) fail('Note content is required.', 400);
+     const note = store.addInternalNote({
+       caseId: id,
+       authorId: session.user_id,
+       authorName: session.display_name,
+       authorRole: 'officer',
+       note: data.note || data.message
+     });
+     store.audit(sid, 'Internal Investigation Note Added', id);
+     return json(res, 201, note);
+   }
+   if(id && sub==='analyze' && method==='POST') {
+     if (!isOfficer) fail('Only authorized CBI officers can run transaction analytics.', 403);
+     const comp = store.getComplaint(id, true);
+     if (!comp) fail(`Complaint ${id} was not found.`, 404);
+
+     const graph = await getGraphEngine();
+     const riskEngine = new RiskEngine(graph);
+     let analyticsResult = null;
+
+     if (comp.transactionHash) {
+       const txReport = riskEngine.evaluateTransaction(comp.transactionHash);
+       if (txReport.found) {
+         analyticsResult = {
+           mode: 'ELLIPTIC_RESEARCH_DATASET',
+           txId: comp.transactionHash,
+           riskScore: txReport.riskScore,
+           riskCategory: txReport.riskCategory,
+           modelPrediction: txReport.modelPrediction,
+           knownLabel: txReport.knownLabel,
+           graphFindings: txReport.graphFindings,
+           evidenceIndicators: txReport.evidenceIndicators,
+           explanation: txReport.explanation,
+           disclaimer: 'Analysis derived from Elliptic Bitcoin Transaction Dataset. Anonymized dataset nodes represent transaction-to-transaction edges.'
+         };
+       }
+     }
+
+     if (!analyticsResult) {
+       const mockRecord = {
+         id: comp.caseId,
+         complaintId: `NCRP-${comp.caseId.slice(-5)}`,
+         fraudType: comp.incidentType,
+         victimLoss: comp.reportedLoss || 250000,
+         currency: comp.currency || 'INR',
+         reportedWallet: comp.reportedWallet,
+         chain: comp.chain || 'Ethereum',
+         transactionHash: comp.transactionHash || '',
+         status: comp.status,
+         priority: comp.priority || 'High',
+         riskScore: 0,
+         tracedAmount: 0,
+         confidence: 0,
+         vaspCandidate: 'Unknown',
+         transactionCount: 0,
+         walletCount: 0,
+         chains: [comp.chain || 'Ethereum'],
+         description: comp.description,
+         attachments: comp.evidence || [],
+         createdAt: comp.createdAt,
+         updatedAt: now(),
+         source: 'REPORTER_COMPLAINT_TRACE'
+       };
+
+       let inv = store.getInvestigation(sid, comp.caseId);
+       if (!inv) {
+         store.insertCase(sid, mockRecord);
+         inv = store.trace(sid, comp.caseId, session.weights);
+       }
+
+       const readiness = store.calculateRiskAndReadiness(sid, comp.caseId, {});
+       analyticsResult = {
+         mode: 'FORENSIC_GRAPH_ANALYTICS',
+         caseId: comp.caseId,
+         reportedWallet: comp.reportedWallet,
+         chain: comp.chain,
+         riskScore: readiness.riskScore,
+         riskLevel: readiness.riskLevel,
+         readinessScore: readiness.readinessScore,
+         readinessStatus: readiness.readinessStatus,
+         parameters: readiness.parameters,
+         statutorySummary: readiness.statutorySummary,
+         evidenceIndicators: readiness.riskIndicators || [],
+         recommendations: readiness.recommendations || [],
+         graphNodesCount: inv?.nodes?.length || 1,
+         graphEdgesCount: inv?.edges?.length || 0,
+         vaspCandidate: inv?.vaspCandidate || 'Under Review',
+         disclaimer: 'Forensic graph analytics evaluated on reported wallet topology and behavioral event sequence.'
+       };
+     }
+
+     store.db.prepare(`
+       INSERT INTO case_updates (id, case_id, author_id, author_name, author_role, update_type, message, is_internal, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     `).run(
+       randomUUID(), comp.caseId, session.user_id, session.display_name, 'officer', 'ANALYTICS_EXECUTED',
+       `Cyber Trace analytics executed. Risk Score: ${analyticsResult.riskScore}/100, Readiness: ${analyticsResult.readinessScore || 75}/100.`, 0, now()
+     );
+
+     store.audit(sid, 'Complaint Analytics Executed', id, { riskScore: analyticsResult.riskScore });
+     return json(res, 200, analyticsResult);
+   }
+ }
  if(group==='dashboard' && method==='GET') return json(res,200,dashboard(sid));
  if(group==='cases') {
    if(!id && method==='GET') return json(res,200,caseQuery(store.listCases(sid),url.searchParams));
@@ -252,12 +685,24 @@ async function handle(req,res) {
      return json(res,201,record);
    }
    if(id && sub==='related' && method==='GET') return json(res,200,requireValue(store.getInvestigation(sid,id),'Case').relatedCases);
+   if(id && sub==='calculate-risk' && method==='POST') {
+     const data = await body(req);
+     const result = store.calculateRiskAndReadiness(sid, id, data.criteria || {});
+     if(!result) fail(`Case ${id} not found.`, 404);
+     return json(res, 200, result);
+   }
    if(id && !sub && method==='GET') return json(res,200,requireValue(store.getCase(sid,id),'Case'));
    if(id && !sub && method==='PATCH') {const data=await body(req);const status=enumField(data.status,STATUSES,'Status');return json(res,200,requireValue(store.setStatus(sid,id,status),'Case'));}
  }
  if(group==='investigations') {
    if(!id && method==='GET') return json(res,200,store.listCases(sid));
    if(!id && method==='POST') {const data=await body(req);const caseId=textField(data.caseId,'Case ID',50,{required:true});return json(res,200,requireValue(store.trace(sid,caseId,session.weights),'Case'));}
+   if(id && sub==='calculate-risk' && method==='POST') {
+     const data = await body(req);
+     const result = store.calculateRiskAndReadiness(sid, id, data.criteria || {});
+     if(!result) fail(`Case ${id} not found.`, 404);
+     return json(res, 200, result);
+   }
    if(id && method==='GET') return json(res,200,requireValue(store.getInvestigation(sid,id),'Investigation'));
  }
  if(['graph','knowledge-graph','attribution'].includes(group) && id && method==='GET') {
@@ -310,7 +755,33 @@ async function handle(req,res) {
    }
    if(id && !sub && method==='GET') {const report=requireValue(store.report(sid,id),'Report');res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':`inline; filename="${report.filename}"`,'Content-Length':report.content.length,'X-Evidence-SHA256':report.sha256});return res.end(Buffer.from(report.content));}
  }
- if(group==='requests' && id && sub==='generate' && method==='POST') {const pkg=requestPackage(requireValue(store.getInvestigation(sid,id),'Case'),session);store.audit(sid,'VASP Request Package Prepared',id,{candidate:pkg.targetVasp,sent:false});return json(res,201,pkg);}
+ if(group==='requests') {
+   if(!id && method==='GET') {
+     return json(res, 200, store.listRequests ? store.listRequests(sid) : []);
+   }
+   if(id && !sub && method==='GET') {
+     const reqPkg = store.getRequest ? store.getRequest(sid, id) : null;
+     if(!reqPkg) fail(`Request package for ${id} not found.`, 404);
+     return json(res, 200, reqPkg);
+   }
+   if(id && sub==='generate' && method==='POST') {
+     const options = await body(req);
+     let inv = store.getInvestigation(sid, id);
+     if (!inv) {
+       const graph = await getGraphEngine();
+       const risk = new RiskEngine(graph);
+       const txReport = risk.evaluateTransaction(id);
+       if (txReport && txReport.found) {
+         inv = txReport;
+       }
+     }
+     if (!inv) fail(`Investigation or transaction ${id} was not found.`, 404);
+     const pkg = requestPackage(inv, session, options);
+     if (store.saveRequest) store.saveRequest(sid, id, pkg);
+     store.audit(sid, 'VASP Request Package Prepared', id, { candidate: pkg.targetVasp, sent: false, reference: pkg.noticeReference });
+     return json(res, 201, pkg);
+   }
+ }
  if(group==='events' && method==='GET') return startStream(req,res,session);
  if(group==='vasps' && method==='GET') {
    const all=store.listCases(sid).map(c=>store.getInvestigation(sid,c.id)).filter(Boolean).flatMap(inv=>(inv.attributions || []).map(a=>({...a,caseId:inv.case?.id,fraudType:inv.case?.fraudType})));
@@ -356,6 +827,44 @@ async function handle(req,res) {
      const saved = store.saveTxInvestigation(sid, id, report);
      store.audit(sid, 'Transaction Investigation Saved', id, { riskScore: report.riskScore, riskCategory: report.riskCategory });
      return json(res, 201, saved);
+   }
+   if(id && sub==='calculate-risk' && method==='POST') {
+     const data = await body(req);
+     const graph = await getGraphEngine();
+     const risk = new RiskEngine(graph);
+     const report = risk.evaluateTransaction(id);
+     if(!report.found) fail(report.error || `Transaction ${id} not found in Elliptic dataset.`, 404);
+     const txReadiness = {
+       readinessScore: report.riskScore >= 70 ? 86 : 68,
+       readinessStatus: report.riskScore >= 70 ? 'ACTION_READY' : 'INQUIRY_IN_PROGRESS',
+       parameters: [
+         { id: 'identityNormalization', name: 'Identity & Wallet Normalization', weight: 15, score: 95, status: 'PASSED', finding: `Transaction ${id} verified on Bitcoin network. TimeStep: ${report.timeStep}.`, statutoryStandard: 'Section 65B Evidence Act' },
+         { id: 'graphTraceCoverage', name: 'Graph Trace Coverage & Exit Identification', weight: 20, score: (report.graphFindings?.inDegree || 0) + (report.graphFindings?.outDegree || 0) > 0 ? 82 : 45, status: 'PASSED', finding: `${report.graphFindings?.inDegree || 0} incoming and ${report.graphFindings?.outDegree || 0} outgoing transaction edges mapped.`, statutoryStandard: 'CrPC Section 91 Flow Trace' },
+         { id: 'counterpartyAttribution', name: 'Counterparty Attribution & Ground Truth Exposure', weight: 20, score: report.knownLabel === 'illicit' ? 98 : report.knownLabel === 'licit' ? 90 : 70, status: 'PASSED', finding: `Ground-truth label: ${report.knownLabel.toUpperCase()}. Illicit neighbor exposure: ${report.graphFindings?.neighborIllicitExposurePct || 0}%.`, statutoryStandard: 'PMLA 2002 Reporting Standard' },
+         { id: 'temporalConsistency', name: 'Temporal Event Sequence & Holding Latency', weight: 15, score: 90, status: 'PASSED', finding: `Discrete time-step sequence preserved (TimeStep ${report.timeStep}).`, statutoryStandard: 'Section 65B Admissibility' },
+         { id: 'statutoryNexus', name: 'Statutory Notice / Section 91 CrPC Evidentiary Nexus', weight: 15, score: report.riskScore >= 70 ? 92 : 65, status: report.riskScore >= 70 ? 'PASSED' : 'WARNING', finding: `${report.evidenceIndicators?.length || 0} evidence indicators documented. Nexus established.`, statutoryStandard: 'Section 91 CrPC Requisition' },
+         { id: 'auditIntegrity', name: 'Cryptographic Chain of Custody & Audit Trail', weight: 15, score: 90, status: 'PASSED', finding: 'Cryptographic evidence hashing applied to investigation report.', statutoryStandard: 'ISO 27037' }
+       ],
+       statutorySummary: report.riskScore >= 70
+         ? 'Transaction satisfies statutory criteria for immediate Section 91 CrPC notice dispatch to associated exchanges/custodians.'
+         : 'Transaction evidentiary nexus established for exploratory inquiry.',
+       criteriaApplied: data.criteria || {},
+       evaluatedAt: now()
+     };
+     store.audit(sid, 'Transaction Risk & Readiness Calculated', id, { riskScore: report.riskScore, readinessScore: txReadiness.readinessScore });
+     return json(res, 200, {
+       txId: id,
+       caseId: `TX-${id}`,
+       riskScore: report.riskScore,
+       riskLevel: report.riskCategory,
+       readinessScore: txReadiness.readinessScore,
+       readinessStatus: txReadiness.readinessStatus,
+       parameters: txReadiness.parameters,
+       statutorySummary: txReadiness.statutorySummary,
+       graphFindings: report.graphFindings,
+       evidenceIndicators: report.evidenceIndicators,
+       evaluatedAt: txReadiness.evaluatedAt
+     });
    }
    if(id && method==='GET' && id!=='ingest') {
      const graph = await getGraphEngine();

@@ -310,4 +310,43 @@ describe('CRYPTO-TRACE INDIA: persistent, evidence-grounded demo API', { concurr
     assert.ok(investigation.data.edges.length > 0);
     assert.equal((await otherInvestigator.request(`/cases/${created.id}`)).response.status, 404);
   });
+
+  it('calculates event-based risk score and 6-parameter investigation readiness score', async () => {
+    const calc = await investigator.request('/cases/CR-2026-00192/calculate-risk', {
+      method: 'POST',
+      body: { criteria: { velocitySensitivity: 30, mixerPrivacyPenalty: 35 } }
+    });
+    assert.equal(calc.response.status, 200);
+    assert.ok(calc.data.riskScore >= 0 && calc.data.riskScore <= 100);
+    assert.ok(calc.data.readinessScore >= 0 && calc.data.readinessScore <= 100);
+    assert.ok(['ACTION_READY', 'INQUIRY_IN_PROGRESS', 'EVALUATION_PENDING'].includes(calc.data.readinessStatus));
+    assert.equal(calc.data.parameters.length, 6);
+    assert.ok(calc.data.parameters.every(p => p.id && p.name && p.score !== undefined && p.weight && p.status));
+    assert.ok(calc.data.statutorySummary);
+
+    // Also verify transaction readiness calculation
+    const txCalc = await investigator.request('/transactions/230425980/calculate-risk', { method: 'POST', body: {} });
+    assert.equal(txCalc.response.status, 200);
+    assert.ok(txCalc.data.readinessScore > 50);
+    assert.equal(txCalc.data.parameters.length, 6);
+  });
+
+  it('generates formal Section 91 information request package with statutory notice for cases and transactions', async () => {
+    // Generate for standard case
+    const caseReq = await investigator.request('/requests/CR-2026-00192/generate', {
+      method: 'POST',
+      body: { targetEntity: 'Binance Legal Compliance Desk' }
+    });
+    assert.equal(caseReq.response.status, 201);
+    assert.ok(caseReq.data.noticeReference.startsWith('NOTICE-SEC91-'));
+    assert.match(caseReq.data.legalBasis, /Section 91/i);
+    assert.ok(caseReq.data.sha256Seal);
+    assert.match(caseReq.data.noticeDocument, /SECTION 91/i);
+
+    // Generate for transaction without pre-seeded attribution
+    const txReq = await investigator.request('/requests/230425980/generate', { method: 'POST', body: {} });
+    assert.equal(txReq.response.status, 201);
+    assert.match(txReq.data.noticeDocument, /STATUTORY REQUISITION/i);
+    assert.ok(txReq.data.wallets.length >= 1);
+  });
 });
