@@ -35,6 +35,8 @@ const SubmitComplaintPage = lazy(() => reporter().then(m => ({ default: m.Submit
 const MyCasesPage = lazy(() => reporter().then(m => ({ default: m.MyCasesPage })));
 const CaseTrackingPage = lazy(() => reporter().then(m => ({ default: m.CaseTrackingPage })));
 
+const InteractiveDemo = lazy(() => import('./pages/InteractiveDemo'));
+
 const officer = () => import('./pages/OfficerPortal');
 const IncomingReportsPage = lazy(() => officer().then(m => ({ default: m.IncomingReportsPage })));
 const CaseReviewPage = lazy(() => officer().then(m => ({ default: m.CaseReviewPage })));
@@ -328,6 +330,17 @@ export default function App() {
             </Suspense>
           </main>
         </div>
+      </Boundary>
+    );
+  }
+
+  // 1.5 Interactive Guided Demo Walkthrough
+  if (location.startsWith('/demo')) {
+    return (
+      <Boundary>
+        <Suspense fallback={<LoadingState />}>
+          <InteractiveDemo />
+        </Suspense>
       </Boundary>
     );
   }

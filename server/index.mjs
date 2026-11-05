@@ -418,6 +418,11 @@ async function handle(req,res) {
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
    return json(res, 200, { user: { id: uid, name: 'Insp. Rajesh Sharma (CBI Officer)', email: 'officer.sharma@cbi.gov.in', role: 'officer' }, mode: 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
  }
+ if(path==='/api/demo/reset' && method==='POST') {
+   await body(req);
+   const result = store.resetDemoData();
+   return json(res, 200, { ok: true, purgedCount: result.purgedCount, caseIds: result.caseIds });
+ }
  if(path==='/api/auth/register' && method==='POST') {
    const data = await body(req);
    const user = store.registerUser(data);
@@ -592,16 +597,40 @@ async function handle(req,res) {
      if (comp.transactionHash) {
        const txReport = riskEngine.evaluateTransaction(comp.transactionHash);
        if (txReport.found) {
+         const evidenceCount = (comp.evidence?.length || 0);
+         const topologyScore = txReport.graphFindings.totalNeighbors > 0 ? 25 : 15;
+         const confidencePart = Math.round((txReport.modelConfidence || 75) * 0.25);
+         const labelPart = txReport.knownLabel !== 'unknown' ? 25 : 20;
+         const evidencePart = Math.min(25, Math.max(10, evidenceCount * 12));
+         const readinessScore = Math.min(100, topologyScore + confidencePart + labelPart + evidencePart);
+
          analyticsResult = {
            mode: 'ELLIPTIC_RESEARCH_DATASET',
            txId: comp.transactionHash,
            riskScore: txReport.riskScore,
            riskCategory: txReport.riskCategory,
+           readinessScore,
+           readinessStatus: readinessScore >= 75 ? 'HIGH READINESS' : readinessScore >= 50 ? 'ACTIONABLE' : 'PRELIMINARY',
            modelPrediction: txReport.modelPrediction,
+           modelConfidence: txReport.modelConfidence,
            knownLabel: txReport.knownLabel,
+           modelParameters: {
+             timeStep: txReport.timeStep,
+             inDegree: txReport.graphFindings.inDegree,
+             outDegree: txReport.graphFindings.outDegree,
+             neighborIllicitExposurePct: txReport.graphFindings.neighborIllicitExposurePct,
+             modelConfidence: txReport.modelConfidence,
+             predictedClass: txReport.modelPrediction,
+             algorithm: 'Random Forest (Weber et al. Benchmark)'
+           },
            graphFindings: txReport.graphFindings,
            evidenceIndicators: txReport.evidenceIndicators,
            explanation: txReport.explanation,
+           recommendations: [
+             'Proceed with Section 91 information request to counterparty virtual asset service providers.',
+             'Preserve full SHA-256 evidence chain of custody for court filing.',
+             'Schedule multi-hop graph expansion on high-risk outgoing transaction nodes.'
+           ],
            disclaimer: 'Analysis derived from Elliptic Bitcoin Transaction Dataset. Anonymized dataset nodes represent transaction-to-transaction edges.'
          };
        }

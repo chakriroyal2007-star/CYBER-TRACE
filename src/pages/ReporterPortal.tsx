@@ -243,8 +243,10 @@ export function SubmitComplaintPage() {
   const [description, setDescription] = useState('');
   const [attachments, setAttachments] = useState<any[]>([]);
   const [createdCase, setCreatedCase] = useState<any>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   const fillFictionalExample = () => {
+    setIsDemo(true);
     setIncidentType('Investment Scam');
     setIncidentDate('2026-10-24');
     setReportedLoss('642000');
@@ -273,6 +275,8 @@ export function SubmitComplaintPage() {
           chain: 'Bitcoin',
           reportedWallet: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
           transactionHash: '232629023',
+          is_demo: 1,
+          incidentChannel: 'WhatsApp / Web',
           description: 'Victim was approached on WhatsApp with offers of automated cryptocurrency arbitrage yields. Instructed to transfer INR 6,42,000 worth of Bitcoin to the suspect wallet for pool staking. Victim was subsequently locked out and all withdrawals were blocked.',
           attachments: [
             { name: 'whatsapp_chat_evidence.pdf', type: 'application/pdf', size: 142050, description: 'Exported chat transcript with fraudulent broker' },
@@ -321,6 +325,7 @@ export function SubmitComplaintPage() {
           reportedWallet: reportedWallet.trim(),
           transactionHash: transactionHash.trim(),
           description,
+          is_demo: isDemo ? 1 : 0,
           attachments
         })
       });

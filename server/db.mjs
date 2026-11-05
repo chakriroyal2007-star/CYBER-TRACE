@@ -322,6 +322,33 @@ export class Store {
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
+    if (!this.db.prepare('SELECT version FROM schema_migrations WHERE version=5').get()) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        try { this.db.exec('ALTER TABLE complaints ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0;'); } catch {}
+        try { this.db.exec('ALTER TABLE complaints ADD COLUMN incident_channel TEXT DEFAULT "Web";'); } catch {}
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS evidence_requests (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            officer_id TEXT NOT NULL,
+            officer_name TEXT NOT NULL,
+            request_description TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            created_at TEXT NOT NULL,
+            responded_at TEXT
+          );
+          CREATE INDEX IF NOT EXISTS ev_req_case ON evidence_requests(case_id);
+
+          CREATE TABLE IF NOT EXISTS case_sequences (
+            year INTEGER PRIMARY KEY,
+            last_seq INTEGER NOT NULL DEFAULT 0
+          );
+        `);
+        this.db.prepare('INSERT INTO schema_migrations VALUES(5,?)').run(now());
+        this.db.exec('COMMIT');
+      } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+    }
     this.seedCaseManagement();
   }
   close() { try { this.db.close(); } catch {} }
@@ -834,13 +861,46 @@ export class Store {
   }
 
   generateCaseId() {
-    for (let i = 0; i < 20; i++) {
-      const num = Math.floor(10000 + Math.random() * 90000);
-      const caseId = `CR-2026-${num}`;
-      const exists = this.db.prepare('SELECT id FROM complaints WHERE case_id=?').get(caseId);
-      if (!exists) return caseId;
+    const year = new Date().getFullYear();
+    const prefix = `CR-${year}-`;
+    try {
+      this.db.prepare('INSERT OR IGNORE INTO case_sequences (year, last_seq) VALUES (?, 0)').run(year);
+      const row = this.db.prepare(`
+        SELECT MAX(CAST(SUBSTR(case_id, 9) AS INTEGER)) as max_seq 
+        FROM complaints 
+        WHERE case_id LIKE ?
+      `).get(`${prefix}%`);
+      const seqRow = this.db.prepare('SELECT last_seq FROM case_sequences WHERE year=?').get(year);
+      const currentMax = Math.max(row?.max_seq || 0, seqRow?.last_seq || 0);
+      const nextSeq = currentMax + 1;
+      this.db.prepare('UPDATE case_sequences SET last_seq=? WHERE year=?').run(nextSeq, year);
+      return `${prefix}${String(nextSeq).padStart(5, '0')}`;
+    } catch {
+      return `${prefix}${String(Math.floor(10000 + Math.random() * 90000))}`;
     }
-    return `CR-2026-${randomUUID().slice(0, 8).toUpperCase()}`;
+  }
+
+  resetDemoData() {
+    const demoComplaints = this.db.prepare('SELECT case_id FROM complaints WHERE is_demo=1').all();
+    const caseIds = demoComplaints.map(c => c.case_id);
+    if (caseIds.length === 0) return { purgedCount: 0, caseIds: [] };
+
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const cid of caseIds) {
+        this.db.prepare('DELETE FROM case_evidence WHERE case_id=?').run(cid);
+        this.db.prepare('DELETE FROM case_updates WHERE case_id=?').run(cid);
+        this.db.prepare('DELETE FROM notifications WHERE case_id=?').run(cid);
+        this.db.prepare('DELETE FROM officer_assignments WHERE case_id=?').run(cid);
+        try { this.db.prepare('DELETE FROM evidence_requests WHERE case_id=?').run(cid); } catch {}
+        this.db.prepare('DELETE FROM complaints WHERE case_id=?').run(cid);
+      }
+      this.db.exec('COMMIT');
+      return { purgedCount: caseIds.length, caseIds };
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
   }
 
   registerUser({ email, password, name, role = 'reporter', phone = '', agency = '', badgeNumber = '' }) {
@@ -923,6 +983,8 @@ export class Store {
     const reportedWallet = data.reportedWallet || data.suspectWallet || '';
     const transactionHash = data.transactionHash || '';
     const priority = data.priority || (reportedLoss >= 500000 ? 'High' : 'Medium');
+    const isDemo = data.isDemo || data.is_demo ? 1 : 0;
+    const incidentChannel = data.incidentChannel || data.incident_channel || 'Web';
 
     const complaintRecord = {
       id: caseId,
@@ -933,6 +995,7 @@ export class Store {
       reporterEmail,
       incidentType,
       incidentDate,
+      incidentChannel,
       description,
       reportedLoss,
       reportedAmount: reportedLoss,
@@ -947,16 +1010,17 @@ export class Store {
       assignedOfficerName: null,
       rejectionReason: null,
       priority,
+      isDemo: Boolean(isDemo),
       createdAt: stamp,
       updatedAt: stamp
     };
 
     this.db.prepare(`
-      INSERT INTO complaints (id, case_id, reporter_id, reporter_name, reporter_email, incident_type, incident_date, description, reported_loss, currency, chain, reported_wallet, transaction_hash, status, assigned_officer_id, assigned_officer_name, priority, created_at, updated_at, payload)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO complaints (id, case_id, reporter_id, reporter_name, reporter_email, incident_type, incident_date, description, reported_loss, currency, chain, reported_wallet, transaction_hash, status, assigned_officer_id, assigned_officer_name, priority, is_demo, incident_channel, created_at, updated_at, payload)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, caseId, reporterId, reporterName, reporterEmail, incidentType, incidentDate, description,
-      reportedLoss, currency, chain, reportedWallet, transactionHash, 'Submitted', null, null, priority, stamp, stamp, JSON.stringify(complaintRecord)
+      reportedLoss, currency, chain, reportedWallet, transactionHash, 'Submitted', null, null, priority, isDemo, incidentChannel, stamp, stamp, JSON.stringify(complaintRecord)
     );
 
     // Initial timeline update
