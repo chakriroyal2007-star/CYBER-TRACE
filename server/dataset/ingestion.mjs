@@ -189,13 +189,13 @@ export class DatasetIngestionPipeline {
   async indexFeatures(nodeMap) {
     if (!existsSync(this.featuresPath)) {
       // In serverless deployment where the 658MB features file is omitted,
-      // extract time steps from model_scores.json [ timeStep, label, pred, prob, score ]
+      // extract time steps from model_scores.json [ riskScore, label, pred, prob, timeStep ]
       if (existsSync(this.scoresPath)) {
         try {
           const scores = JSON.parse(readFileSync(this.scoresPath, 'utf8'));
           const timeStepCounts = {};
           for (const [txId, data] of Object.entries(scores)) {
-            const timeStep = Array.isArray(data) ? data[0] : (data.timeStep || data.time_step);
+            const timeStep = Array.isArray(data) ? data[4] : (data.timeStep || data.time_step);
             const node = nodeMap.get(txId);
             if (node && timeStep !== undefined) {
               node.timeStep = timeStep;
@@ -254,6 +254,9 @@ export class DatasetIngestionPipeline {
           node.riskScore = val[0];
           node.predictedClass = val[2];
           node.probability = val[3];
+          if (val[4] !== undefined && val[4] !== null) {
+            node.timeStep = val[4];
+          }
         }
       }
       return true;

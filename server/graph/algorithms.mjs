@@ -115,20 +115,23 @@ export function bfsTraversal(graph, startTxId, options = {}) {
     };
   }
 
-  const queue = [{ txId: startTxId, depth: 0, path: [startTxId] }];
+  const queue = [{ txId: startTxId, depth: 0, path: [startTxId], parentTxId: null }];
   const visited = new Set([startTxId]);
   const visitedNodes = [];
+  const traversedEdges = [];
   let foundPath = null;
 
   while (queue.length > 0) {
-    const { txId, depth, path } = queue.shift();
+    const { txId, depth, path, parentTxId } = queue.shift();
     const nodeData = graph.getNode(txId);
     visitedNodes.push({
       txId,
       depth,
+      parentTxId,
       label: nodeData?.label || 'unknown',
       timeStep: nodeData?.timeStep ?? null,
-      riskScore: nodeData?.riskScore ?? null
+      riskScore: nodeData?.riskScore ?? null,
+      predictedClass: nodeData?.predictedClass || 'unknown'
     });
 
     if (targetTxId && txId === targetTxId) {
@@ -143,12 +146,14 @@ export function bfsTraversal(graph, startTxId, options = {}) {
     if (depth < maxDepth) {
       const neighbors = graph.getNeighbors(txId);
       for (const nextId of neighbors) {
+        traversedEdges.push({ source: txId, target: nextId, depth: depth + 1 });
         if (!visited.has(nextId)) {
           visited.add(nextId);
           queue.push({
             txId: nextId,
             depth: depth + 1,
-            path: [...path, nextId]
+            path: [...path, nextId],
+            parentTxId: txId
           });
         }
       }
@@ -157,6 +162,9 @@ export function bfsTraversal(graph, startTxId, options = {}) {
 
   const durationMs = Date.now() - startTime;
   const targetFound = targetTxId ? Boolean(foundPath) : true;
+  const illicitCount = visitedNodes.filter(n => n.label === 'illicit' || (n.riskScore && n.riskScore >= 70)).length;
+  const licitCount = visitedNodes.filter(n => n.label === 'licit').length;
+  const unknownCount = visitedNodes.length - illicitCount - licitCount;
 
   return {
     startTxId,
@@ -165,9 +173,20 @@ export function bfsTraversal(graph, startTxId, options = {}) {
     path: foundPath || (targetTxId ? [] : [startTxId]),
     hops: foundPath ? foundPath.length - 1 : 0,
     visitedNodes,
+    reachableNodes: visitedNodes,
     visitedCount: visitedNodes.length,
+    visitedNodesCount: visitedNodes.length,
+    traversedEdges,
     maxDepthReached: Math.max(...visitedNodes.map(n => n.depth), 0),
     traversalTimeMs: durationMs,
+    illicitCount,
+    licitCount,
+    unknownCount,
+    explanation: targetTxId
+      ? (foundPath
+          ? `Shortest directed path of ${foundPath.length - 1} hops identified via BFS (${durationMs}ms).`
+          : `No directed path exists from ${startTxId} to ${targetTxId} within depth limit ${maxDepth}.`)
+      : `BFS explored ${visitedNodes.length} reachable downstream transactions up to depth ${maxDepth} (${durationMs}ms). Discovered ${illicitCount} illicit / high-risk nodes.`,
     evidence: {
       algorithm: 'Breadth-First Search (BFS)',
       timeComplexity: 'O(V + E)',
@@ -358,21 +377,52 @@ export function dijkstraShortestPath(graph, startTxId, targetTxId, weightType = 
     }
   }
 
-  // Reconstruct path
+  // Reconstruct path and detailed hop breakdown
   const path = [];
+  const hopBreakdown = [];
   if (found) {
     let curr = targetTxId;
     while (curr) {
       path.unshift(curr);
       curr = previous.get(curr);
     }
+
+    let runningCost = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const u = path[i];
+      const v = path[i + 1];
+      const edgeCost = getEdgeCost(u, v);
+      runningCost += edgeCost;
+      const uNode = graph.getNode(u);
+      const vNode = graph.getNode(v);
+
+      hopBreakdown.push({
+        hopNumber: i + 1,
+        fromTx: u,
+        toTx: v,
+        edgeCost: Number(edgeCost.toFixed(4)),
+        cumulativeCost: Number(runningCost.toFixed(4)),
+        fromTimeStep: uNode?.timeStep ?? 1,
+        toTimeStep: vNode?.timeStep ?? 1,
+        timeStepGap: Math.abs((vNode?.timeStep ?? 1) - (uNode?.timeStep ?? 1)),
+        toRiskScore: vNode?.riskScore ?? 50,
+        toLabel: vNode?.label ?? 'unknown',
+        toPredictedClass: vNode?.predictedClass ?? 'unknown'
+      });
+    }
   }
 
   const durationMs = Date.now() - startTime;
   const cost = found ? Number((distances.get(targetTxId) ?? 0).toFixed(4)) : Infinity;
 
+  const weightExplanation = weightType === 'hop'
+    ? `Uniform hop count: each edge cost is 1.0. Total ${path.length - 1} hops = cost ${cost}.`
+    : weightType === 'time'
+    ? `Temporal step gap (|t_target - t_source| + 1.0). Total cumulative time cost = ${cost}.`
+    : `Risk traversal cost ((100 - riskScore) / 10 + 1.0). Lower cost prioritizes high-risk illicit flow. Total cumulative cost = ${cost}.`;
+
   const explanation = found
-    ? `Identified optimal weighted path of ${path.length - 1} hops with cumulative ${weightType} cost ${cost}.`
+    ? `Identified optimal weighted path of ${path.length - 1} hops with cumulative ${weightType} cost ${cost}. ${weightExplanation}`
     : `No directed path exists from ${startTxId} to ${targetTxId} in the graph.`;
 
   return {
@@ -383,6 +433,7 @@ export function dijkstraShortestPath(graph, startTxId, targetTxId, weightType = 
     hops: found ? path.length - 1 : 0,
     cumulativeCost: cost,
     weightType,
+    hopBreakdown,
     visitedNodesCount: visited.size,
     explanation,
     traversalTimeMs: durationMs,
@@ -390,7 +441,12 @@ export function dijkstraShortestPath(graph, startTxId, targetTxId, weightType = 
       algorithm: "Dijkstra's Shortest Path",
       timeComplexity: 'O((V + E) log V)',
       spaceComplexity: 'O(V)',
-      weightType
+      weightType,
+      metricDescription: weightType === 'hop'
+        ? 'Uniform hop distance (1.0 per edge)'
+        : weightType === 'time'
+        ? 'Temporal step difference (|Δt| + 1.0)'
+        : 'Inverse risk score penalty ((100 - risk) / 10 + 1.0)'
     }
   };
 }

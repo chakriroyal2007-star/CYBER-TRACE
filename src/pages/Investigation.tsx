@@ -253,12 +253,18 @@ export default function Investigation({id}:{id:string}) {
   };
 
   const handleTracePath = async (algo: 'dijkstra' | 'bfs') => {
-    if(!pathTarget.trim() || tracingPath) return;
+    if(tracingPath) return;
+    if(algo === 'dijkstra' && !pathTarget.trim()) {
+      notify('Enter a target transaction ID for Dijkstra shortest path.', 'info');
+      return;
+    }
     setTracingPath(true);
     try {
       const endpoint = algo === 'dijkstra'
         ? `/analytics/dijkstra?start=${encodeURIComponent(id)}&target=${encodeURIComponent(pathTarget.trim())}&weight=${pathWeight}`
-        : `/analytics/bfs?start=${encodeURIComponent(id)}&target=${encodeURIComponent(pathTarget.trim())}&depth=8`;
+        : pathTarget.trim()
+        ? `/analytics/bfs?start=${encodeURIComponent(id)}&target=${encodeURIComponent(pathTarget.trim())}&depth=5`
+        : `/analytics/bfs?start=${encodeURIComponent(id)}&depth=3&limit=30`;
       const res = await api(endpoint);
       setPathResult(res);
       if(res.found && res.path?.length && data) {
@@ -307,7 +313,52 @@ export default function Investigation({id}:{id:string}) {
         }
         setData({ ...data, nodes: newNodes, edges: newEdges });
         setTab('graph');
-        notify(`Shortest path found: ${res.hops} hops via ${algo.toUpperCase()} (${res.traversalTimeMs}ms)`);
+        notify(res.explanation || `Shortest path found: ${res.hops} hops via ${algo.toUpperCase()} (${res.traversalTimeMs}ms)`);
+      } else if (algo === 'bfs' && (res.visitedNodes || res.reachableNodes)?.length && data) {
+        const visited = res.visitedNodes || res.reachableNodes || [];
+        const newNodes: GraphNode[] = [...data.nodes];
+        const newEdges: GraphEdge[] = [...data.edges];
+        for (const item of visited) {
+          if (!newNodes.some(n => n.id === item.txId)) {
+            newNodes.push({
+              id: item.txId,
+              address: `tx:${item.txId}`,
+              label: `Tx ${item.txId}`,
+              type: item.label === 'illicit' || (item.riskScore && item.riskScore >= 70) ? 'suspect' : 'intermediary',
+              chain: 'Bitcoin',
+              balance: 0,
+              riskScore: item.riskScore || (item.label === 'illicit' ? 90 : 30),
+              entity: `BFS Level ${item.depth}`,
+              cluster: `TimeStep ${item.timeStep ?? 1}`,
+              firstSeen: '',
+              lastSeen: '',
+              incomingCount: 1,
+              outgoingCount: 0,
+              behavior: [`BFS depth ${item.depth}`],
+              evidenceIds: [],
+              x: 180 + item.depth * 220,
+              y: 120 + (newNodes.length % 5) * 60
+            });
+          }
+          if (item.parentTxId) {
+            if (!newEdges.some(e => e.source === item.parentTxId && e.target === item.txId)) {
+              newEdges.push({
+                id: `BFS-${item.parentTxId}-${item.txId}`,
+                source: item.parentTxId,
+                target: item.txId,
+                amount: 1,
+                timestamp: new Date().toISOString(),
+                hash: `${item.parentTxId}->${item.txId}`,
+                chain: 'Bitcoin',
+                asset: 'BTC',
+                highlighted: true
+              });
+            }
+          }
+        }
+        setData({ ...data, nodes: newNodes, edges: newEdges });
+        setTab('graph');
+        notify(res.explanation || `BFS explored ${visited.length} transactions (${res.traversalTimeMs}ms)`);
       } else {
         notify(res.explanation || 'No directed path found within traversal limit.', 'info');
       }

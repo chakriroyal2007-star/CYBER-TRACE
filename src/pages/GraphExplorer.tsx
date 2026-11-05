@@ -18,6 +18,7 @@ interface NodeData {
   riskScore: number;
   inDegree: number;
   outDegree: number;
+  depth?: number;
   isCenter?: boolean;
   x?: number;
   y?: number;
@@ -167,8 +168,15 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
       const center = res.nodes.find((n: any) => n.id === txId) || res.nodes[0];
       setSelectedNode(center);
       setSourceTx(txId);
-      const other = res.nodes.find((n: any) => n.id !== txId);
-      if (other) setTargetTx(other.id);
+
+      // Select first reachable outgoing neighbor as default target
+      const outEdge = res.edges.find((e: any) => e.source === txId);
+      if (outEdge) {
+        setTargetTx(outEdge.target);
+      } else {
+        const other = res.nodes.find((n: any) => n.id !== txId);
+        if (other) setTargetTx(other.id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to retrieve transaction graph.');
     } finally {
@@ -182,16 +190,109 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
     loadGraph(currentTxId);
   }, [currentTxId]);
 
+  // Reachable downstream targets from sourceTx within the current graph
+  const downstreamTargets = useMemo(() => {
+    const list: { id: string; hops: number; label: string; risk: number }[] = [];
+    const seen = new Set<string>([sourceTx]);
+    const queue: { id: string; d: number }[] = [{ id: sourceTx, d: 0 }];
+
+    while (queue.length > 0) {
+      const { id, d } = queue.shift()!;
+      if (d > 0) {
+        const node = nodes.find(n => n.id === id);
+        list.push({
+          id,
+          hops: d,
+          label: node?.knownLabel || 'unknown',
+          risk: node?.riskScore ?? 50
+        });
+      }
+      if (d < 5) {
+        for (const e of edges.filter(e => e.source === id)) {
+          if (!seen.has(e.target)) {
+            seen.add(e.target);
+            queue.push({ id: e.target, d: d + 1 });
+          }
+        }
+      }
+    }
+    return list;
+  }, [sourceTx, edges, nodes]);
+
   // Compute Layout for Nodes
   const layout = useMemo(() => {
     if (!nodes.length) return { nodes: [], map: new Map<string, NodeData & { x: number; y: number }>() };
 
+    const arranged: (NodeData & { x: number; y: number })[] = [];
+    const map = new Map<string, NodeData & { x: number; y: number }>();
+
+    // 1. If Dijkstra or BFS found a directed path of >= 2 nodes, arrange the path horizontally
+    if (pathResult?.path && pathResult.path.length > 1) {
+      const pathSet = new Set(pathResult.path);
+      const pathNodes = pathResult.path.map((pid: string) => nodes.find(n => n.id === pid) || {
+        id: pid,
+        label: `Tx ${pid}`,
+        timeStep: null,
+        knownLabel: 'unknown' as const,
+        predictedClass: 'licit',
+        probability: 0.5,
+        riskScore: 50,
+        inDegree: 1,
+        outDegree: 1
+      });
+
+      const totalHops = pathNodes.length - 1;
+      pathNodes.forEach((n: any, idx: number) => {
+        const x = 160 + (idx / Math.max(1, totalHops)) * 720;
+        const y = 220;
+        arranged.push({ ...n, x, y, isCenter: idx === 0 });
+      });
+
+      // Place other non-path nodes above and below the path line
+      const nonPathNodes = nodes.filter(n => !pathSet.has(n.id));
+      nonPathNodes.forEach((n, idx) => {
+        const isTop = idx % 2 === 0;
+        const col = Math.floor(idx / 2);
+        arranged.push({
+          ...n,
+          x: 140 + (col % 6) * 150,
+          y: isTop ? Math.max(40, 90 - Math.floor(col / 6) * 60) : Math.min(400, 340 + Math.floor(col / 6) * 60)
+        });
+      });
+
+      arranged.forEach(n => map.set(n.id, n));
+      return { nodes: arranged, map };
+    }
+
+    // 2. If BFS downstream exploration without single target (tree layout)
+    if (pathResult?.algo === 'bfs' && pathResult.visitedNodes?.length > 1) {
+      const depthGroups = new Map<number, NodeData[]>();
+      nodes.forEach(n => {
+        const v = pathResult.visitedNodes.find((vn: any) => vn.txId === n.id);
+        const d = v ? v.depth : (n.id === sourceTx ? 0 : 1);
+        if (!depthGroups.has(d)) depthGroups.set(d, []);
+        depthGroups.get(d)!.push(n);
+      });
+
+      const maxD = Math.max(...Array.from(depthGroups.keys()), 1);
+      depthGroups.forEach((groupNodes, depth) => {
+        const x = 140 + (depth / Math.max(1, maxD)) * 760;
+        groupNodes.forEach((n, idx) => {
+          const step = 340 / Math.max(groupNodes.length + 1, 2);
+          const y = 50 + (idx + 1) * step;
+          arranged.push({ ...n, x, y, isCenter: depth === 0 });
+        });
+      });
+
+      arranged.forEach(n => map.set(n.id, n));
+      return { nodes: arranged, map };
+    }
+
+    // 3. Default Center + Counterparty Neighbor Layout
     const centerNode = nodes.find(n => n.id === currentTxId) || nodes[0];
     const incomingIds = new Set(edges.filter(e => e.target === centerNode.id).map(e => e.source));
     const outgoingIds = new Set(edges.filter(e => e.source === centerNode.id).map(e => e.target));
     const otherNodes = nodes.filter(n => n.id !== centerNode.id && !incomingIds.has(n.id) && !outgoingIds.has(n.id));
-
-    const arranged: (NodeData & { x: number; y: number })[] = [];
 
     // Center node in middle
     arranged.push({ ...centerNode, x: 525, y: 220, isCenter: true });
@@ -220,19 +321,24 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
       });
     });
 
-    const map = new Map<string, NodeData & { x: number; y: number }>();
     arranged.forEach(n => map.set(n.id, n));
     return { nodes: arranged, map };
-  }, [nodes, edges, currentTxId]);
+  }, [nodes, edges, currentTxId, pathResult, sourceTx]);
 
   // Dijkstra Shortest Path execution
-  const handleRunDijkstra = async () => {
-    if (!sourceTx.trim() || !targetTx.trim() || algoRunning) return;
+  const handleRunDijkstra = async (overrideTarget?: string, overrideWeight?: 'hop' | 'time' | 'risk') => {
+    const tgt = (overrideTarget || targetTx).trim();
+    const wt = overrideWeight || weightType;
+    if (!sourceTx.trim() || !tgt || algoRunning) return;
     setAlgoRunning(true);
     setPathResult(null);
     try {
-      const res = await api(`/analytics/dijkstra?start=${encodeURIComponent(sourceTx.trim())}&target=${encodeURIComponent(targetTx.trim())}&weight=${weightType}`);
-      setPathResult(res);
+      const res = await api(`/analytics/dijkstra?start=${encodeURIComponent(sourceTx.trim())}&target=${encodeURIComponent(tgt)}&weight=${wt}`);
+      setPathResult({
+        ...res,
+        algo: 'dijkstra',
+        chosenWeight: wt
+      });
 
       if (res.found && res.path?.length) {
         // Highlight path edges in graph
@@ -284,9 +390,9 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
 
         setNodes(newNodes);
         setEdges(updatedEdges);
-        notify(`Shortest path found: ${res.hops} hops | Cost: ${res.cumulativeCost} (${res.traversalTimeMs}ms)`);
+        notify(res.explanation || `Shortest path found: ${res.hops} hops | Cost: ${res.cumulativeCost} (${res.traversalTimeMs}ms)`);
       } else {
-        notify(res.explanation || 'No path found between these transactions.', 'info');
+        notify(res.explanation || 'No directed path found between these transactions.', 'info');
       }
     } catch (err) {
       notify(err instanceof Error ? err.message : 'Dijkstra execution failed.', 'error');
@@ -301,30 +407,35 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
     setAlgoRunning(true);
     setPathResult(null);
     try {
-      const res = await api(`/analytics/bfs?start=${encodeURIComponent(sourceTx.trim())}&depth=${bfsDepth}&limit=40`);
+      const url = targetTx.trim()
+        ? `/analytics/bfs?start=${encodeURIComponent(sourceTx.trim())}&target=${encodeURIComponent(targetTx.trim())}&depth=${bfsDepth}&limit=50`
+        : `/analytics/bfs?start=${encodeURIComponent(sourceTx.trim())}&depth=${bfsDepth}&limit=50`;
+      const res = await api(url);
       setPathResult({
         ...res,
-        explanation: `BFS discovered ${res.visitedNodesCount} reachable transactions within depth limit ${bfsDepth}.`
+        algo: 'bfs'
       });
 
-      if (res.reachableNodes?.length) {
+      const visited = res.visitedNodes || res.reachableNodes || [];
+      if (visited.length > 0) {
         // Expand nodes and edges
         const existingNodeIds = new Set(nodes.map(n => n.id));
         const newNodes = [...nodes];
         const newEdges = [...edges];
 
-        for (const item of res.reachableNodes) {
+        for (const item of visited) {
           if (!existingNodeIds.has(item.txId)) {
             newNodes.push({
               id: item.txId,
               label: `Tx ${item.txId}`,
               timeStep: item.timeStep,
               knownLabel: item.label || 'unknown',
-              predictedClass: item.label === 'illicit' ? 'illicit' : 'licit',
+              predictedClass: item.predictedClass || (item.label === 'illicit' ? 'illicit' : 'licit'),
               probability: item.label === 'illicit' ? 0.9 : 0.2,
               riskScore: item.riskScore || (item.label === 'illicit' ? 90 : 30),
               inDegree: 1,
-              outDegree: 0
+              outDegree: 0,
+              depth: item.depth
             });
             existingNodeIds.add(item.txId);
           }
@@ -340,9 +451,25 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
             }
           }
         }
+
+        // If BFS path was found to target, highlight that specific path
+        if (res.found && res.path?.length > 1) {
+          const pathSet = new Set<string>();
+          for (let i = 0; i < res.path.length - 1; i++) {
+            pathSet.add(`${res.path[i]}->${res.path[i + 1]}`);
+          }
+          for (const e of newEdges) {
+            if (pathSet.has(`${e.source}->${e.target}`)) {
+              e.highlighted = true;
+            }
+          }
+        }
+
         setNodes(newNodes);
         setEdges(newEdges);
-        notify(`BFS complete: ${res.visitedNodesCount} transactions explored (${res.traversalTimeMs}ms)`);
+        notify(res.explanation || `BFS complete: ${visited.length} transactions explored (${res.traversalTimeMs}ms)`);
+      } else {
+        notify(res.explanation || 'No reachable transactions discovered.', 'info');
       }
     } catch (err) {
       notify(err instanceof Error ? err.message : 'BFS traversal failed.', 'error');
@@ -514,9 +641,9 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
             value={weightType}
             onChange={e => setWeightType(e.target.value as any)}
           >
-            <option value="hop">Hop Count (Uniform = 1)</option>
-            <option value="time">Time Step Gap ($\Delta t$)</option>
-            <option value="risk">Risk Traversal Cost</option>
+            <option value="hop">Hop Count (Uniform = 1.0)</option>
+            <option value="time">Time Step Gap (|Δt| + 1.0)</option>
+            <option value="risk">Risk-Weighted (Prioritize High Risk)</option>
           </select>
         </div>
 
@@ -525,7 +652,7 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
           className="ws-btn primary"
           style={{ padding: '4px 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
           disabled={algoRunning}
-          onClick={handleRunDijkstra}
+          onClick={() => handleRunDijkstra()}
         >
           {algoRunning ? <LoaderCircle size={12} className="ws-spin" /> : <Play size={11} />}
           <strong>Run Dijkstra (Priority Queue)</strong>
@@ -558,8 +685,37 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
         {pathResult && (
           <div style={{ marginLeft: 'auto', background: pathResult.found ? 'rgba(79, 215, 193, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `1px solid ${pathResult.found ? '#4fd7c1' : '#ef4444'}`, borderRadius: '6px', padding: '3px 10px', fontSize: '11px', color: pathResult.found ? '#4fd7c1' : '#fca5a5' }}>
             {pathResult.found
-              ? `✓ Shortest Path Found: ${pathResult.hops} hops | Cost: ${pathResult.cumulativeCost} (${pathResult.traversalTimeMs}ms)`
+              ? `✓ ${pathResult.algo === 'bfs' ? 'BFS' : 'Dijkstra'}: ${pathResult.hops} hops | Cost: ${pathResult.cumulativeCost ?? pathResult.hops} (${pathResult.traversalTimeMs}ms)`
               : pathResult.explanation || 'No directed path found within bounds'}
+          </div>
+        )}
+
+        {/* Reachable Targets Quick Select Bar */}
+        {downstreamTargets.length > 0 && (
+          <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid #16263b', fontSize: '11px' }}>
+            <span style={{ color: '#7a92ad', fontWeight: 600 }}>🎯 REACHABLE TARGETS:</span>
+            {downstreamTargets.slice(0, 5).map(opt => (
+              <button
+                key={opt.id}
+                className="ws-btn"
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  background: targetTx === opt.id ? '#1e3852' : '#101d2d',
+                  borderColor: targetTx === opt.id ? '#4fd7c1' : '#23374e',
+                  color: targetTx === opt.id ? '#4fd7c1' : '#cbd5e1'
+                }}
+                onClick={() => {
+                  setTargetTx(opt.id);
+                  handleRunDijkstra(opt.id);
+                }}
+                title={`Click to set target and trace path from ${sourceTx} to ${opt.id}`}
+              >
+                <span>{opt.label === 'illicit' ? '🔴' : opt.label === 'licit' ? '🟢' : '⚪'}</span>
+                <strong>Tx {opt.id}</strong>
+                <span style={{ color: '#6bb6d8', fontSize: '10px' }}>({opt.hops} hop{opt.hops > 1 ? 's' : ''})</span>
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -830,6 +986,165 @@ export default function GraphExplorer({ initialTxId = '232629023' }: { initialTx
           </div>
         )}
       </div>
+
+      {/* 5. Algorithm Forensic Output & Route Cost Analysis Panel */}
+      {pathResult && (
+        <div className="ws-card" style={{ marginTop: '1rem', background: '#0b1624', border: '1px solid #1c324b', padding: '1.2rem', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem', borderBottom: '1px solid #1c324b', paddingBottom: '0.8rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ background: '#16314f', padding: '6px', borderRadius: '6px', color: '#4fd7c1', display: 'flex' }}>
+                <Zap size={18} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, color: '#fff', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {pathResult.algo === 'dijkstra' ? "Dijkstra's Shortest Path Traversal" : 'Breadth-First Search (BFS) Traversal'}
+                  <span style={{ fontSize: '11px', background: pathResult.found ? 'rgba(79, 215, 193, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: pathResult.found ? '#4fd7c1' : '#f87171', padding: '2px 8px', borderRadius: '4px' }}>
+                    {pathResult.found ? 'ROUTE VERIFIED' : 'NO PATH FOUND'}
+                  </span>
+                </h3>
+                <p style={{ margin: '2px 0 0 0', color: '#8ca1b8', fontSize: '12px' }}>
+                  {pathResult.explanation}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <div style={{ background: '#112236', padding: '4px 10px', borderRadius: '6px', fontSize: '11px' }}>
+                <span style={{ color: '#7a92ad', display: 'block', fontSize: '10px' }}>METRIC WEIGHT</span>
+                <strong style={{ color: '#4fd7c1' }}>
+                  {pathResult.chosenWeight === 'hop' ? 'Hop Count (Uniform = 1.0)' : pathResult.chosenWeight === 'time' ? 'Time Step Gap (|Δt| + 1.0)' : pathResult.chosenWeight === 'risk' ? 'Inverse Risk Penalty' : 'BFS Shortest Hops'}
+                </strong>
+              </div>
+              <div style={{ background: '#112236', padding: '4px 10px', borderRadius: '6px', fontSize: '11px' }}>
+                <span style={{ color: '#7a92ad', display: 'block', fontSize: '10px' }}>TOTAL HOPS</span>
+                <strong style={{ color: '#fff' }}>{pathResult.hops ?? 0} hops</strong>
+              </div>
+              {pathResult.cumulativeCost !== undefined && (
+                <div style={{ background: '#112236', padding: '4px 10px', borderRadius: '6px', fontSize: '11px' }}>
+                  <span style={{ color: '#7a92ad', display: 'block', fontSize: '10px' }}>CUMULATIVE COST</span>
+                  <strong style={{ color: '#fbbf24' }}>{pathResult.cumulativeCost}</strong>
+                </div>
+              )}
+              <div style={{ background: '#112236', padding: '4px 10px', borderRadius: '6px', fontSize: '11px' }}>
+                <span style={{ color: '#7a92ad', display: 'block', fontSize: '10px' }}>TIME / COMPLEXITY</span>
+                <strong style={{ color: '#fff' }}>{pathResult.traversalTimeMs}ms · {pathResult.evidence?.timeComplexity || 'O(V + E)'}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Hop-by-Hop Breakdown Table for Path Results */}
+          {pathResult.hopBreakdown && pathResult.hopBreakdown.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: '#fff', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Route size={14} style={{ color: '#4fd7c1' }} />
+                Hop-by-Hop Cost &amp; Forensic Parameter Breakdown
+              </h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="ws-table" style={{ width: '100%', fontSize: '12px' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Hop #</th>
+                      <th style={{ textAlign: 'left' }}>Origin Transaction</th>
+                      <th style={{ textAlign: 'left' }}>Destination Transaction</th>
+                      <th style={{ textAlign: 'right' }}>Edge Weight Cost</th>
+                      <th style={{ textAlign: 'right' }}>Cumulative Cost</th>
+                      <th style={{ textAlign: 'center' }}>TimeStep Sequence</th>
+                      <th style={{ textAlign: 'center' }}>Destination Risk &amp; Ground Truth</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pathResult.hopBreakdown.map((hop: any) => (
+                      <tr key={hop.hopNumber}>
+                        <td><strong style={{ color: '#4fd7c1' }}>Hop {hop.hopNumber}</strong></td>
+                        <td>
+                          <button className="ws-btn" style={{ padding: '2px 6px', fontSize: '11px', fontFamily: 'monospace' }} onClick={() => setCurrentTxId(hop.fromTx)}>
+                            Tx {hop.fromTx}
+                          </button>
+                        </td>
+                        <td>
+                          <button className="ws-btn" style={{ padding: '2px 6px', fontSize: '11px', fontFamily: 'monospace' }} onClick={() => setCurrentTxId(hop.toTx)}>
+                            Tx {hop.toTx}
+                          </button>
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#fbbf24', fontWeight: 600 }}>
+                          +{hop.edgeCost}
+                        </td>
+                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#fff', fontWeight: 700 }}>
+                          {hop.cumulativeCost}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span style={{ background: '#122030', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
+                            Step {hop.fromTimeStep} → Step {hop.toTimeStep} (Δt = {hop.timeStepGap})
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span style={{
+                            background: hop.toRiskScore >= 70 ? 'rgba(239, 68, 68, 0.2)' : hop.toRiskScore >= 40 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                            color: hop.toRiskScore >= 70 ? '#f87171' : hop.toRiskScore >= 40 ? '#fbbf24' : '#34d399',
+                            padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600
+                          }}>
+                            Risk {hop.toRiskScore}/100 · {hop.toLabel.toUpperCase()}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* BFS Exploration Breakdown Card */}
+          {pathResult.algo === 'bfs' && pathResult.visitedNodes && (
+            <div style={{ marginTop: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.6rem', marginBottom: '0.8rem' }}>
+                <div style={{ background: '#112236', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#7a92ad', fontSize: '10px' }}>EXPLORED NODES</span>
+                  <strong style={{ color: '#fff', fontSize: '15px', display: 'block' }}>{pathResult.visitedCount}</strong>
+                </div>
+                <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#f87171', fontSize: '10px' }}>ILLICIT / HIGH RISK</span>
+                  <strong style={{ color: '#fca5a5', fontSize: '15px', display: 'block' }}>{pathResult.illicitCount ?? 0}</strong>
+                </div>
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#34d399', fontSize: '10px' }}>LICIT TRANSFERS</span>
+                  <strong style={{ color: '#6ee7b7', fontSize: '15px', display: 'block' }}>{pathResult.licitCount ?? 0}</strong>
+                </div>
+                <div style={{ background: '#112236', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#7a92ad', fontSize: '10px' }}>UNKNOWN RESEARCH NODES</span>
+                  <strong style={{ color: '#94a3b8', fontSize: '15px', display: 'block' }}>{pathResult.unknownCount ?? 0}</strong>
+                </div>
+              </div>
+
+              <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {pathResult.visitedNodes.map((vn: any) => (
+                  <button
+                    key={vn.txId}
+                    className="ws-btn"
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: vn.label === 'illicit' || (vn.riskScore && vn.riskScore >= 70) ? 'rgba(239, 68, 68, 0.15)' : '#0d1c2d',
+                      borderColor: vn.label === 'illicit' || (vn.riskScore && vn.riskScore >= 70) ? 'rgba(239, 68, 68, 0.4)' : '#1e334c'
+                    }}
+                    onClick={() => {
+                      setCurrentTxId(vn.txId);
+                      setSelectedNode(nodes.find(n => n.id === vn.txId) || null);
+                    }}
+                  >
+                    <span>{vn.label === 'illicit' || (vn.riskScore && vn.riskScore >= 70) ? '🔴' : vn.label === 'licit' ? '🟢' : '⚪'}</span>
+                    <span style={{ fontFamily: 'monospace' }}>Tx {vn.txId}</span>
+                    <span style={{ color: '#7a92ad', fontSize: '10px' }}>(Depth {vn.depth})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Top Suspicious Modal */}
       {showTopModal && (
