@@ -917,15 +917,16 @@ export class Store {
     const incidentType = data.incidentType || 'Cryptocurrency Fraud';
     const incidentDate = data.incidentDate || stamp;
     const description = data.description || '';
-    const reportedLoss = Number(data.reportedLoss || data.victimLoss || 0);
+    const reportedLoss = Number(data.reportedLoss || data.reportedAmount || data.victimLoss || 0);
     const currency = data.currency || 'INR';
-    const chain = data.chain || 'Ethereum';
-    const reportedWallet = data.reportedWallet || '';
+    const chain = data.chain || data.blockchainNetwork || 'Ethereum';
+    const reportedWallet = data.reportedWallet || data.suspectWallet || '';
     const transactionHash = data.transactionHash || '';
     const priority = data.priority || (reportedLoss >= 500000 ? 'High' : 'Medium');
 
     const complaintRecord = {
-      id,
+      id: caseId,
+      uuid: id,
       caseId,
       reporterId,
       reporterName,
@@ -934,9 +935,12 @@ export class Store {
       incidentDate,
       description,
       reportedLoss,
+      reportedAmount: reportedLoss,
       currency,
       chain,
+      blockchainNetwork: chain,
       reportedWallet,
+      suspectWallet: reportedWallet,
       transactionHash,
       status: 'Submitted',
       assignedOfficerId: null,
@@ -1036,7 +1040,8 @@ export class Store {
 
     const rows = this.db.prepare(sql).all(...params);
     return rows.map(r => ({
-      id: r.id,
+      id: r.case_id,
+      uuid: r.id,
       caseId: r.case_id,
       reporterId: r.reporter_id,
       reporterName: r.reporter_name,
@@ -1045,9 +1050,12 @@ export class Store {
       incidentDate: r.incident_date,
       description: r.description,
       reportedLoss: r.reported_loss,
+      reportedAmount: r.reported_loss,
       currency: r.currency,
       chain: r.chain,
+      blockchainNetwork: r.chain,
       reportedWallet: r.reported_wallet,
+      suspectWallet: r.reported_wallet,
       transactionHash: r.transaction_hash,
       status: r.status,
       assignedOfficerId: r.assigned_officer_id,
@@ -1068,7 +1076,8 @@ export class Store {
     const updates = this.listCaseUpdates(caseId, includeInternal);
 
     return {
-      id: row.id,
+      id: row.case_id,
+      uuid: row.id,
       caseId: row.case_id,
       reporterId: row.reporter_id,
       reporterName: row.reporter_name,
@@ -1077,9 +1086,12 @@ export class Store {
       incidentDate: row.incident_date,
       description: row.description,
       reportedLoss: row.reported_loss,
+      reportedAmount: row.reported_loss,
       currency: row.currency,
       chain: row.chain,
+      blockchainNetwork: row.chain,
       reportedWallet: row.reported_wallet,
+      suspectWallet: row.reported_wallet,
       transactionHash: row.transaction_hash,
       status: row.status,
       assignedOfficerId: row.assigned_officer_id,

@@ -57,12 +57,17 @@ export function IncomingReportsPage() {
   const filtered = complaints.filter(c => {
     if (!search) return true;
     const term = search.toLowerCase();
+    const caseId = (c.caseId || c.id || '').toLowerCase();
+    const reporterName = (c.reporterName || '').toLowerCase();
+    const incidentType = (c.incidentType || '').toLowerCase();
+    const wallet = (c.reportedWallet || c.suspectWallet || '').toLowerCase();
+    const tx = (c.transactionHash || '').toLowerCase();
     return (
-      c.id.toLowerCase().includes(term) ||
-      (c.reporterName && c.reporterName.toLowerCase().includes(term)) ||
-      (c.incidentType && c.incidentType.toLowerCase().includes(term)) ||
-      (c.suspectWallet && c.suspectWallet.toLowerCase().includes(term)) ||
-      (c.transactionHash && c.transactionHash.toLowerCase().includes(term))
+      caseId.includes(term) ||
+      reporterName.includes(term) ||
+      incidentType.includes(term) ||
+      wallet.includes(term) ||
+      tx.includes(term)
     );
   });
 
@@ -172,63 +177,66 @@ export function IncomingReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(c => (
-                  <tr
-                    key={c.id}
-                    style={{ borderBottom: '1px solid #122133', cursor: 'pointer', transition: 'background 0.15s' }}
-                    onClick={() => navigate(`/app/case-review/${c.id}`)}
-                  >
-                    <td style={{ padding: '12px 16px' }}>
-                      <strong style={{ color: '#38bdf8' }}>{c.id}</strong>
-                      {c.priority && (
-                        <span style={{ marginLeft: 6, fontSize: 9.5, padding: '2px 5px', borderRadius: 3, background: '#1e293b', color: '#94a3b8' }}>
-                          {c.priority.toUpperCase()}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>{c.incidentType}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 600, color: '#fff' }}>{c.reporterName}</div>
-                      <div style={{ fontSize: 10.5, color: '#64748b' }}>{c.reporterEmail}</div>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontWeight: 600, color: '#f87171' }}>
-                      {money(c.reportedAmount || 0)}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <Badge variant="secondary">{c.blockchainNetwork || 'BTC'}</Badge>
-                      {c.suspectWallet && (
-                        <div style={{ fontFamily: 'monospace', fontSize: 10.5, color: '#94a3b8', marginTop: 4 }}>
-                          {shortAddress(c.suspectWallet)}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <StatusBadge status={c.status} />
-                    </td>
-                    <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>
-                      {c.assignedOfficerName ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <UserCheck size={13} color="#38bdf8" /> {c.assignedOfficerName}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#64748b', fontStyle: 'italic' }}>Unassigned</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px', color: '#64748b' }}>{formatTime(c.createdAt)}</td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                      <Button
-                        variant="secondary"
-                        style={{ padding: '4px 10px', fontSize: 11.5 }}
-                        onClick={(e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          navigate(`/app/case-review/${c.id}`);
-                        }}
-                      >
-                        Review Dossier <ArrowRight size={12} />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map(c => {
+                  const targetCaseId = c.caseId || c.id;
+                  return (
+                    <tr
+                      key={targetCaseId}
+                      style={{ borderBottom: '1px solid #122133', cursor: 'pointer', transition: 'background 0.15s' }}
+                      onClick={() => navigate(`/app/case-review/${targetCaseId}`)}
+                    >
+                      <td style={{ padding: '12px 16px' }}>
+                        <strong style={{ color: '#38bdf8' }}>{targetCaseId}</strong>
+                        {c.priority && (
+                          <span style={{ marginLeft: 6, fontSize: 9.5, padding: '2px 5px', borderRadius: 3, background: '#1e293b', color: '#94a3b8' }}>
+                            {c.priority.toUpperCase()}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>{c.incidentType}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: '#fff' }}>{c.reporterName}</div>
+                        <div style={{ fontSize: 10.5, color: '#64748b' }}>{c.reporterEmail}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontWeight: 600, color: '#f87171' }}>
+                        {money(c.reportedLoss || c.reportedAmount || 0)}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <Badge variant="secondary">{c.chain || c.blockchainNetwork || 'Bitcoin'}</Badge>
+                        {(c.reportedWallet || c.suspectWallet) && (
+                          <div style={{ fontFamily: 'monospace', fontSize: 10.5, color: '#94a3b8', marginTop: 4 }}>
+                            {shortAddress(c.reportedWallet || c.suspectWallet)}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <StatusBadge status={c.status} />
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#cbd5e1' }}>
+                        {c.assignedOfficerName ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <UserCheck size={13} color="#38bdf8" /> {c.assignedOfficerName}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#64748b', fontStyle: 'italic' }}>Unassigned</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#64748b' }}>{formatTime(c.createdAt)}</td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <Button
+                          variant="secondary"
+                          style={{ padding: '4px 10px', fontSize: 11.5 }}
+                          onClick={(e: React.MouseEvent) => {
+                            e.stopPropagation();
+                            navigate(`/app/case-review/${targetCaseId}`);
+                          }}
+                        >
+                          Review Dossier <ArrowRight size={12} />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -364,6 +372,7 @@ export function CaseReviewPage({ id }: { id: string }) {
   };
 
   const isTerminal = ['Resolved', 'Closed', 'Rejected'].includes(complaint.status);
+  const displayCaseId = complaint.caseId || complaint.id;
 
   return (
     <div style={{ padding: '24px 32px' }}>
@@ -375,12 +384,26 @@ export function CaseReviewPage({ id }: { id: string }) {
         >
           ← Back to Incoming Reports
         </button>
-        <span style={{ fontSize: 11, color: '#64748b' }}>Case Dossier: {complaint.id}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 11, color: '#64748b' }}>Case Dossier: {displayCaseId}</span>
+          <button
+            onClick={async () => {
+              try { await api('/auth/demo-reporter', { method: 'POST', body: '{}' }); } catch {}
+              navigate(`/reporter/cases/${displayCaseId}`);
+            }}
+            style={{
+              background: '#0a1726', border: '1px solid #1a2d42', color: '#38bdf8',
+              padding: '4px 8px', borderRadius: 4, fontSize: 11, cursor: 'pointer'
+            }}
+          >
+            View as Citizen Reporter
+          </button>
+        </div>
       </div>
 
       <PageHeader
         eyebrow="CBI OFFICER CASE INVESTIGATION"
-        title={`Case Record: ${complaint.id}`}
+        title={`Case Record: ${displayCaseId}`}
         description={`${complaint.incidentType} reported by ${complaint.reporterName} on ${formatTime(complaint.createdAt)}`}
         action={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -470,7 +493,7 @@ export function CaseReviewPage({ id }: { id: string }) {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <span style={{ fontSize: 11, color: '#94a3b8' }}>Reported Loss</span>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#f87171' }}>{money(complaint.reportedAmount || 0)}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#f87171' }}>{money(complaint.reportedLoss || complaint.reportedAmount || 0)}</div>
               </div>
             </div>
 
@@ -506,12 +529,12 @@ export function CaseReviewPage({ id }: { id: string }) {
               <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                   <span style={{ color: '#94a3b8' }}>Blockchain Network:</span>
-                  <Badge variant="secondary">{complaint.blockchainNetwork || 'Bitcoin'}</Badge>
+                  <Badge variant="secondary">{complaint.chain || complaint.blockchainNetwork || 'Bitcoin'}</Badge>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
                   <span style={{ color: '#94a3b8' }}>Suspect Wallet:</span>
-                  <span style={{ fontFamily: 'monospace', color: '#cbd5e1' }}>{complaint.suspectWallet || 'None reported'}</span>
+                  <span style={{ fontFamily: 'monospace', color: '#cbd5e1' }}>{complaint.reportedWallet || complaint.suspectWallet || 'None reported'}</span>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
@@ -831,3 +854,4 @@ export function CaseReviewPage({ id }: { id: string }) {
     </div>
   );
 }
+

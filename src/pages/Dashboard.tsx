@@ -90,21 +90,24 @@ export default function Dashboard(){
               </tr>
             </thead>
             <tbody>
-              {incomingComplaints.map(c => (
-                <tr key={c.id} style={{borderBottom:'1px solid #132233',cursor:'pointer'}} onClick={()=>navigate(`/app/case-review/${c.id}`)}>
-                  <td style={{padding:'8px 12px'}}><strong style={{color:'#38bdf8'}}>{c.id}</strong></td>
-                  <td style={{padding:'8px 12px',color:'#cbd5e1'}}>{c.incidentType}</td>
-                  <td style={{padding:'8px 12px',color:'#fff'}}>{c.reporterName}</td>
-                  <td style={{padding:'8px 12px',color:'#f87171',fontWeight:600}}>{money(c.reportedAmount||0)}</td>
-                  <td style={{padding:'8px 12px'}}><StatusBadge status={c.status}/></td>
-                  <td style={{padding:'8px 12px',color:'#64748b'}}>{formatTime(c.createdAt)}</td>
-                  <td style={{padding:'8px 12px',textAlign:'right'}}>
-                    <Button variant="secondary" style={{padding:'3px 8px',fontSize:11}} onClick={(e:any)=>{e.stopPropagation();navigate(`/app/case-review/${c.id}`)}}>
-                      Review Dossier <ArrowRight size={11}/>
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {incomingComplaints.map(c => {
+                const targetCaseId = c.caseId || c.id;
+                return (
+                  <tr key={targetCaseId} style={{borderBottom:'1px solid #132233',cursor:'pointer'}} onClick={()=>navigate(`/app/case-review/${targetCaseId}`)}>
+                    <td style={{padding:'8px 12px'}}><strong style={{color:'#38bdf8'}}>{targetCaseId}</strong></td>
+                    <td style={{padding:'8px 12px',color:'#cbd5e1'}}>{c.incidentType}</td>
+                    <td style={{padding:'8px 12px',color:'#fff'}}>{c.reporterName}</td>
+                    <td style={{padding:'8px 12px',color:'#f87171',fontWeight:600}}>{money(c.reportedLoss || c.reportedAmount || 0)}</td>
+                    <td style={{padding:'8px 12px'}}><StatusBadge status={c.status}/></td>
+                    <td style={{padding:'8px 12px',color:'#64748b'}}>{formatTime(c.createdAt)}</td>
+                    <td style={{padding:'8px 12px',textAlign:'right'}}>
+                      <Button variant="secondary" style={{padding:'3px 8px',fontSize:11}} onClick={(e:any)=>{e.stopPropagation();navigate(`/app/case-review/${targetCaseId}`)}}>
+                        Review Dossier <ArrowRight size={11}/>
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

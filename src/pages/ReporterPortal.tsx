@@ -244,6 +244,51 @@ export function SubmitComplaintPage() {
   const [attachments, setAttachments] = useState<any[]>([]);
   const [createdCase, setCreatedCase] = useState<any>(null);
 
+  const fillFictionalExample = () => {
+    setIncidentType('Investment Scam');
+    setIncidentDate('2026-10-24');
+    setReportedLoss('642000');
+    setCurrency('INR');
+    setChain('Bitcoin');
+    setReportedWallet('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa');
+    setTransactionHash('232629023');
+    setDescription('Victim was approached on WhatsApp with offers of automated cryptocurrency arbitrage yields. Instructed to transfer INR 6,42,000 worth of Bitcoin to the suspect wallet for pool staking. Victim was subsequently locked out and all withdrawals were blocked.');
+    setAttachments([
+      { name: 'whatsapp_chat_evidence.pdf', type: 'application/pdf', size: 142050, description: 'Exported chat transcript with fraudulent broker' },
+      { name: 'bank_transfer_receipt_utr.png', type: 'image/png', size: 284100, description: 'Bank transfer UTR confirmation for INR 642,000' }
+    ]);
+    toast('Fictional scam case pre-filled! Review and click Submit.', 'info');
+  };
+
+  const handleInstantSubmitFictional = async () => {
+    setBusy(true);
+    try {
+      const res = await api('/complaints', {
+        method: 'POST',
+        body: JSON.stringify({
+          incidentType: 'Investment Scam',
+          incidentDate: '2026-10-24',
+          reportedLoss: 642000,
+          currency: 'INR',
+          chain: 'Bitcoin',
+          reportedWallet: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+          transactionHash: '232629023',
+          description: 'Victim was approached on WhatsApp with offers of automated cryptocurrency arbitrage yields. Instructed to transfer INR 6,42,000 worth of Bitcoin to the suspect wallet for pool staking. Victim was subsequently locked out and all withdrawals were blocked.',
+          attachments: [
+            { name: 'whatsapp_chat_evidence.pdf', type: 'application/pdf', size: 142050, description: 'Exported chat transcript with fraudulent broker' },
+            { name: 'bank_transfer_receipt_utr.png', type: 'image/png', size: 284100, description: 'Bank transfer UTR confirmation for INR 642,000' }
+          ]
+        })
+      });
+      setCreatedCase(res);
+      toast('Fictional complaint registered immediately! Now accessible in CBI Officer queue.', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Submission failed', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || !files.length) return;
@@ -289,6 +334,16 @@ export function SubmitComplaintPage() {
   };
 
   if (createdCase) {
+    const targetCaseId = createdCase.caseId || createdCase.id;
+    const handleSwitchToOfficer = async () => {
+      try {
+        await api('/auth/demo-officer', { method: 'POST', body: '{}' });
+        navigate(`/app/case-review/${targetCaseId}`);
+      } catch {
+        navigate('/app/incoming');
+      }
+    };
+
     return (
       <div style={{ maxWidth: 640, margin: '40px auto', padding: 24 }}>
         <Card style={{ padding: 32, textAlign: 'center', border: '1px solid #10b981' }}>
@@ -296,14 +351,14 @@ export function SubmitComplaintPage() {
             <Check size={36} />
           </div>
           <h1 style={{ fontSize: 24, margin: '0 0 8px' }}>Complaint Successfully Filed</h1>
-          <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 24 }}>
-            Your cybercrime report has been formally registered with the Cyber Crime Investigation Division.
+          <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 20 }}>
+            Your cybercrime report has been formally registered and dispatched to the CBI Cyber Crime Investigation Division incoming queue.
           </p>
 
           <div style={{ background: '#0a1829', padding: 18, borderRadius: 8, border: '1px solid #1a2d42', margin: '0 0 24px', textAlign: 'left' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 11, color: '#64748b' }}>OFFICIAL CASE ID</span>
-              <strong style={{ fontSize: 16, color: '#38bdf8', fontFamily: 'monospace' }}>{createdCase.caseId}</strong>
+              <strong style={{ fontSize: 16, color: '#38bdf8', fontFamily: 'monospace' }}>{targetCaseId}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 11, color: '#64748b' }}>INCIDENT CATEGORY</span>
@@ -311,7 +366,7 @@ export function SubmitComplaintPage() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 11, color: '#64748b' }}>REPORTED AMOUNT</span>
-              <strong style={{ fontSize: 12 }}>{money(createdCase.reportedLoss)}</strong>
+              <strong style={{ fontSize: 12 }}>{money(createdCase.reportedLoss || createdCase.reportedAmount)}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 11, color: '#64748b' }}>INITIAL STATUS</span>
@@ -319,9 +374,14 @@ export function SubmitComplaintPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-            <Button variant="secondary" onClick={() => navigate('/reporter/cases')}>View All My Cases</Button>
-            <Button onClick={() => navigate(`/reporter/cases/${createdCase.caseId}`)}>Track Case Status <ArrowRight size={14} /></Button>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Button variant="secondary" onClick={() => navigate('/reporter/cases')}>View My Cases</Button>
+            <Button variant="secondary" onClick={() => navigate(`/reporter/cases/${targetCaseId}`)}>
+              Track as Citizen <ArrowRight size={14} />
+            </Button>
+            <Button onClick={handleSwitchToOfficer} style={{ background: '#087f94', color: '#fff', border: 'none' }}>
+              <ShieldCheck size={15} /> Switch to CBI Officer &amp; Review Case
+            </Button>
           </div>
         </Card>
       </div>
@@ -335,6 +395,38 @@ export function SubmitComplaintPage() {
         title="File a Cybercrime Complaint"
         description="Submit full details regarding cryptocurrency theft, investment fraud, ransomware, or phishing incidents."
       />
+
+      {/* Auto-Fill Banner for Quick Testing */}
+      <div style={{
+        background: 'linear-gradient(90deg, #091c2e 0%, #0c273e 100%)',
+        border: '1px solid #1a3c54',
+        borderRadius: 8,
+        padding: '14px 18px',
+        marginBottom: 20,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <strong style={{ color: '#fff', fontSize: 13 }}>Quick Testing &amp; Verification</strong>
+            <span style={{ background: '#087f94', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>1-CLICK DEMO</span>
+          </div>
+          <p style={{ margin: '3px 0 0', color: '#94a3b8', fontSize: 12 }}>
+            Fill a realistic cybercrime complaint (WhatsApp arbitrage scam, ₹6,42,000, Bitcoin tx #232629023) to test instant reflection in the CBI Officer queue.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button type="button" variant="secondary" onClick={fillFictionalExample} style={{ fontSize: 12, padding: '6px 12px' }}>
+            ⚡ Fill Fictional Scam Example
+          </Button>
+          <Button type="button" onClick={handleInstantSubmitFictional} disabled={busy} style={{ fontSize: 12, padding: '6px 14px', background: '#087f94' }}>
+            🚀 1-Click Submit &amp; Send to Officer
+          </Button>
+        </div>
+      </div>
 
       <Card style={{ padding: 28 }}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -751,3 +843,4 @@ export function CaseTrackingPage({ id }: { id: string }) {
     </div>
   );
 }
+

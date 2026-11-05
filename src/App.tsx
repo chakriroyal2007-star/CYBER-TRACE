@@ -291,7 +291,20 @@ export default function App() {
               </nav>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                onClick={async () => {
+                  try { await api('/auth/demo-officer', { method: 'POST', body: '{}' }); } catch { }
+                  navigate('/app/incoming');
+                }}
+                style={{
+                  background: '#087f94', color: '#fff', border: 'none',
+                  padding: '6px 12px', borderRadius: 6, fontSize: 11.5, fontWeight: 700,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                }}
+              >
+                <ShieldCheck size={14} /> Switch to CBI Officer View
+              </button>
               <Badge variant="info">CITIZEN COMPLAINANT</Badge>
               <div style={{ fontSize: 12, color: '#cbd5e1' }}>
                 <strong>{user?.name || 'Citizen'}</strong>
@@ -447,6 +460,19 @@ export default function App() {
                 <Search size={15} />
                 <span>Search intelligence…</span>
                 <kbd>⌘ K</kbd>
+              </button>
+              <button
+                onClick={async () => {
+                  try { await api('/auth/demo-reporter', { method: 'POST', body: '{}' }); } catch { }
+                  navigate('/reporter/dashboard');
+                }}
+                style={{
+                  background: '#0a1624', border: '1px solid #1a324a', color: '#38bdf8',
+                  padding: '5px 11px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                }}
+              >
+                <UserCheck size={14} /> Citizen Portal
               </button>
               <Badge variant={user?.role === 'officer' || user?.role === 'official-investigator' ? 'success' : 'info'}>
                 {user?.role === 'officer' || user?.role === 'official-investigator' ? 'CBI OFFICER ACCESS' : 'DEMO DATA'}
