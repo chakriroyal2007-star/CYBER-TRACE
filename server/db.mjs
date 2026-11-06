@@ -349,6 +349,76 @@ export class Store {
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
+    if (!this.db.prepare('SELECT version FROM schema_migrations WHERE version=6').get()) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS watchlists (
+            id TEXT PRIMARY KEY,
+            case_id TEXT,
+            officer_id TEXT NOT NULL,
+            chain TEXT NOT NULL,
+            address TEXT NOT NULL,
+            label TEXT,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            last_checked_at TEXT,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS watch_officer ON watchlists(officer_id);
+          CREATE INDEX IF NOT EXISTS watch_addr ON watchlists(address);
+
+          CREATE TABLE IF NOT EXISTS watch_alerts (
+            id TEXT PRIMARY KEY,
+            watch_id TEXT NOT NULL,
+            case_id TEXT,
+            chain TEXT NOT NULL,
+            address TEXT NOT NULL,
+            tx_hash TEXT NOT NULL,
+            amount REAL,
+            alert_type TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            message TEXT NOT NULL,
+            read_status INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS alert_watch ON watch_alerts(watch_id);
+
+          CREATE TABLE IF NOT EXISTS blockchain_transactions (
+            id TEXT PRIMARY KEY,
+            chain TEXT NOT NULL,
+            tx_hash TEXT NOT NULL UNIQUE,
+            from_address TEXT,
+            to_address TEXT,
+            value REAL,
+            token_symbol TEXT,
+            fee REAL,
+            block_number INTEGER,
+            block_timestamp TEXT,
+            status TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            raw_payload TEXT,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS btx_hash ON blockchain_transactions(tx_hash);
+          CREATE INDEX IF NOT EXISTS btx_addr ON blockchain_transactions(from_address, to_address);
+
+          CREATE TABLE IF NOT EXISTS address_labels (
+            id TEXT PRIMARY KEY,
+            chain TEXT NOT NULL,
+            address TEXT NOT NULL,
+            label TEXT NOT NULL,
+            category TEXT NOT NULL,
+            source TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 1.0,
+            is_verified INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS al_chain_addr ON address_labels(chain, address);
+        `);
+        this.db.prepare('INSERT INTO schema_migrations VALUES(6,?)').run(now());
+        this.db.exec('COMMIT');
+      } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+    }
     this.seedCaseManagement();
   }
   close() { try { this.db.close(); } catch {} }
@@ -855,6 +925,22 @@ export class Store {
           );
         }
       }
+
+      try {
+        const hasLabels = this.db.prepare('SELECT COUNT(*) count FROM address_labels').get().count;
+        if (hasLabels === 0) {
+          const defaultLabels = [
+            { chain: 'Bitcoin', address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', label: 'Genesis Block Satoshi Miner', category: 'Historical', source: 'Bitcoin Core Protocol' },
+            { chain: 'Bitcoin', address: '34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo', label: 'Binance Cold Storage', category: 'Exchange', source: 'Blockchain Intelligence Hub' },
+            { chain: 'Ethereum', address: '0x28C6c06298d514Db089934071355E5743bf21d60', label: 'Binance Hot Wallet 14', category: 'Exchange', source: 'Etherscan Verified Entity' },
+            { chain: 'Ethereum', address: '0x71046dd1d06374828b0313c473f32c3f56e9c646', label: 'WazirX Hack Suspicious Inflow', category: 'Scam/Exploit', source: 'CERT-In Incident Advisory' },
+            { chain: 'TRON', address: 'TNPeeaaTKFZLLqZf48jZZBxfkKxGfTQ9PZ', label: 'Fraud Syndicate Intermediary', category: 'Scam', source: 'Case Correlation DB' }
+          ];
+          for (const l of defaultLabels) {
+            this.addAddressLabel(l);
+          }
+        }
+      } catch {}
     } catch (e) {
       console.error('seedCaseManagement failed:', e.message);
     }
@@ -1369,5 +1455,118 @@ export class Store {
   markAllNotificationsRead(userId) {
     this.db.prepare('UPDATE notifications SET is_read=1 WHERE user_id=?').run(userId);
     return { success: true };
+  }
+
+  // Watchtower: Address Monitoring
+  addWatchlistAddress({ officerId, caseId = null, chain = 'Bitcoin', address, label = '' }) {
+    if (!address) throw Object.assign(new Error('Address is required for monitoring.'), { status: 400 });
+    const id = randomUUID();
+    const stamp = now();
+    const cleanAddr = address.trim();
+    this.db.prepare(`
+      INSERT INTO watchlists (id, case_id, officer_id, chain, address, label, status, last_checked_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?)
+    `).run(id, caseId, officerId, chain, cleanAddr, label, stamp, stamp);
+    return { id, caseId, officerId, chain, address: cleanAddr, label, status: 'ACTIVE', lastCheckedAt: stamp, createdAt: stamp };
+  }
+
+  listWatchlist(officerId) {
+    return this.db.prepare(`
+      SELECT id, case_id as caseId, officer_id as officerId, chain, address, label, status, last_checked_at as lastCheckedAt, created_at as createdAt
+      FROM watchlists WHERE officer_id=? ORDER BY created_at DESC
+    `).all(officerId);
+  }
+
+  removeWatchlistAddress(id, officerId) {
+    this.db.prepare('DELETE FROM watchlists WHERE id=? AND officer_id=?').run(id, officerId);
+    return { ok: true, removedId: id };
+  }
+
+  recordWatchAlert({ watchId, caseId = null, chain, address, txHash, amount = 0, alertType = 'NEW_TRANSACTION', severity = 'HIGH', message }) {
+    const id = randomUUID();
+    const stamp = now();
+    this.db.prepare(`
+      INSERT INTO watch_alerts (id, watch_id, case_id, chain, address, tx_hash, amount, alert_type, severity, message, read_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+    `).run(id, watchId, caseId, chain, address, txHash, amount, alertType, severity, message, stamp);
+    return { id, watchId, caseId, chain, address, txHash, amount, alertType, severity, message, readStatus: 0, createdAt: stamp };
+  }
+
+  listWatchAlerts(officerId = null) {
+    return this.db.prepare(`
+      SELECT a.id, a.watch_id as watchId, a.case_id as caseId, a.chain, a.address, a.tx_hash as txHash, a.amount,
+             a.alert_type as alertType, a.severity, a.message, a.read_status as readStatus, a.created_at as createdAt
+      FROM watch_alerts a
+      ORDER BY a.created_at DESC LIMIT 100
+    `).all();
+  }
+
+  // Blockchain Transactions Storage
+  saveBlockchainTransaction(tx) {
+    const id = randomUUID();
+    const stamp = now();
+    this.db.prepare(`
+      INSERT OR REPLACE INTO blockchain_transactions (id, chain, tx_hash, from_address, to_address, value, token_symbol, fee, block_number, block_timestamp, status, provider, raw_payload, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, tx.chain, tx.txHash, tx.fromAddress || null, tx.toAddress || null, tx.value || 0, tx.currency || null, tx.fee || 0, tx.blockHeight || null, tx.blockTimestamp || stamp, tx.status || 'VERIFIED', tx.provider || 'External API', JSON.stringify(tx), stamp);
+    return tx;
+  }
+
+  getBlockchainTransaction(chain, txHash) {
+    const row = this.db.prepare('SELECT * FROM blockchain_transactions WHERE tx_hash=?').get(txHash);
+    if (!row) return null;
+    return {
+      id: row.id,
+      chain: row.chain,
+      txHash: row.tx_hash,
+      fromAddress: row.from_address,
+      toAddress: row.to_address,
+      value: row.value,
+      tokenSymbol: row.token_symbol,
+      fee: row.fee,
+      blockNumber: row.block_number,
+      blockTimestamp: row.block_timestamp,
+      status: row.status,
+      provider: row.provider,
+      payload: row.raw_payload ? JSON.parse(row.raw_payload) : null,
+      createdAt: row.created_at
+    };
+  }
+
+  // Address Labels & Entity Intelligence
+  addAddressLabel({ chain, address, label, category = 'Exchange', source = 'Verified Intelligence', confidence = 1.0, isVerified = 1 }) {
+    const id = randomUUID();
+    const stamp = now();
+    this.db.prepare(`
+      INSERT INTO address_labels (id, chain, address, label, category, source, confidence, is_verified, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, chain, address, label, category, source, confidence, isVerified ? 1 : 0, stamp);
+    return { id, chain, address, label, category, source, confidence, isVerified: Boolean(isVerified), createdAt: stamp };
+  }
+
+  getAddressLabels(chain, address) {
+    return this.db.prepare(`
+      SELECT id, chain, address, label, category, source, confidence, is_verified as isVerified, created_at as createdAt
+      FROM address_labels WHERE address=?
+    `).all(address);
+  }
+
+  // Cross-Case Intelligence
+  getCrossCaseIntelligence(identifier) {
+    if (!identifier) return { totalMatches: 0, cases: [] };
+    const clean = identifier.trim();
+    const rows = this.db.prepare(`
+      SELECT case_id as caseId, reporter_name as reporterName, incident_type as incidentType,
+             reported_loss as reportedLoss, chain, reported_wallet as reportedWallet,
+             transaction_hash as transactionHash, status, priority, created_at as createdAt
+      FROM complaints
+      WHERE reported_wallet=? OR transaction_hash=? OR description LIKE ?
+      ORDER BY created_at DESC
+    `).all(clean, clean, `%${clean}%`);
+    return {
+      identifier: clean,
+      totalMatches: rows.length,
+      cases: rows
+    };
   }
 }
