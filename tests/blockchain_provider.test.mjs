@@ -101,3 +101,4 @@ test('Blockchain Provider Integrations & Watchtower Intelligence', async (t) => 
     assert.ok(crossRes.data.totalMatches !== undefined);
   });
 });
+

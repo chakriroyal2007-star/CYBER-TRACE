@@ -265,22 +265,79 @@ export function CaseReviewPage({ id }: { id: string }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyticsResult, setAnalyticsResult] = useState<any>(null);
 
+  // On-chain address & verification state
+  const [onChainData, setOnChainData] = useState<any>(null);
+  const [verifyingTx, setVerifyingTx] = useState(false);
+  const [txVerification, setTxVerification] = useState<any>(null);
+  const [addingWatch, setAddingWatch] = useState(false);
+
   const loadCase = () => {
     setLoading(true);
     Promise.all([
       api(`/complaints/${id}`),
       api('/officers').catch(() => [])
-    ]).then(([comp, offList]) => {
+    ]).then(async ([comp, offList]) => {
       setComplaint(comp);
       setOfficers(offList);
       if (comp.assignedOfficerId) {
         setSelectedOfficerId(comp.assignedOfficerId);
       }
       setLoading(false);
+
+      // Load on-chain intelligence if wallet address is present
+      const wallet = comp.reportedWallet || comp.suspectWallet;
+      if (wallet) {
+        try {
+          const chain = comp.chain || comp.blockchainNetwork || 'Bitcoin';
+          const addrData = await api(`/blockchain/address?chain=${encodeURIComponent(chain)}&address=${encodeURIComponent(wallet)}`);
+          setOnChainData(addrData);
+        } catch { }
+      }
     }).catch(err => {
       setError(err.message);
       setLoading(false);
     });
+  };
+
+  const handleVerifyTxOnChain = async () => {
+    const txHash = complaint?.transactionHash;
+    if (!txHash) return;
+    setVerifyingTx(true);
+    try {
+      const chain = complaint.chain || complaint.blockchainNetwork || 'Bitcoin';
+      const res = await api('/blockchain/verify', {
+        method: 'POST',
+        body: JSON.stringify({ chain, txHash })
+      });
+      setTxVerification(res);
+      toast(`On-chain verification: ${res.status}`, res.verified ? 'success' : 'info');
+    } catch (e: any) {
+      toast(e.message || 'On-chain verification check failed', 'error');
+    } finally {
+      setVerifyingTx(false);
+    }
+  };
+
+  const handleAddToWatchtower = async () => {
+    const wallet = complaint?.reportedWallet || complaint?.suspectWallet;
+    if (!wallet) return;
+    setAddingWatch(true);
+    try {
+      await api('/watchtower', {
+        method: 'POST',
+        body: JSON.stringify({
+          chain: complaint.chain || complaint.blockchainNetwork || 'Bitcoin',
+          address: wallet,
+          caseId: complaint.caseId || complaint.id,
+          label: `Suspect Wallet (${complaint.caseId || complaint.id})`
+        })
+      });
+      toast('Address added to 24/7 Watchtower monitoring', 'success');
+    } catch (e: any) {
+      toast(e.message || 'Failed to add to Watchtower', 'error');
+    } finally {
+      setAddingWatch(false);
+    }
   };
 
   useEffect(() => {
@@ -523,23 +580,95 @@ export function CaseReviewPage({ id }: { id: string }) {
             </div>
 
             {/* Blockchain & Suspect Technical Indicators */}
-            <div style={{ background: '#08121f', padding: 14, borderRadius: 6, border: '1px solid #14273b' }}>
-              <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 700, letterSpacing: '0.8px' }}>FORENSIC ON-CHAIN IDENTIFIERS</span>
-              
-              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                  <span style={{ color: '#94a3b8' }}>Blockchain Network:</span>
-                  <Badge variant="secondary">{complaint.chain || complaint.blockchainNetwork || 'Bitcoin'}</Badge>
+            <div style={{ background: '#08121f', padding: 16, borderRadius: 6, border: '1px solid #14273b' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 700, letterSpacing: '0.8px' }}>FORENSIC ON-CHAIN IDENTIFIERS</span>
+                <Badge variant="secondary">{complaint.chain || complaint.blockchainNetwork || 'Bitcoin'}</Badge>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Suspect Wallet & Balance */}
+                <div style={{ padding: '10px 12px', background: '#0a1624', borderRadius: 6, border: '1px solid #172a3d' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ color: '#94a3b8', fontSize: 11 }}>SUSPECT WALLET ADDRESS</span>
+                    {complaint.reportedWallet && (
+                      <Button
+                        variant="secondary"
+                        onClick={handleAddToWatchtower}
+                        disabled={addingWatch}
+                        style={{ padding: '2px 8px', fontSize: 10 }}
+                      >
+                        <Eye size={11} /> {addingWatch ? 'Adding…' : 'Add to Watchtower'}
+                      </Button>
+                    )}
+                  </div>
+                  <div style={{ fontFamily: 'monospace', color: '#cbd5e1', fontSize: 12, wordBreak: 'break-all' }}>
+                    {complaint.reportedWallet || complaint.suspectWallet || 'None reported'}
+                  </div>
+
+                  {/* On-chain balance & labels if available */}
+                  {onChainData && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #14273b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                        Live Balance: <strong style={{ color: '#4fd7c1', fontFamily: 'monospace' }}>{onChainData.balance?.formatted || '0'}</strong>
+                        <small style={{ color: '#64748b', marginLeft: 4 }}>({onChainData.provider || 'RPC'})</small>
+                      </div>
+                      {onChainData.labels && onChainData.labels.length > 0 && (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {onChainData.labels.map((lbl: any, idx: number) => (
+                            <span key={idx} style={{ background: 'rgba(234, 179, 8, 0.15)', color: '#facc15', border: '1px solid #ca8a04', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600 }}>
+                              {lbl.label} ({lbl.entity})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
-                  <span style={{ color: '#94a3b8' }}>Suspect Wallet:</span>
-                  <span style={{ fontFamily: 'monospace', color: '#cbd5e1' }}>{complaint.reportedWallet || complaint.suspectWallet || 'None reported'}</span>
-                </div>
+                {/* Cross-Case Intelligence Syndicate Alert */}
+                {onChainData && onChainData.crossCaseCount > 1 && (
+                  <div style={{ padding: '10px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#fca5a5', fontSize: 11.5, fontWeight: 700 }}>
+                      <AlertCircle size={14} color="#ef4444" />
+                      CROSS-CASE INTELLIGENCE MATCH
+                    </div>
+                    <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4 }}>
+                      This suspect wallet appears in <strong>{onChainData.crossCaseCount}</strong> complaints in the registry:
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                      {(onChainData.relatedCases || []).map((rc: any) => (
+                        <button
+                          key={rc.id}
+                          onClick={() => navigate(`/app/case-review/${rc.caseId || rc.id}`)}
+                          style={{
+                            background: '#1e293b', border: '1px solid #334155', color: '#38bdf8',
+                            padding: '2px 8px', borderRadius: 4, fontSize: 10.5, cursor: 'pointer', fontFamily: 'monospace'
+                          }}
+                        >
+                          {rc.caseId || rc.id} ({rc.status}) →
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
-                  <span style={{ color: '#94a3b8' }}>Transaction Hash / ID:</span>
-                  <span style={{ fontFamily: 'monospace', color: '#38bdf8' }}>
+                {/* Transaction Hash & Live Blockchain RPC Verification */}
+                <div style={{ padding: '10px 12px', background: '#0a1624', borderRadius: 6, border: '1px solid #172a3d' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ color: '#94a3b8', fontSize: 11 }}>TRANSACTION HASH / REFERENCE</span>
+                    {complaint.transactionHash && (
+                      <Button
+                        variant="secondary"
+                        onClick={handleVerifyTxOnChain}
+                        disabled={verifyingTx}
+                        style={{ padding: '2px 8px', fontSize: 10 }}
+                      >
+                        <ShieldCheck size={11} color="#38bdf8" /> {verifyingTx ? 'Querying RPC…' : 'Verify On-Chain (RPC)'}
+                      </Button>
+                    )}
+                  </div>
+                  <div style={{ fontFamily: 'monospace', color: '#38bdf8', fontSize: 12, wordBreak: 'break-all' }}>
                     {complaint.transactionHash ? (
                       <span
                         onClick={() => navigate(`/app/graph/${complaint.transactionHash}`)}
@@ -549,7 +678,36 @@ export function CaseReviewPage({ id }: { id: string }) {
                         {complaint.transactionHash} <ExternalLink size={11} style={{ display: 'inline' }} />
                       </span>
                     ) : 'None provided'}
-                  </span>
+                  </div>
+
+                  {/* Verification result */}
+                  {txVerification && (
+                    <div style={{
+                      marginTop: 8,
+                      padding: '8px 10px',
+                      borderRadius: 4,
+                      fontSize: 11,
+                      background: txVerification.verified ? 'rgba(16, 185, 129, 0.12)' : 'rgba(56, 189, 248, 0.1)',
+                      border: `1px solid ${txVerification.verified ? '#10b981' : '#1e3a5f'}`,
+                      color: txVerification.verified ? '#6ee7b7' : '#93c5fd'
+                    }}>
+                      <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {txVerification.verified ? <CheckCircle2 size={13} color="#10b981" /> : <ShieldCheck size={13} color="#38bdf8" />}
+                        On-Chain Status: {txVerification.status}
+                      </div>
+                      <div style={{ marginTop: 4, color: '#cbd5e1', fontSize: 10.5, lineHeight: 1.4 }}>
+                        Provider: <strong>{txVerification.provider || 'RPC'}</strong>
+                        {txVerification.blockHeight ? ` · Block #${txVerification.blockHeight}` : ''}
+                        {txVerification.confirmations ? ` · ${txVerification.confirmations} Confirmations` : ''}
+                        {txVerification.valueFormatted ? ` · Amount: ${txVerification.valueFormatted}` : ''}
+                      </div>
+                      {txVerification.from && (
+                        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, fontFamily: 'monospace' }}>
+                          From: {shortAddress(txVerification.from)} → To: {shortAddress(txVerification.to)}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -848,6 +1006,332 @@ export function CaseReviewPage({ id }: { id: string }) {
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 4. Watchtower Address Monitoring & Live Alerts Page
+export function WatchtowerPage() {
+  const [watchlist, setWatchlist] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [health, setHealth] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // Form state
+  const [newChain, setNewChain] = useState('Bitcoin');
+  const [newAddress, setNewAddress] = useState('');
+  const [newCaseId, setNewCaseId] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const loadData = () => {
+    setLoading(true);
+    Promise.all([
+      api('/watchtower'),
+      api('/watchtower/alerts'),
+      api('/blockchain/health').catch(() => null)
+    ]).then(([wl, al, h]) => {
+      setWatchlist(wl || []);
+      setAlerts(al || []);
+      setHealth(h);
+      setLoading(false);
+    }).catch(e => {
+      toast(e.message, 'error');
+      setLoading(false);
+    });
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleRunCheck = async () => {
+    setChecking(true);
+    try {
+      const res = await api('/watchtower/check', { method: 'POST', body: '{}' });
+      toast(`On-chain balance check complete. Scanned ${res.checked} addresses.`, 'success');
+      loadData();
+    } catch (e: any) {
+      toast(e.message || 'Balance check failed', 'error');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleAddAddress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAddress.trim()) {
+      toast('Please enter a wallet address', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api('/watchtower', {
+        method: 'POST',
+        body: JSON.stringify({
+          chain: newChain,
+          address: newAddress.trim(),
+          caseId: newCaseId.trim() || undefined,
+          label: newLabel.trim() || undefined
+        })
+      });
+      toast('Address registered in Watchtower surveillance', 'success');
+      setShowAddModal(false);
+      setNewAddress('');
+      setNewCaseId('');
+      setNewLabel('');
+      loadData();
+    } catch (e: any) {
+      toast(e.message || 'Failed to add address', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Remove this address from active Watchtower monitoring?')) return;
+    try {
+      await api(`/watchtower/${id}`, { method: 'DELETE' });
+      toast('Address removed from Watchtower', 'info');
+      loadData();
+    } catch (e: any) {
+      toast(e.message, 'error');
+    }
+  };
+
+  if (loading) return <LoadingState />;
+
+  return (
+    <div style={{ padding: '24px 32px' }}>
+      <PageHeader
+        eyebrow="BLOCKCHAIN SURVEILLANCE & ALERTS"
+        title="Watchtower Monitor"
+        description="Continuous 24/7 surveillance of suspect cryptocurrency wallets across Bitcoin, Ethereum, and TRON networks."
+        action={
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Button variant="secondary" onClick={handleRunCheck} disabled={checking}>
+              <RefreshCw size={14} className={checking ? 'spin' : ''} /> {checking ? 'Polling On-Chain Nodes…' : 'Check Live Balances (RPC)'}
+            </Button>
+            <Button onClick={() => setShowAddModal(true)}>
+              <Eye size={15} /> Add Monitored Address
+            </Button>
+          </div>
+        }
+      />
+
+      <OfficerDisclaimerBanner />
+
+      {/* Provider Connectivity Health Strip */}
+      {health && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+          {Object.entries(health).map(([net, info]: [string, any]) => (
+            <div key={net} style={{ background: '#0a1624', padding: '8px 14px', borderRadius: 6, border: '1px solid #1a2d42', display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: info.healthy ? '#10b981' : '#f59e0b' }} />
+              <strong style={{ color: '#fff', textTransform: 'capitalize' }}>{net}:</strong>
+              <span style={{ color: '#94a3b8' }}>{info.provider}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Metric Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
+        <MetricCard
+          label="MONITORED TARGETS"
+          value={watchlist.length}
+          helper="Active suspect wallets in watch pool"
+          icon={<Eye size={18} color="#38bdf8" />}
+        />
+        <MetricCard
+          label="ALERTS TRIGGERED"
+          value={alerts.length}
+          helper="Balance shifts or movements recorded"
+          icon={<Bell size={18} color="#f59e0b" />}
+        />
+        <MetricCard
+          label="NETWORKS MONITORED"
+          value="3"
+          helper="Bitcoin, Ethereum, TRON Mainnets"
+          icon={<Network size={18} color="#4fd7c1" />}
+        />
+      </div>
+
+      {/* Main Grid: Watchlist on Left, Alerts on Right */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.6fr', gap: 24 }}>
+        {/* Watchlist Table */}
+        <Card style={{ padding: 22 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 16, color: '#fff' }}>Monitored Suspect Wallets</h3>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>{watchlist.length} addresses</span>
+          </div>
+
+          {watchlist.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '36px 0', color: '#64748b' }}>
+              <Eye size={36} color="#64748b" style={{ margin: '0 auto 12px' }} />
+              <p style={{ margin: 0 }}>No addresses are currently under active Watchtower surveillance.</p>
+              <Button variant="secondary" onClick={() => setShowAddModal(true)} style={{ marginTop: 12 }}>
+                Add Target Address
+              </Button>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #1a2d42', color: '#64748b', textAlign: 'left' }}>
+                    <th style={{ padding: '8px 10px' }}>TARGET ADDRESS</th>
+                    <th style={{ padding: '8px 10px' }}>CHAIN</th>
+                    <th style={{ padding: '8px 10px' }}>LABEL / CASE</th>
+                    <th style={{ padding: '8px 10px' }}>LAST BALANCE</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right' }}>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {watchlist.map((w: any) => (
+                    <tr key={w.id} style={{ borderBottom: '1px solid #0f1c2c' }}>
+                      <td style={{ padding: '12px 10px', fontFamily: 'monospace', color: '#cbd5e1' }}>
+                        <div>{shortAddress(w.address, 10)}</div>
+                        <small style={{ color: '#64748b', fontSize: 10 }}>Added {formatTime(w.created_at)}</small>
+                      </td>
+                      <td style={{ padding: '12px 10px' }}>
+                        <Badge variant="secondary">{w.chain}</Badge>
+                      </td>
+                      <td style={{ padding: '12px 10px' }}>
+                        <div style={{ fontWeight: 600, color: '#fff' }}>{w.label || 'Unlabeled Suspect'}</div>
+                        {w.case_id && (
+                          <a
+                            href={`/app/case-review/${w.case_id}`}
+                            onClick={e => { e.preventDefault(); navigate(`/app/case-review/${w.case_id}`); }}
+                            style={{ color: '#38bdf8', fontSize: 11, textDecoration: 'none' }}
+                          >
+                            Case {w.case_id} →
+                          </a>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 10px', fontFamily: 'monospace', color: '#4fd7c1', fontWeight: 600 }}>
+                        {w.last_balance || '0.00'}
+                      </td>
+                      <td style={{ padding: '12px 10px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <Button
+                            variant="secondary"
+                            onClick={() => navigate(`/app/graph/${w.address}`)}
+                            style={{ padding: '4px 8px', fontSize: 11 }}
+                            title="Investigate in Graph"
+                          >
+                            <Network size={12} />
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => handleDelete(w.id)}
+                            style={{ padding: '4px 8px', fontSize: 11, color: '#f87171' }}
+                            title="Remove from Watchlist"
+                          >
+                            <XCircle size={12} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        {/* Watch Alerts Feed */}
+        <Card style={{ padding: 22 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 16, color: '#fff' }}>Surveillance Alerts</h3>
+            <Badge variant="warning">{alerts.length} events</Badge>
+          </div>
+
+          {alerts.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: 12, fontStyle: 'italic', margin: 0 }}>
+              No on-chain movements or balance fluctuations detected on monitored targets yet.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 480, overflowY: 'auto' }}>
+              {alerts.map((al: any) => (
+                <div key={al.id} style={{ padding: '10px 12px', background: '#0a1624', borderRadius: 6, border: '1px solid #1a2d42', fontSize: 11.5 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ color: '#f59e0b', fontWeight: 700 }}>{al.alert_type}</span>
+                    <span style={{ color: '#64748b', fontSize: 10 }}>{formatTime(al.created_at)}</span>
+                  </div>
+                  <div style={{ color: '#e2e8f0', lineHeight: 1.4 }}>{al.message}</div>
+                  <div style={{ marginTop: 4, fontFamily: 'monospace', color: '#94a3b8', fontSize: 10.5 }}>
+                    Target: {shortAddress(al.address, 8)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Add Address Modal */}
+      {showAddModal && (
+        <div className="modal-backdrop" onClick={() => setShowAddModal(false)}>
+          <div className="command-modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <form onSubmit={handleAddAddress} style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Eye size={20} color="#38bdf8" />
+                <h3 style={{ margin: 0, fontSize: 16, color: '#fff' }}>Add Wallet to Watchtower Surveillance</h3>
+              </div>
+
+              <Field label="Blockchain Network">
+                <select
+                  value={newChain}
+                  onChange={e => setNewChain(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', background: '#0a1624', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6 }}
+                >
+                  <option value="Bitcoin">Bitcoin (BTC)</option>
+                  <option value="Ethereum">Ethereum (ETH)</option>
+                  <option value="TRON">TRON (TRX/USDT)</option>
+                  <option value="Polygon">Polygon (MATIC)</option>
+                  <option value="BNB Chain">BNB Chain (BSC)</option>
+                </select>
+              </Field>
+
+              <Field label="Wallet Address">
+                <input
+                  required
+                  placeholder="0x... or 1... or T..."
+                  value={newAddress}
+                  onChange={e => setNewAddress(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', background: '#0a1624', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6, fontFamily: 'monospace' }}
+                />
+              </Field>
+
+              <Field label="Investigative Label / Description">
+                <input
+                  placeholder="e.g. Primary Syndicate Exit Wallet"
+                  value={newLabel}
+                  onChange={e => setNewLabel(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', background: '#0a1624', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6 }}
+                />
+              </Field>
+
+              <Field label="Associated Case ID (Optional)">
+                <input
+                  placeholder="e.g. CR-2026-00192"
+                  value={newCaseId}
+                  onChange={e => setNewCaseId(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', background: '#0a1624', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6 }}
+                />
+              </Field>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <Button variant="secondary" type="button" onClick={() => setShowAddModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Registering…' : 'Start Surveillance'}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

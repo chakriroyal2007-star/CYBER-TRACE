@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BriefcaseBusiness, ScanSearch, Wallet, Network, Landmark,
   GitBranch, Fingerprint, Bell, FileText, Code2, Settings, Database, Waypoints,
   Search, Command, Plus, Menu, X, ChevronRight, ArrowUpRight, LogOut, ShieldCheck,
-  Radio, CheckCircle2, AlertCircle, FileOutput, Inbox, UserCheck, ShieldAlert
+  Radio, CheckCircle2, AlertCircle, FileOutput, Inbox, UserCheck, ShieldAlert, Eye
 } from 'lucide-react';
 import { api, navigate, toast } from './api';
 import { Badge, LoadingState, Button, ErrorState } from './components/ui';
@@ -40,12 +40,14 @@ const InteractiveDemo = lazy(() => import('./pages/InteractiveDemo'));
 const officer = () => import('./pages/OfficerPortal');
 const IncomingReportsPage = lazy(() => officer().then(m => ({ default: m.IncomingReportsPage })));
 const CaseReviewPage = lazy(() => officer().then(m => ({ default: m.CaseReviewPage })));
+const WatchtowerPage = lazy(() => officer().then(m => ({ default: m.WatchtowerPage })));
 
 const navItems = [
   ['dashboard', 'Dashboard', LayoutDashboard],
   ['incoming', 'Incoming reports', Inbox],
   ['cases', 'Cases', BriefcaseBusiness],
   ['investigations', 'Investigations', ScanSearch],
+  ['watchtower', 'Watchtower', Eye],
   ['wallets', 'Wallet intelligence', Wallet],
   ['graph', 'Transaction graph', Network],
   ['vasps', 'VASP intelligence', Landmark],
@@ -366,6 +368,7 @@ export default function App() {
         ? ((/^\d+$/.test(id)) ? <GraphExplorer initialTxId={id} /> : <Investigation key={id} id={id} />)
         : <Cases />;
       break;
+    case 'watchtower': content = <WatchtowerPage />; break;
     case 'graph': content = <GraphExplorer initialTxId={location.split('?')[0].split('/')[3] || '232629023'} />; break;
     case 'wallets': content = <Wallets />; break;
     case 'vasps': content = <Vasps />; break;

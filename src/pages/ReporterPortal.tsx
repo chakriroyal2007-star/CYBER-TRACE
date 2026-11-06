@@ -244,6 +244,32 @@ export function SubmitComplaintPage() {
   const [attachments, setAttachments] = useState<any[]>([]);
   const [createdCase, setCreatedCase] = useState<any>(null);
   const [isDemo, setIsDemo] = useState(false);
+  const [verifyingTx, setVerifyingTx] = useState(false);
+  const [txVerification, setTxVerification] = useState<any>(null);
+
+  const handleVerifyOnChain = async () => {
+    if (!transactionHash.trim()) {
+      toast('Please enter a transaction hash first', 'error');
+      return;
+    }
+    setVerifyingTx(true);
+    try {
+      const res = await api('/blockchain/verify', {
+        method: 'POST',
+        body: JSON.stringify({ chain, txHash: transactionHash.trim() })
+      });
+      setTxVerification(res);
+      if (res.verified) {
+        toast(`Transaction verified on ${res.network || chain} mainnet!`, 'success');
+      } else {
+        toast(`Verification result: ${res.status || 'Recorded'}`, 'info');
+      }
+    } catch (e: any) {
+      toast(e.message || 'Verification check failed', 'error');
+    } finally {
+      setVerifyingTx(false);
+    }
+  };
 
   const fillFictionalExample = () => {
     setIsDemo(true);
@@ -483,7 +509,48 @@ export function SubmitComplaintPage() {
             </Field>
 
             <Field label="Transaction Hash / ID (if available)">
-              <input value={transactionHash} onChange={e => setTransactionHash(e.target.value)} placeholder="0x... or 64-char transaction hash" style={{ width: '100%', padding: '9px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6, fontFamily: 'monospace' }} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={transactionHash}
+                  onChange={e => {
+                    setTransactionHash(e.target.value);
+                    setTxVerification(null);
+                  }}
+                  placeholder="0x... or 64-char transaction hash"
+                  style={{ flex: 1, padding: '9px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6, fontFamily: 'monospace' }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleVerifyOnChain}
+                  disabled={verifyingTx || !transactionHash.trim()}
+                  style={{ fontSize: 11.5, whiteSpace: 'nowrap', padding: '0 12px' }}
+                >
+                  {verifyingTx ? 'Verifying…' : '🔍 Verify On-Chain'}
+                </Button>
+              </div>
+              {txVerification && (
+                <div style={{
+                  marginTop: 6,
+                  padding: '6px 10px',
+                  borderRadius: 5,
+                  fontSize: 11,
+                  background: txVerification.verified ? 'rgba(16, 185, 129, 0.1)' : 'rgba(56, 189, 248, 0.1)',
+                  border: `1px solid ${txVerification.verified ? '#10b981' : '#1e3a5f'}`,
+                  color: txVerification.verified ? '#6ee7b7' : '#93c5fd',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}>
+                  {txVerification.verified ? <CheckCircle2 size={13} color="#10b981" /> : <ShieldCheck size={13} color="#38bdf8" />}
+                  <span>
+                    <strong>Status: {txVerification.status}</strong> · {txVerification.network || chain}
+                    {txVerification.blockHeight ? ` · Block #${txVerification.blockHeight}` : ''}
+                    {txVerification.confirmations ? ` · ${txVerification.confirmations} confirmations` : ''}
+                    {txVerification.note ? ` (${txVerification.note})` : ''}
+                  </span>
+                </div>
+              )}
             </Field>
           </div>
 
