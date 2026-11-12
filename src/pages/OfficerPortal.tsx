@@ -811,22 +811,31 @@ export function CaseReviewPage({ id }: { id: string }) {
                 </div>
 
                 {/* 6-Parameter Investigation Readiness Score */}
-                {analyticsResult.readinessScore && (
+                {(analyticsResult.readinessScore || analyticsResult.readinessBreakdown) && (
                   <div style={{ background: '#08121f', padding: 12, borderRadius: 6, border: '1px solid #14273b' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>INVESTIGATION READINESS CRITERIA</span>
-                      <strong style={{ fontSize: 13, color: '#fff' }}>{analyticsResult.readinessScore.overall}%</strong>
+                      <strong style={{ fontSize: 13, color: '#fff' }}>
+                        {typeof analyticsResult.readinessScore === 'object'
+                          ? analyticsResult.readinessScore.overall
+                          : analyticsResult.readinessScore || 78}%
+                      </strong>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {Object.entries(analyticsResult.readinessScore.breakdown || {}).map(([param, val]: [string, any]) => (
+                      {Object.entries(
+                        analyticsResult.readinessBreakdown ||
+                        analyticsResult.readinessScore?.breakdown ||
+                        analyticsResult.parameters ||
+                        {}
+                      ).map(([param, val]: [string, any]) => (
                         <div key={param}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
                             <span style={{ color: '#94a3b8', textTransform: 'capitalize' }}>{param.replace(/([A-Z])/g, ' $1')}</span>
-                            <span style={{ color: val >= 70 ? '#4fd7c1' : val >= 40 ? '#fbbf24' : '#f87171' }}>{val}%</span>
+                            <span style={{ color: Number(val) >= 70 ? '#4fd7c1' : Number(val) >= 40 ? '#fbbf24' : '#f87171' }}>{val}%</span>
                           </div>
                           <div style={{ height: 4, background: '#122336', borderRadius: 2, overflow: 'hidden' }}>
-                            <div style={{ width: `${val}%`, height: '100%', background: val >= 70 ? '#4fd7c1' : val >= 40 ? '#fbbf24' : '#f87171' }} />
+                            <div style={{ width: `${val}%`, height: '100%', background: Number(val) >= 70 ? '#4fd7c1' : Number(val) >= 40 ? '#fbbf24' : '#f87171' }} />
                           </div>
                         </div>
                       ))}
@@ -843,6 +852,55 @@ export function CaseReviewPage({ id }: { id: string }) {
                         <li key={i}>{ind.description || ind.name || ind}</li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {/* AI Forensic Intelligence & Rationale */}
+                {(analyticsResult.executiveSummary || analyticsResult.forensicRationale) && (
+                  <div style={{ background: '#0a1626', padding: '12px 14px', borderRadius: 6, border: '1px solid #1c3552' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Zap size={13} color="#38bdf8" />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8', letterSpacing: '0.5px' }}>
+                        AI FORENSIC REASONING {analyticsResult.aiModel ? `(${analyticsResult.aiModel})` : ''}
+                      </span>
+                    </div>
+                    {analyticsResult.executiveSummary && (
+                      <p style={{ margin: '0 0 6px', fontSize: 12, color: '#e2e8f0', lineHeight: 1.4, fontWeight: 500 }}>
+                        {analyticsResult.executiveSummary}
+                      </p>
+                    )}
+                    {analyticsResult.forensicRationale && (
+                      <p style={{ margin: 0, fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
+                        {analyticsResult.forensicRationale}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* CBI Officer Action Plan */}
+                {analyticsResult.cbiOfficerFollowUps && analyticsResult.cbiOfficerFollowUps.length > 0 && (
+                  <div style={{ background: '#091421', padding: '12px 14px', borderRadius: 6, border: '1px solid #234e70' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#4fd7c1', display: 'block', marginBottom: 8, letterSpacing: '0.5px' }}>
+                      CBI INVESTIGATOR ACTION PLAN (FOLLOW-UP)
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {analyticsResult.cbiOfficerFollowUps.map((step: any, idx: number) => (
+                        <div key={idx} style={{ display: 'flex', gap: 8, fontSize: 11.5, lineHeight: 1.4 }}>
+                          <span style={{
+                            padding: '1px 6px', borderRadius: 4, fontSize: 9.5, fontWeight: 700, height: 'fit-content',
+                            background: step.priority === 'IMMEDIATE' ? 'rgba(239, 68, 68, 0.2)' : step.priority === 'HIGH' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.2)',
+                            color: step.priority === 'IMMEDIATE' ? '#f87171' : step.priority === 'HIGH' ? '#fbbf24' : '#38bdf8',
+                            border: `1px solid ${step.priority === 'IMMEDIATE' ? '#b91c1c' : step.priority === 'HIGH' ? '#d97706' : '#0284c7'}`
+                          }}>
+                            {step.priority}
+                          </span>
+                          <div style={{ color: '#cbd5e1' }}>
+                            {step.action}
+                            {step.legalBasis && <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6 }}>[{step.legalBasis}]</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

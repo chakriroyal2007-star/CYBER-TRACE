@@ -46,12 +46,25 @@ function node(caseRecord, index, label, type, chain, x, y, cluster = '') {
   };
 }
 
-/** Refresh observations after ingestion. Cross-chain pairing requires an explicit bridge edge. */
+/** Refresh observations after ingestion in O(V + E) using adjacency indexing. */
 export function refreshDatasetMetrics(caseRecord, dataset) {
   const {nodes, edges} = dataset;
+  const nodeMap = new Map();
+  for (const w of nodes) nodeMap.set(w.id, w);
+
+  // Build O(E) incoming and outgoing adjacency maps
+  const incomingMap = new Map();
+  const outgoingMap = new Map();
+  for (const edge of edges) {
+    if (!incomingMap.has(edge.target)) incomingMap.set(edge.target, []);
+    if (!outgoingMap.has(edge.source)) outgoingMap.set(edge.source, []);
+    incomingMap.get(edge.target).push(edge);
+    outgoingMap.get(edge.source).push(edge);
+  }
+
   for (const wallet of nodes) {
-    const incoming = edges.filter(edge => edge.target === wallet.id);
-    const outgoing = edges.filter(edge => edge.source === wallet.id);
+    const incoming = incomingMap.get(wallet.id) || [];
+    const outgoing = outgoingMap.get(wallet.id) || [];
     const times = [...incoming, ...outgoing].map(edge => edge.timestamp).sort();
     wallet.balance = round((wallet.id === nodes[0]?.id && wallet.type === 'victim' ? Number(caseRecord.victimLoss) : 0) + sum(incoming.map(edge => edge.amount)) - sum(outgoing.map(edge => edge.amount)));
     wallet.firstSeen = times[0] || null;
@@ -63,7 +76,7 @@ export function refreshDatasetMetrics(caseRecord, dataset) {
       ...(unique(outgoing.map(edge => edge.target)).length >= 3 ? ['Fan-out distribution'] : []),
       ...(unique(incoming.map(edge => edge.source)).length >= 2 ? ['Fund consolidation'] : []),
       ...(incoming.length && outgoing.length && Date.parse(wallet.lastSeen) - Date.parse(wallet.firstSeen) < 3600000 ? ['Forwarding within one hour'] : []),
-      ...(wallet.type === 'bridge' && outgoing.some(edge => nodes.find(target => target.id === edge.target)?.chain !== wallet.chain) ? ['Synthetic paired cross-chain transfer'] : []),
+      ...(wallet.type === 'bridge' && outgoing.some(edge => nodeMap.get(edge.target)?.chain !== wallet.chain) ? ['Synthetic paired cross-chain transfer'] : []),
       ...(wallet.type === 'vasp' && incoming.length ? ['Deposit-like terminal receipts', 'Synthetic attribution registry match'] : []),
       ...(wallet.type === 'mixer' && incoming.length ? ['Privacy-enhancing service exposure; downstream identity unknown'] : []),
       ...(!incoming.length && !outgoing.length ? ['No transactions observed in this dataset'] : []),
@@ -72,11 +85,11 @@ export function refreshDatasetMetrics(caseRecord, dataset) {
   }
   const existingTransfers = dataset.crossChain || [];
   dataset.crossChain = edges.filter(edge => {
-    const source = nodes.find(wallet => wallet.id === edge.source), target = nodes.find(wallet => wallet.id === edge.target);
+    const source = nodeMap.get(edge.source), target = nodeMap.get(edge.target);
     return source && target && source.type === 'bridge' && source.chain !== target.chain;
   }).map((edge, index) => {
-    const from = nodes.find(wallet => wallet.id === edge.source) || {};
-    const to = nodes.find(wallet => wallet.id === edge.target) || {};
+    const from = nodeMap.get(edge.source) || {};
+    const to = nodeMap.get(edge.target) || {};
     const existing = existingTransfers.find(transfer => transfer.transactionId === edge.id || transfer.transactionHash === edge.hash);
     return { ...existing, id: existing?.id || `BR-${String(index + 1).padStart(3, '0')}`, bridge: existing?.bridge || from.entity || 'DemoBridge', sourceChain: from.chain || 'Ethereum', destinationChain: to.chain || 'Polygon', amount: edge.amount, timestamp: edge.timestamp, transactionHash: edge.hash, sourceWallet: from.address || '', destinationWallet: to.address || '', evidenceId: 'EV-crossChain', transactionId: edge.id, confidence: existing?.confidence ?? 94, method: existing?.method || 'Explicit synthetic cross-chain edge from a bridge wallet; not live bridge inference' };
   });
@@ -199,16 +212,27 @@ export function buildDataset(caseRecord) {
   return singleChainFixture(caseRecord,false);
 }
 
+/** Optimal O(V + E) BFS shortest path using adjacency list and O(1) queue head pointer. */
 export function shortestPath(dataset, fromId, toId) {
   if (!fromId || !toId || !dataset?.edges) return [];
+  const adj = new Map();
+  for (const edge of dataset.edges) {
+    if (!adj.has(edge.source)) adj.set(edge.source, []);
+    adj.get(edge.source).push(edge.target);
+  }
   const queue = [[fromId]];
+  let head = 0;
   const visited = new Set([fromId]);
-  while (queue.length) {
-    const path = queue.shift();
-    const current = path.at(-1);
+  while (head < queue.length) {
+    const path = queue[head++];
+    const current = path[path.length - 1];
     if (current === toId) return path;
-    for (const edge of (dataset.edges || []).filter(item => item.source === current)) if (!visited.has(edge.target)) {
-      visited.add(edge.target); queue.push([...path, edge.target]);
+    const neighbors = adj.get(current) || [];
+    for (const target of neighbors) {
+      if (!visited.has(target)) {
+        visited.add(target);
+        queue.push([...path, target]);
+      }
     }
   }
   return [];

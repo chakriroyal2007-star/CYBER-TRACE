@@ -50,6 +50,30 @@ export default function Landing({ login = false }: { login?: boolean }) {
     }
   }
 
+  async function enterDemoSupervisor() {
+    setBusy(true);
+    setError('');
+    try {
+      await api('/auth/demo-supervisor', { method: 'POST', body: '{}' });
+      navigate('/app/dashboard');
+    } catch (e: any) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  async function enterDemoAdmin() {
+    setBusy(true);
+    setError('');
+    try {
+      await api('/auth/demo-admin', { method: 'POST', body: '{}' });
+      navigate('/app/dashboard');
+    } catch (e: any) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -310,10 +334,16 @@ export default function Landing({ login = false }: { login?: boolean }) {
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoInvestigator} style={{ width: '100%', padding: '10px', justifyContent: 'center', fontSize: 12 }}>
-                <ShieldCheck size={14} color="#62cbb9" /> Demo CBI Officer (Insp. Rajesh Sharma)
+                <ShieldCheck size={14} color="#62cbb9" /> CBI Investigator (Insp. Rajesh Sharma)
+              </Button>
+              <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoSupervisor} style={{ width: '100%', padding: '10px', justifyContent: 'center', fontSize: 12 }}>
+                <ShieldCheck size={14} color="#38bdf8" /> Supervisory Special Agent (SP Vikram Rathore)
+              </Button>
+              <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoAdmin} style={{ width: '100%', padding: '10px', justifyContent: 'center', fontSize: 12 }}>
+                <ShieldCheck size={14} color="#f59e0b" /> Chief Forensic Director (Dr. Ananya Roy)
               </Button>
               <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoReporter} style={{ width: '100%', padding: '10px', justifyContent: 'center', fontSize: 12 }}>
-                <UserCheck size={14} color="#70c9b8" /> Demo Citizen Reporter (Priya Nair)
+                <UserCheck size={14} color="#70c9b8" /> Citizen Reporter (Priya Nair)
               </Button>
             </div>
           </div>
