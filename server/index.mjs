@@ -501,6 +501,63 @@ async function handle(req,res) {
      return json(res, 200, store.markNotificationRead(id, session.user_id));
    }
  }
+ if(group==='trace') {
+   let seed = url.searchParams.get('address') || url.searchParams.get('wallet') || '';
+   let amount = Number(url.searchParams.get('amount') || 250000);
+   let chain = url.searchParams.get('chain') || (seed.startsWith('T') ? 'TRON' : seed.startsWith('1') || seed.startsWith('3') || seed.startsWith('bc1') ? 'Bitcoin' : 'Ethereum');
+   let maxHops = Number(url.searchParams.get('hops') || 4);
+
+   if (method === 'POST') {
+     const data = await body(req);
+     seed = data.address || data.wallet || seed;
+     amount = Number(data.amount || amount);
+     chain = data.chain || chain;
+     maxHops = Number(data.hops || maxHops);
+   }
+
+   if (!seed) seed = 'TMuA6YqfCeX8EhbfYEg5y7S4Dqz9Dw9vVu';
+
+   const traceResult = await forensicTracer.trace(seed, amount, now(), { chain, maxHops });
+   const primaryVasp = traceResult.nodes.find(n => n.type === 'vasp');
+
+   let aiReport = null;
+   try {
+     aiReport = await aiRiskEngine.evaluateCase({
+       caseId: `TRACE-${seed.slice(0, 8)}`,
+       reportedWallet: seed,
+       reportedLoss: amount,
+       chain,
+       fraudType: 'Suspicious Fund Flow / Layering'
+     }, {
+       graphNodesCount: traceResult.nodes.length,
+       hops: maxHops,
+       vaspCandidate: primaryVasp?.entity || traceResult.vaspCandidate,
+       clustersCount: traceResult.clustersCount,
+       muleDetected: traceResult.nodes.some(n => (n.behavior || []).some(b => b.includes('Pass-through')))
+     });
+   } catch {}
+
+   return json(res, 200, {
+     ...traceResult,
+     aiReport,
+     seedAddress: seed,
+     chain,
+     amount
+   });
+ }
+ if(group==='labels' && method==='GET') {
+   const q = url.searchParams.get('q');
+   const type = url.searchParams.get('type');
+   const chain = url.searchParams.get('chain');
+   let all = labelStore.getAll();
+   if (q) {
+     const lq = q.toLowerCase();
+     all = all.filter(l => l.address.toLowerCase().includes(lq) || l.entity.toLowerCase().includes(lq));
+   }
+   if (type) all = all.filter(l => l.type === type);
+   if (chain) all = all.filter(l => l.chain?.toLowerCase() === chain.toLowerCase());
+   return json(res, 200, all);
+ }
  // Blockchain Intelligence & Provider Integrations
  if(group==='blockchain') {
    if(id==='verify' && method==='POST') {

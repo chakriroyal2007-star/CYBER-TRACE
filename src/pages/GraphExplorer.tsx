@@ -1,1238 +1,706 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, ArrowDownLeft, ArrowRight, ArrowUpRight, CheckCircle2, ChevronRight,
-  Copy, Expand, Filter, GitBranch, Layers, Link2, LoaderCircle, Minus,
-  Network, Play, Plus, RefreshCw, RotateCcw, Route, Search, ShieldAlert,
-  ShieldCheck, Sparkles, Target, Zap, Clock, AlertTriangle, Eye
+  Activity, ArrowRight, CheckCircle2, Copy, Eye, Filter, GitBranch,
+  Layers, Link2, LoaderCircle, Minus, Network, Play, Plus, RefreshCw,
+  RotateCcw, Search, ShieldAlert, ShieldCheck, Sparkles, Target, Zap,
+  Clock, AlertTriangle, FileText, Landmark, ExternalLink, Scale, Check
 } from 'lucide-react';
-import { api, navigate, shortAddress } from '../api';
+import { api, navigate, shortAddress, money, formatTime } from '../api';
 import '../workspace.css';
 
-interface NodeData {
+interface TracedNode {
   id: string;
+  address: string;
   label: string;
-  timeStep: number | null;
-  knownLabel: 'illicit' | 'licit' | 'unknown';
-  predictedClass: string;
-  probability: number;
+  type: 'victim' | 'suspect' | 'intermediary' | 'vasp' | 'mixer' | 'bridge' | 'unknown';
+  chain: string;
+  balance: number;
   riskScore: number;
-  inDegree: number;
-  outDegree: number;
-  depth?: number;
-  isCenter?: boolean;
+  taintAmount?: number;
+  entity?: string | null;
+  complianceEmail?: string | null;
+  fiuRegistered?: boolean;
+  firstSeen?: string;
+  lastSeen?: string;
+  incomingCount: number;
+  outgoingCount: number;
+  behavior: string[];
+  cluster?: string;
   x?: number;
   y?: number;
 }
 
-interface EdgeData {
+interface TracedEdge {
   id: string;
   source: string;
   target: string;
+  amount: number;
+  timestamp: string;
+  hash: string;
+  chain: string;
+  asset: string;
   highlighted?: boolean;
 }
 
-interface DatasetStats {
-  totalNodes: number;
-  totalEdges: number;
-  classes: { illicit: number; licit: number; unknown: number };
-  inMemoryNodes?: number;
-}
-
-const PRESET_TXS = [
-  { id: '232629023', label: 'Tx 232629023', type: 'illicit', desc: 'Confirmed Illicit (Risk 85/100)' },
-  { id: '232438397', label: 'Tx 232438397', type: 'illicit', desc: 'Confirmed Illicit (Risk 85/100)' },
-  { id: '232042459', label: 'Tx 232042459', type: 'illicit', desc: 'Confirmed Illicit (TimeStep 36)' },
-  { id: '232840507', label: 'Tx 232840507', type: 'illicit', desc: 'Confirmed Illicit (TimeStep 37)' },
-  { id: '230425980', label: 'Tx 230425980', type: 'licit', desc: 'Verified Licit Exchange Node' },
-  { id: '230425981', label: 'Tx 230425981', type: 'licit', desc: 'Verified Licit (Risk 20/100)' },
-  { id: '1076', label: 'Tx 1076', type: 'unknown', desc: 'Unlabeled Research Node (Step 13)' },
+const PRESET_WALLETS = [
+  {
+    address: '0x28C6c06298d514Db089934071355E5743bf21d60',
+    chain: 'Ethereum',
+    label: 'Binance Hot Wallet 14 (Verified VASP)',
+    type: 'vasp',
+    loss: 812450
+  },
+  {
+    address: 'TMuA6YqfCeX8EhbfYEg5y7S4Dqz9Dw9vVu',
+    chain: 'TRON',
+    label: 'TRON TRC20 Mule Syndicate (USDT)',
+    type: 'suspect',
+    loss: 500000
+  },
+  {
+    address: '0x5e4e65926ba27467555eb562121fac00d24e9dd2',
+    chain: 'Ethereum',
+    label: 'WazirX Treasury (FIU-IND Registered)',
+    type: 'vasp',
+    loss: 350000
+  },
+  {
+    address: '0x71C8Dc80e7178DfD080766498B29c14ec755f137',
+    chain: 'Ethereum',
+    label: 'CoinDCX Hot Vault (FIU-IND Registered)',
+    type: 'vasp',
+    loss: 420000
+  },
+  {
+    address: '0xba244a0C2c2f62F93C40866A4eec1A7E1544321A',
+    chain: 'Ethereum',
+    label: 'Cybercrime Syndicate Layering Wallet',
+    type: 'suspect',
+    loss: 642000
+  },
+  {
+    address: '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b',
+    chain: 'Ethereum',
+    label: 'Tornado Cash 0.1 ETH (OFAC Sanctioned)',
+    type: 'mixer',
+    loss: 200000
+  }
 ];
 
-export default function GraphExplorer({ initialTxId = '232629023' }: { initialTxId?: string }) {
-  const [currentTxId, setCurrentTxId] = useState(initialTxId);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: string }) {
+  const [addressInput, setAddressInput] = useState(
+    initialTxId && !/^\d{5,}$/.test(initialTxId)
+      ? initialTxId
+      : '0x28C6c06298d514Db089934071355E5743bf21d60'
+  );
+  const [selectedChain, setSelectedChain] = useState<'TRON' | 'Ethereum' | 'Polygon' | 'Bitcoin'>('Ethereum');
+  const [victimLoss, setVictimLoss] = useState(500000);
+  const [maxHops, setMaxHops] = useState(4);
 
   // Graph state
-  const [nodes, setNodes] = useState<NodeData[]>([]);
-  const [edges, setEdges] = useState<EdgeData[]>([]);
-  const [stats, setStats] = useState<DatasetStats | null>(null);
-  const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
-  const [selectedEdge, setSelectedEdge] = useState<EdgeData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [nodes, setNodes] = useState<TracedNode[]>([]);
+  const [edges, setEdges] = useState<TracedEdge[]>([]);
+  const [selectedNode, setSelectedNode] = useState<TracedNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<TracedEdge | null>(null);
+  const [clustersCount, setClustersCount] = useState(1);
+  const [internedCount, setInternedCount] = useState(0);
 
-  // Pathfinding & algorithms state
-  const [sourceTx, setSourceTx] = useState(initialTxId);
-  const [targetTx, setTargetTx] = useState('231573972');
-  const [weightType, setWeightType] = useState<'hop' | 'time' | 'risk'>('hop');
-  const [bfsDepth, setBfsDepth] = useState(3);
-  const [algoRunning, setAlgoRunning] = useState(false);
-  const [pathResult, setPathResult] = useState<any>(null);
-  const [topSuspicious, setTopSuspicious] = useState<any[]>([]);
-  const [showTopModal, setShowTopModal] = useState(false);
-  const [temporalBursts, setTemporalBursts] = useState<any>(null);
-  const [showBurstModal, setShowBurstModal] = useState(false);
+  // AI Analysis state
+  const [aiReport, setAiReport] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showSection91Modal, setShowSection91Modal] = useState(false);
 
   // Canvas zoom & pan
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<TracedNode | null>(null);
   const dragRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const [copiedText, setCopiedText] = useState('');
 
   const notify = (message: string, type = 'success') =>
     window.dispatchEvent(new CustomEvent('toast', { detail: { message, type } }));
 
-  // Load dataset stats once
-  useEffect(() => {
-    api<DatasetStats>('/dataset/stats')
-      .then(s => setStats(s))
-      .catch(() => {});
-  }, []);
-
-  // Load subgraph for currentTxId
-  const loadGraph = async (txId: string) => {
+  // Execute trace
+  const runTrace = async (walletAddr = addressInput, chain = selectedChain, loss = victimLoss) => {
     setLoading(true);
-    setError('');
-    setPathResult(null);
+    setSelectedNode(null);
+    setSelectedEdge(null);
     try {
-      const res = await api(`/analytics/subgraph?txId=${encodeURIComponent(txId)}&depth=2&limit=50`);
-      if (!res.found || !res.nodes?.length) {
-        // Fallback to transaction endpoint if subgraph not found
-        const tx = await api(`/transactions/${encodeURIComponent(txId)}`);
-        if (tx.found) {
-          const center: NodeData = {
-            id: tx.txId,
-            label: `Tx ${tx.txId}`,
-            timeStep: tx.timeStep,
-            knownLabel: tx.knownLabel,
-            predictedClass: tx.modelPrediction,
-            probability: tx.modelConfidence / 100,
-            riskScore: tx.riskScore,
-            inDegree: tx.graphFindings?.inDegree || 0,
-            outDegree: tx.graphFindings?.outDegree || 0,
-            isCenter: true
+      const res = await api<any>(`/trace?address=${encodeURIComponent(walletAddr)}&chain=${encodeURIComponent(chain)}&amount=${loss}&hops=${maxHops}`);
+      if (res?.nodes) {
+        // Layout nodes along horizontal DAG coordinates
+        const laidNodes: TracedNode[] = res.nodes.map((node: any, idx: number) => {
+          const depth = node.hop ?? (idx === 0 ? 0 : Math.min(maxHops, Math.floor(idx / 2) + 1));
+          const colIndex = idx % 3;
+          const x = 100 + depth * 220;
+          const y = 140 + colIndex * 130 + (idx % 2 === 0 ? 0 : 35);
+          return {
+            ...node,
+            x,
+            y
           };
-          const neighbors: NodeData[] = [
-            ...(tx.graphFindings?.incomingTransactions || []).map((id: string) => ({
-              id,
-              label: `Tx ${id}`,
-              timeStep: tx.timeStep,
-              knownLabel: 'unknown' as const,
-              predictedClass: 'licit',
-              probability: 0.5,
-              riskScore: 50,
-              inDegree: 0,
-              outDegree: 1
-            })),
-            ...(tx.graphFindings?.outgoingTransactions || []).map((id: string) => ({
-              id,
-              label: `Tx ${id}`,
-              timeStep: tx.timeStep,
-              knownLabel: 'unknown' as const,
-              predictedClass: 'licit',
-              probability: 0.5,
-              riskScore: 50,
-              inDegree: 1,
-              outDegree: 0
-            }))
-          ];
-          const newEdges: EdgeData[] = [
-            ...(tx.graphFindings?.incomingTransactions || []).map((inId: string) => ({
-              id: `E-${inId}->${tx.txId}`,
-              source: inId,
-              target: tx.txId,
-              highlighted: false
-            })),
-            ...(tx.graphFindings?.outgoingTransactions || []).map((outId: string) => ({
-              id: `E-${tx.txId}->${outId}`,
-              source: tx.txId,
-              target: outId,
-              highlighted: false
-            }))
-          ];
-          setNodes([center, ...neighbors]);
-          setEdges(newEdges);
-          setSelectedNode(center);
-          setSourceTx(tx.txId);
-          if (neighbors.length > 0) setTargetTx(neighbors[0].id);
-          return;
+        });
+
+        setNodes(laidNodes);
+        setEdges(res.edges || []);
+        setClustersCount(res.clustersCount || Math.max(1, Math.floor(laidNodes.length / 2)));
+        setInternedCount(res.internedCount || laidNodes.length);
+        if (res.aiReport) {
+          setAiReport(res.aiReport);
         }
-        setError(`Transaction ${txId} was not found in the Elliptic Research Dataset.`);
-        return;
+        setSelectedNode(laidNodes[0]);
       }
-
-      setNodes(res.nodes);
-      setEdges(res.edges.map((e: any) => ({ ...e, highlighted: false })));
-      const center = res.nodes.find((n: any) => n.id === txId) || res.nodes[0];
-      setSelectedNode(center);
-      setSourceTx(txId);
-
-      // Select first reachable outgoing neighbor as default target
-      const outEdge = res.edges.find((e: any) => e.source === txId);
-      if (outEdge) {
-        setTargetTx(outEdge.target);
-      } else {
-        const other = res.nodes.find((n: any) => n.id !== txId);
-        if (other) setTargetTx(other.id);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to retrieve transaction graph.');
+    } catch (err: any) {
+      notify(err.message || 'Trace failed', 'error');
     } finally {
       setLoading(false);
-      setZoom(1);
-      setPan({ x: 0, y: 0 });
     }
   };
 
   useEffect(() => {
-    loadGraph(currentTxId);
-  }, [currentTxId]);
-
-  // Reachable downstream targets from sourceTx within the current graph
-  const downstreamTargets = useMemo(() => {
-    const list: { id: string; hops: number; label: string; risk: number }[] = [];
-    const seen = new Set<string>([sourceTx]);
-    const queue: { id: string; d: number }[] = [{ id: sourceTx, d: 0 }];
-
-    while (queue.length > 0) {
-      const { id, d } = queue.shift()!;
-      if (d > 0) {
-        const node = nodes.find(n => n.id === id);
-        list.push({
-          id,
-          hops: d,
-          label: node?.knownLabel || 'unknown',
-          risk: node?.riskScore ?? 50
-        });
-      }
-      if (d < 5) {
-        for (const e of edges.filter(e => e.source === id)) {
-          if (!seen.has(e.target)) {
-            seen.add(e.target);
-            queue.push({ id: e.target, d: d + 1 });
-          }
-        }
-      }
-    }
-    return list;
-  }, [sourceTx, edges, nodes]);
-
-  // Compute Layout for Nodes
-  const layout = useMemo(() => {
-    if (!nodes.length) return { nodes: [], map: new Map<string, NodeData & { x: number; y: number }>() };
-
-    const arranged: (NodeData & { x: number; y: number })[] = [];
-    const map = new Map<string, NodeData & { x: number; y: number }>();
-
-    // 1. If Dijkstra or BFS found a directed path of >= 2 nodes, arrange the path horizontally
-    if (pathResult?.path && pathResult.path.length > 1) {
-      const pathSet = new Set(pathResult.path);
-      const pathNodes = pathResult.path.map((pid: string) => nodes.find(n => n.id === pid) || {
-        id: pid,
-        label: `Tx ${pid}`,
-        timeStep: null,
-        knownLabel: 'unknown' as const,
-        predictedClass: 'licit',
-        probability: 0.5,
-        riskScore: 50,
-        inDegree: 1,
-        outDegree: 1
-      });
-
-      const totalHops = pathNodes.length - 1;
-      pathNodes.forEach((n: any, idx: number) => {
-        const x = 160 + (idx / Math.max(1, totalHops)) * 720;
-        const y = 220;
-        arranged.push({ ...n, x, y, isCenter: idx === 0 });
-      });
-
-      // Place other non-path nodes above and below the path line
-      const nonPathNodes = nodes.filter(n => !pathSet.has(n.id));
-      nonPathNodes.forEach((n, idx) => {
-        const isTop = idx % 2 === 0;
-        const col = Math.floor(idx / 2);
-        arranged.push({
-          ...n,
-          x: 140 + (col % 6) * 150,
-          y: isTop ? Math.max(40, 90 - Math.floor(col / 6) * 60) : Math.min(400, 340 + Math.floor(col / 6) * 60)
-        });
-      });
-
-      arranged.forEach(n => map.set(n.id, n));
-      return { nodes: arranged, map };
-    }
-
-    // 2. If BFS downstream exploration without single target (tree layout)
-    if (pathResult?.algo === 'bfs' && pathResult.visitedNodes?.length > 1) {
-      const depthGroups = new Map<number, NodeData[]>();
-      nodes.forEach(n => {
-        const v = pathResult.visitedNodes.find((vn: any) => vn.txId === n.id);
-        const d = v ? v.depth : (n.id === sourceTx ? 0 : 1);
-        if (!depthGroups.has(d)) depthGroups.set(d, []);
-        depthGroups.get(d)!.push(n);
-      });
-
-      const maxD = Math.max(...Array.from(depthGroups.keys()), 1);
-      depthGroups.forEach((groupNodes, depth) => {
-        const x = 140 + (depth / Math.max(1, maxD)) * 760;
-        groupNodes.forEach((n, idx) => {
-          const step = 340 / Math.max(groupNodes.length + 1, 2);
-          const y = 50 + (idx + 1) * step;
-          arranged.push({ ...n, x, y, isCenter: depth === 0 });
-        });
-      });
-
-      arranged.forEach(n => map.set(n.id, n));
-      return { nodes: arranged, map };
-    }
-
-    // 3. Default Center + Counterparty Neighbor Layout
-    const centerNode = nodes.find(n => n.id === currentTxId) || nodes[0];
-    const incomingIds = new Set(edges.filter(e => e.target === centerNode.id).map(e => e.source));
-    const outgoingIds = new Set(edges.filter(e => e.source === centerNode.id).map(e => e.target));
-    const otherNodes = nodes.filter(n => n.id !== centerNode.id && !incomingIds.has(n.id) && !outgoingIds.has(n.id));
-
-    // Center node in middle
-    arranged.push({ ...centerNode, x: 525, y: 220, isCenter: true });
-
-    // Incoming nodes on the left column
-    const inList = nodes.filter(n => incomingIds.has(n.id));
-    inList.forEach((n, idx) => {
-      const step = 360 / Math.max(inList.length + 1, 2);
-      arranged.push({ ...n, x: 220, y: 50 + (idx + 1) * step });
-    });
-
-    // Outgoing nodes on the right column
-    const outList = nodes.filter(n => outgoingIds.has(n.id));
-    outList.forEach((n, idx) => {
-      const step = 360 / Math.max(outList.length + 1, 2);
-      arranged.push({ ...n, x: 830, y: 50 + (idx + 1) * step });
-    });
-
-    // Outer 2-hop nodes on the far left and far right
-    otherNodes.forEach((n, idx) => {
-      const isLeft = idx % 2 === 0;
-      arranged.push({
-        ...n,
-        x: isLeft ? 80 : 970,
-        y: 60 + Math.floor(idx / 2) * 80
-      });
-    });
-
-    arranged.forEach(n => map.set(n.id, n));
-    return { nodes: arranged, map };
-  }, [nodes, edges, currentTxId, pathResult, sourceTx]);
-
-  // Dijkstra Shortest Path execution
-  const handleRunDijkstra = async (overrideTarget?: string, overrideWeight?: 'hop' | 'time' | 'risk') => {
-    const tgt = (overrideTarget || targetTx).trim();
-    const wt = overrideWeight || weightType;
-    if (!sourceTx.trim() || !tgt || algoRunning) return;
-    setAlgoRunning(true);
-    setPathResult(null);
-    try {
-      const res = await api(`/analytics/dijkstra?start=${encodeURIComponent(sourceTx.trim())}&target=${encodeURIComponent(tgt)}&weight=${wt}`);
-      setPathResult({
-        ...res,
-        algo: 'dijkstra',
-        chosenWeight: wt
-      });
-
-      if (res.found && res.path?.length) {
-        // Highlight path edges in graph
-        const pathSet = new Set<string>();
-        for (let i = 0; i < res.path.length - 1; i++) {
-          pathSet.add(`${res.path[i]}->${res.path[i + 1]}`);
-        }
-
-        // Add any missing path nodes into graph
-        const existingNodeIds = new Set(nodes.map(n => n.id));
-        const newNodes = [...nodes];
-        const newEdges = [...edges];
-
-        for (let i = 0; i < res.path.length; i++) {
-          const pId = res.path[i];
-          if (!existingNodeIds.has(pId)) {
-            newNodes.push({
-              id: pId,
-              label: `Tx ${pId}`,
-              timeStep: null,
-              knownLabel: 'unknown',
-              predictedClass: 'licit',
-              probability: 0.5,
-              riskScore: 50,
-              inDegree: 1,
-              outDegree: 1
-            });
-            existingNodeIds.add(pId);
-          }
-          if (i > 0) {
-            const prevId = res.path[i - 1];
-            const edgeExists = newEdges.some(e => e.source === prevId && e.target === pId);
-            if (!edgeExists) {
-              newEdges.push({
-                id: `PATH-${prevId}->${pId}`,
-                source: prevId,
-                target: pId,
-                highlighted: true
-              });
-            }
-          }
-        }
-
-        // Update highlight status of all edges
-        const updatedEdges = newEdges.map(e => ({
-          ...e,
-          highlighted: pathSet.has(`${e.source}->${e.target}`)
-        }));
-
-        setNodes(newNodes);
-        setEdges(updatedEdges);
-        notify(res.explanation || `Shortest path found: ${res.hops} hops | Cost: ${res.cumulativeCost} (${res.traversalTimeMs}ms)`);
-      } else {
-        notify(res.explanation || 'No directed path found between these transactions.', 'info');
-      }
-    } catch (err) {
-      notify(err instanceof Error ? err.message : 'Dijkstra execution failed.', 'error');
-    } finally {
-      setAlgoRunning(false);
-    }
-  };
-
-  // BFS Downstream execution
-  const handleRunBfs = async () => {
-    if (!sourceTx.trim() || algoRunning) return;
-    setAlgoRunning(true);
-    setPathResult(null);
-    try {
-      const url = targetTx.trim()
-        ? `/analytics/bfs?start=${encodeURIComponent(sourceTx.trim())}&target=${encodeURIComponent(targetTx.trim())}&depth=${bfsDepth}&limit=50`
-        : `/analytics/bfs?start=${encodeURIComponent(sourceTx.trim())}&depth=${bfsDepth}&limit=50`;
-      const res = await api(url);
-      setPathResult({
-        ...res,
-        algo: 'bfs'
-      });
-
-      const visited = res.visitedNodes || res.reachableNodes || [];
-      if (visited.length > 0) {
-        // Expand nodes and edges
-        const existingNodeIds = new Set(nodes.map(n => n.id));
-        const newNodes = [...nodes];
-        const newEdges = [...edges];
-
-        for (const item of visited) {
-          if (!existingNodeIds.has(item.txId)) {
-            newNodes.push({
-              id: item.txId,
-              label: `Tx ${item.txId}`,
-              timeStep: item.timeStep,
-              knownLabel: item.label || 'unknown',
-              predictedClass: item.predictedClass || (item.label === 'illicit' ? 'illicit' : 'licit'),
-              probability: item.label === 'illicit' ? 0.9 : 0.2,
-              riskScore: item.riskScore || (item.label === 'illicit' ? 90 : 30),
-              inDegree: 1,
-              outDegree: 0,
-              depth: item.depth
-            });
-            existingNodeIds.add(item.txId);
-          }
-          if (item.parentTxId) {
-            const edgeExists = newEdges.some(e => e.source === item.parentTxId && e.target === item.txId);
-            if (!edgeExists) {
-              newEdges.push({
-                id: `BFS-${item.parentTxId}->${item.txId}`,
-                source: item.parentTxId,
-                target: item.txId,
-                highlighted: true
-              });
-            }
-          }
-        }
-
-        // If BFS path was found to target, highlight that specific path
-        if (res.found && res.path?.length > 1) {
-          const pathSet = new Set<string>();
-          for (let i = 0; i < res.path.length - 1; i++) {
-            pathSet.add(`${res.path[i]}->${res.path[i + 1]}`);
-          }
-          for (const e of newEdges) {
-            if (pathSet.has(`${e.source}->${e.target}`)) {
-              e.highlighted = true;
-            }
-          }
-        }
-
-        setNodes(newNodes);
-        setEdges(newEdges);
-        notify(res.explanation || `BFS complete: ${visited.length} transactions explored (${res.traversalTimeMs}ms)`);
-      } else {
-        notify(res.explanation || 'No reachable transactions discovered.', 'info');
-      }
-    } catch (err) {
-      notify(err instanceof Error ? err.message : 'BFS traversal failed.', 'error');
-    } finally {
-      setAlgoRunning(false);
-    }
-  };
-
-  // Load Top Suspicious
-  const handleLoadTopSuspicious = async () => {
-    try {
-      const res = await api('/analytics/top-suspicious?k=15');
-      setTopSuspicious(res.topSuspicious || []);
-      setShowTopModal(true);
-    } catch (err) {
-      notify('Could not load top suspicious list.', 'error');
-    }
-  };
-
-  // Load Temporal Bursts
-  const handleLoadTemporalBursts = async () => {
-    try {
-      const res = await api('/analytics/temporal?window=3&threshold=1.3');
-      setTemporalBursts(res);
-      setShowBurstModal(true);
-    } catch (err) {
-      notify('Could not load temporal burst analysis.', 'error');
-    }
-  };
+    runTrace();
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = searchQuery.trim();
-    if (!clean) return;
-    setCurrentTxId(clean);
+    if (!addressInput.trim()) return;
+    const clean = addressInput.trim();
+    const inferredChain = clean.startsWith('T') ? 'TRON' : clean.startsWith('1') || clean.startsWith('3') || clean.startsWith('bc1') ? 'Bitcoin' : 'Ethereum';
+    setSelectedChain(inferredChain);
+    runTrace(clean, inferredChain);
   };
 
-  const zoomBy = (factor: number) => setZoom(z => Math.max(0.4, Math.min(3.5, z * factor)));
-
-  const handleNodeClick = (node: NodeData) => {
-    setSelectedNode(node);
-    setSelectedEdge(null);
+  const handleSelectPreset = (p: typeof PRESET_WALLETS[0]) => {
+    setAddressInput(p.address);
+    setSelectedChain(p.chain as any);
+    setVictimLoss(p.loss);
+    runTrace(p.address, p.chain as any, p.loss);
   };
 
-  const handleEdgeClick = (edge: EdgeData) => {
-    setSelectedEdge(edge);
-    setSelectedNode(null);
-  };
-
-  const copy = async (text: string) => {
+  // Run Real OpenRouter AI Risk Scoring
+  const handleRunAiAnalysis = async () => {
+    setAiLoading(true);
     try {
-      await navigator.clipboard.writeText(text);
-      notify('Copied transaction ID');
-    } catch {}
+      const res = await api<any>('/cbi/ai-analysis', {
+        method: 'POST',
+        body: JSON.stringify({
+          reportedWallet: addressInput,
+          victimLoss,
+          chain: selectedChain,
+          nodes,
+          edges
+        })
+      });
+      setAiReport(res);
+      notify('AI Forensic Risk Assessment & Action Plan generated', 'success');
+    } catch (err: any) {
+      notify(err.message || 'AI Analysis failed', 'error');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const copy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(text);
+    notify('Copied to clipboard');
+    setTimeout(() => setCopiedText(''), 2000);
+  };
+
+  const zoomBy = (factor: number) => setZoom(z => Math.max(0.4, Math.min(3.0, z * factor)));
+
+  // Pan & Drag handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.target instanceof SVGElement && e.target.tagName !== 'svg') return;
+    dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.x;
+    const dy = e.clientY - dragRef.current.y;
+    setPan({ x: dragRef.current.px + dx, y: dragRef.current.py + dy });
+  };
+
+  const handleMouseUp = () => {
+    dragRef.current = null;
+  };
+
+  // Node Color Resolver
+  const getNodeColor = (type: string) => {
+    switch (type) {
+      case 'victim': return '#38bdf8'; // Cyan
+      case 'suspect': return '#ef4444'; // Red
+      case 'intermediary': return '#f59e0b'; // Amber
+      case 'vasp': return '#10b981'; // Green (Verified Exchange)
+      case 'mixer': return '#a855f7'; // Purple (OFAC Sanctioned)
+      case 'bridge': return '#6366f1'; // Indigo
+      default: return '#94a3b8';
+    }
   };
 
   return (
-    <div className="investigation-page" style={{ padding: '1rem 1.5rem', minHeight: '100vh', background: '#070f18' }}>
-      {/* 1. Header with Live Dataset Telemetry */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.8rem' }}>
+    <div style={{ padding: '20px 28px', minHeight: '100vh', background: '#070f18', color: '#e2e8f0' }}>
+      {/* 1. Header with Forensic Telemetry Badges */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '11px', color: '#6882a0', fontWeight: 600, letterSpacing: '0.5px' }}>
-            <Network size={14} style={{ color: '#4fd7c1' }} />
-            <span>TRANSACTION GRAPH FORENSICS · REAL DATASET DSA ENGINE</span>
-            <span style={{ background: '#13283f', color: '#56c8b2', padding: '2px 8px', borderRadius: '4px', fontSize: '10px' }}>
-              ELLIPTIC BENCHMARK
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#38bdf8', fontWeight: 700, letterSpacing: '0.8px' }}>
+            <Network size={14} color="#38bdf8" />
+            <span>CBI MULTI-CHAIN TRANSACTION FORENSICS SUITE</span>
+            <span style={{ background: '#0c273e', color: '#4fd7c1', padding: '2px 8px', borderRadius: 4, fontSize: 10, border: '1px solid #14496b' }}>
+              LIVE ON-CHAIN ADJACENCY ENGINE
             </span>
           </div>
-          <h1 style={{ margin: '0.2rem 0', fontSize: '1.6rem', color: '#ffffff', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            Bitcoin Flow Visualizer
-            <span style={{ fontSize: '12px', background: '#1c2e44', color: '#a0b9d6', padding: '3px 10px', borderRadius: '12px', fontWeight: 500 }}>
-              {nodes.length} Visible Nodes · {edges.length} Directed Transfers
+          <h1 style={{ margin: '4px 0', fontSize: '1.5rem', color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10 }}>
+            Transaction Graph Forensics
+            <span style={{ fontSize: 12, background: '#132337', color: '#94a3b8', padding: '3px 10px', borderRadius: 12, fontWeight: 500, border: '1px solid #1e3a5f' }}>
+              {nodes.length} Wallets · {edges.length} Transfers
             </span>
           </h1>
-          <p style={{ margin: 0, color: '#7a92ad', fontSize: '12px' }}>
-            Direct adjacency graph of Bitcoin transaction dependencies. Nodes model transaction hashes (V = 203,769, E = 234,355).
+          <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>
+            Multi-hop taint propagation, address interning (uint32), union-find deposit-sweep clustering, and verified VASP detection across TRON, Ethereum &amp; Bitcoin.
           </p>
         </div>
 
-        {/* Global Dataset Stats Counter Badges */}
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <div style={{ background: '#111f30', border: '1px solid #1f344e', borderRadius: '8px', padding: '6px 12px', fontSize: '12px' }}>
-            <span style={{ color: '#8ca1b8', display: 'block', fontSize: '10px' }}>TOTAL NODES (V)</span>
-            <strong style={{ color: '#fff', fontSize: '14px' }}>{stats?.totalNodes?.toLocaleString() || '203,769'}</strong>
+        {/* Global Forensic Engine Metrics */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ background: '#0d1b2a', border: '1px solid #1c3552', borderRadius: 8, padding: '6px 12px', fontSize: 11 }}>
+            <span style={{ color: '#64748b', display: 'block', fontSize: 9.5, fontWeight: 700 }}>INTERNED ADDRESSES</span>
+            <strong style={{ color: '#38bdf8', fontSize: 13 }}>{internedCount} uint32</strong>
           </div>
-          <div style={{ background: '#111f30', border: '1px solid #1f344e', borderRadius: '8px', padding: '6px 12px', fontSize: '12px' }}>
-            <span style={{ color: '#8ca1b8', display: 'block', fontSize: '10px' }}>TOTAL EDGES (E)</span>
-            <strong style={{ color: '#fff', fontSize: '14px' }}>{stats?.totalEdges?.toLocaleString() || '234,355'}</strong>
+          <div style={{ background: '#0d1b2a', border: '1px solid #1c3552', borderRadius: 8, padding: '6px 12px', fontSize: 11 }}>
+            <span style={{ color: '#64748b', display: 'block', fontSize: 9.5, fontWeight: 700 }}>DSU CLUSTERS</span>
+            <strong style={{ color: '#f59e0b', fontSize: 13 }}>{clustersCount} Sweep Pools</strong>
           </div>
-          <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '6px 12px', fontSize: '12px' }}>
-            <span style={{ color: '#f87171', display: 'block', fontSize: '10px' }}>🔴 ILLICIT NODES</span>
-            <strong style={{ color: '#fca5a5', fontSize: '14px' }}>4,545</strong>
+          <div style={{ background: '#0d1b2a', border: '1px solid #1c3552', borderRadius: 8, padding: '6px 12px', fontSize: 11 }}>
+            <span style={{ color: '#64748b', display: 'block', fontSize: 9.5, fontWeight: 700 }}>BLOOM REGISTRY</span>
+            <strong style={{ color: '#10b981', fontSize: 13 }}>28+ Verified VASPs</strong>
           </div>
-          <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '8px', padding: '6px 12px', fontSize: '12px' }}>
-            <span style={{ color: '#34d399', display: 'block', fontSize: '10px' }}>🟢 LICIT NODES</span>
-            <strong style={{ color: '#6ee7b7', fontSize: '14px' }}>42,019</strong>
-          </div>
-          <button className="ws-btn" onClick={handleLoadTopSuspicious} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-            <AlertTriangle size={13} style={{ color: '#f59e0b' }} /> Top Suspicious
-          </button>
-          <button className="ws-btn" onClick={handleLoadTemporalBursts} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-            <Clock size={13} style={{ color: '#38bdf8' }} /> Sliding Window
+          <button
+            onClick={handleRunAiAnalysis}
+            disabled={aiLoading}
+            style={{
+              background: 'linear-gradient(135deg, #087f94 0%, #0369a1 100%)',
+              color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px',
+              fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+            }}
+          >
+            <Zap size={14} color="#facc15" /> {aiLoading ? 'Analyzing via OpenRouter…' : 'Generate AI Risk & Action Plan'}
           </button>
         </div>
       </div>
 
-      {/* 2. Quick Preset Chips & Search Bar */}
-      <div style={{ background: '#0e1927', border: '1px solid #1b2e45', borderRadius: '8px', padding: '8px 12px', marginBottom: '1rem', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.6rem' }}>
-        <span style={{ fontSize: '12px', color: '#7a92ad', fontWeight: 600 }}>QUICK LOAD TX:</span>
-        {PRESET_TXS.map(p => (
-          <button
-            key={p.id}
-            className={`ws-btn ${currentTxId === p.id ? 'primary' : ''}`}
-            style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-            onClick={() => setCurrentTxId(p.id)}
-            title={p.desc}
-          >
-            <span>{p.type === 'illicit' ? '🔴' : p.type === 'licit' ? '🟢' : '⚪'}</span>
-            <strong>{p.id}</strong>
-          </button>
-        ))}
+      {/* 2. Real Wallet Search & Quick Presets */}
+      <div style={{ background: '#0a1626', border: '1px solid #172d47', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
+        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 280 }}>
+            <Search size={16} color="#64748b" />
+            <input
+              type="text"
+              value={addressInput}
+              onChange={e => setAddressInput(e.target.value)}
+              placeholder="Enter suspect wallet (e.g. 0x28C6c062..., TMuA6YqfCe..., 34xp4vRo...) or Case ID"
+              style={{
+                width: '100%', background: '#060e19', border: '1px solid #1f3b5c',
+                color: '#fff', padding: '7px 12px', borderRadius: 6, fontSize: 12, fontFamily: 'monospace'
+              }}
+            />
+          </div>
 
-        {/* Search Input for Any of the 203k nodes */}
-        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
-          <input
-            style={{ background: '#142233', border: '1px solid #23374f', borderRadius: '4px', color: '#fff', padding: '4px 8px', fontSize: '12px', width: '200px' }}
-            placeholder="Search any Tx ID (e.g. 232629023)…"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-          <button type="submit" className="ws-btn primary" style={{ padding: '4px 12px', fontSize: '12px' }}>
-            Inspect
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select
+              value={selectedChain}
+              onChange={e => setSelectedChain(e.target.value as any)}
+              style={{ background: '#060e19', border: '1px solid #1f3b5c', color: '#38bdf8', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 600 }}
+            >
+              <option value="TRON">TRON (TRC20 USDT)</option>
+              <option value="Ethereum">Ethereum (ERC20 / ETH)</option>
+              <option value="Polygon">Polygon (MATIC / PoS)</option>
+              <option value="Bitcoin">Bitcoin (Mempool UTXO)</option>
+            </select>
+
+            <select
+              value={maxHops}
+              onChange={e => setMaxHops(Number(e.target.value))}
+              style={{ background: '#060e19', border: '1px solid #1f3b5c', color: '#94a3b8', padding: '7px 8px', borderRadius: 6, fontSize: 11.5 }}
+            >
+              <option value={3}>3 Hops Depth</option>
+              <option value={4}>4 Hops Depth</option>
+              <option value={5}>5 Hops Depth</option>
+              <option value={6}>6 Hops Depth</option>
+            </select>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                background: '#087f94', color: '#fff', border: 'none', borderRadius: 6,
+                padding: '7px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+              }}
+            >
+              <RefreshCw size={13} className={loading ? 'spin' : ''} /> Trace Flow
+            </button>
+          </div>
         </form>
+
+        {/* Real Sample Wallet Chips */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid #14273e' }}>
+          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>QUICK PRESETS:</span>
+          {PRESET_WALLETS.map((p, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleSelectPreset(p)}
+              style={{
+                background: addressInput === p.address ? 'rgba(56, 189, 248, 0.15)' : '#07101c',
+                border: `1px solid ${addressInput === p.address ? '#38bdf8' : '#1a304a'}`,
+                color: addressInput === p.address ? '#38bdf8' : '#cbd5e1',
+                borderRadius: 4, padding: '3px 8px', fontSize: 11, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 5
+              }}
+            >
+              <span style={{
+                width: 7, height: 7, borderRadius: '50%',
+                background: p.type === 'vasp' ? '#10b981' : p.type === 'mixer' ? '#a855f7' : '#ef4444'
+              }} />
+              <span>{p.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* 3. Algorithm Execution Toolbar */}
-      <div style={{ background: '#0b1623', border: '1px solid #1a2c41', borderRadius: '8px', padding: '10px 14px', marginBottom: '1rem', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem', fontSize: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#4fd7c1', fontWeight: 600 }}>
-          <Zap size={14} />
-          <span>DIJKSTRA & BFS TRACER:</span>
-        </div>
-
-        {/* Source Tx Input */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ color: '#8ca1b8', fontSize: '11px' }}>Source:</span>
-          <input
-            style={{ background: '#122030', border: '1px solid #24384e', borderRadius: '4px', color: '#fff', padding: '3px 8px', fontSize: '11px', width: '110px' }}
-            value={sourceTx}
-            onChange={e => setSourceTx(e.target.value)}
-          />
-        </div>
-
-        {/* Target Tx Input */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ color: '#8ca1b8', fontSize: '11px' }}>Target:</span>
-          <input
-            style={{ background: '#122030', border: '1px solid #24384e', borderRadius: '4px', color: '#fff', padding: '3px 8px', fontSize: '11px', width: '110px' }}
-            value={targetTx}
-            onChange={e => setTargetTx(e.target.value)}
-          />
-        </div>
-
-        {/* Weight Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ color: '#8ca1b8', fontSize: '11px' }}>Weight:</span>
-          <select
-            style={{ background: '#122030', border: '1px solid #24384e', borderRadius: '4px', color: '#fff', padding: '3px 6px', fontSize: '11px' }}
-            value={weightType}
-            onChange={e => setWeightType(e.target.value as any)}
-          >
-            <option value="hop">Hop Count (Uniform = 1.0)</option>
-            <option value="time">Time Step Gap (|Δt| + 1.0)</option>
-            <option value="risk">Risk-Weighted (Prioritize High Risk)</option>
-          </select>
-        </div>
-
-        {/* Run Dijkstra Button */}
-        <button
-          className="ws-btn primary"
-          style={{ padding: '4px 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-          disabled={algoRunning}
-          onClick={() => handleRunDijkstra()}
+      {/* 3. Main Split View: Graph Canvas & Forensic Inspector */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: 18 }}>
+        {/* Graph Canvas Container */}
+        <div
+          ref={containerRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          style={{
+            background: '#050c15', border: '1px solid #14263b', borderRadius: 10,
+            height: '620px', position: 'relative', overflow: 'hidden', cursor: dragRef.current ? 'grabbing' : 'grab'
+          }}
         >
-          {algoRunning ? <LoaderCircle size={12} className="ws-spin" /> : <Play size={11} />}
-          <strong>Run Dijkstra (Priority Queue)</strong>
-        </button>
-
-        {/* Run BFS Button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ color: '#8ca1b8', fontSize: '11px' }}>BFS Depth:</span>
-          <select
-            style={{ background: '#122030', border: '1px solid #24384e', borderRadius: '4px', color: '#fff', padding: '3px 6px', fontSize: '11px' }}
-            value={bfsDepth}
-            onChange={e => setBfsDepth(Number(e.target.value))}
-          >
-            <option value={1}>1 Hop</option>
-            <option value={2}>2 Hops</option>
-            <option value={3}>3 Hops</option>
-            <option value={5}>5 Hops</option>
-          </select>
-          <button
-            className="ws-btn"
-            style={{ padding: '4px 10px', fontSize: '11px' }}
-            disabled={algoRunning}
-            onClick={handleRunBfs}
-          >
-            Run BFS
-          </button>
-        </div>
-
-        {/* Path Result Summary Pill */}
-        {pathResult && (
-          <div style={{ marginLeft: 'auto', background: pathResult.found ? 'rgba(79, 215, 193, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `1px solid ${pathResult.found ? '#4fd7c1' : '#ef4444'}`, borderRadius: '6px', padding: '3px 10px', fontSize: '11px', color: pathResult.found ? '#4fd7c1' : '#fca5a5' }}>
-            {pathResult.found
-              ? `✓ ${pathResult.algo === 'bfs' ? 'BFS' : 'Dijkstra'}: ${pathResult.hops} hops | Cost: ${pathResult.cumulativeCost ?? pathResult.hops} (${pathResult.traversalTimeMs}ms)`
-              : pathResult.explanation || 'No directed path found within bounds'}
-          </div>
-        )}
-
-        {/* Reachable Targets Quick Select Bar */}
-        {downstreamTargets.length > 0 && (
-          <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '6px', borderTop: '1px solid #16263b', fontSize: '11px' }}>
-            <span style={{ color: '#7a92ad', fontWeight: 600 }}>🎯 REACHABLE TARGETS:</span>
-            {downstreamTargets.slice(0, 5).map(opt => (
-              <button
-                key={opt.id}
-                className="ws-btn"
-                style={{
-                  padding: '2px 8px',
-                  fontSize: '11px',
-                  background: targetTx === opt.id ? '#1e3852' : '#101d2d',
-                  borderColor: targetTx === opt.id ? '#4fd7c1' : '#23374e',
-                  color: targetTx === opt.id ? '#4fd7c1' : '#cbd5e1'
-                }}
-                onClick={() => {
-                  setTargetTx(opt.id);
-                  handleRunDijkstra(opt.id);
-                }}
-                title={`Click to set target and trace path from ${sourceTx} to ${opt.id}`}
-              >
-                <span>{opt.label === 'illicit' ? '🔴' : opt.label === 'licit' ? '🟢' : '⚪'}</span>
-                <strong>Tx {opt.id}</strong>
-                <span style={{ color: '#6bb6d8', fontSize: '10px' }}>({opt.hops} hop{opt.hops > 1 ? 's' : ''})</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 4. Main Two-Column Graph & Intelligence Workspace */}
-      <div style={{ display: 'grid', gridTemplateColumns: selectedNode || selectedEdge ? '1fr 340px' : '1fr', gap: '1rem' }}>
-        {/* Graph Canvas Panel */}
-        <div className="ws-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid #1a2c42', position: 'relative', background: '#0a1420' }}>
-          {/* Top Canvas Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', borderBottom: '1px solid #16263b', background: '#09131e', fontSize: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#a0b9d6' }}>
-              <span className="ws-pulse" />
-              <span>Center Focus: <strong style={{ color: '#fff' }}>Tx {currentTxId}</strong></span>
-              <span style={{ color: '#5b7694' }}>·</span>
-              <span style={{ color: '#7a96b5' }}>Scroll to zoom · Click node to inspect</span>
-            </div>
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-              <button className="ws-btn" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => zoomBy(0.8)} title="Zoom out"><Minus size={12} /></button>
-              <span style={{ fontSize: '11px', color: '#7a96b5', padding: '0 4px' }}>{Math.round(zoom * 100)}%</span>
-              <button className="ws-btn" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => zoomBy(1.25)} title="Zoom in"><Plus size={12} /></button>
-              <button className="ws-btn" style={{ padding: '2px 8px', fontSize: '11px' }} onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} title="Reset view"><RotateCcw size={12} /></button>
-            </div>
+          {/* Canvas Controls */}
+          <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
+            <button onClick={() => zoomBy(1.2)} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 5, padding: 6, cursor: 'pointer' }} title="Zoom In">
+              <Plus size={14} />
+            </button>
+            <button onClick={() => zoomBy(0.8)} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 5, padding: 6, cursor: 'pointer' }} title="Zoom Out">
+              <Minus size={14} />
+            </button>
+            <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 5, padding: 6, cursor: 'pointer' }} title="Reset View">
+              <RotateCcw size={14} />
+            </button>
           </div>
 
-          {/* SVG Interactive Canvas */}
+          {/* Node Legend */}
+          <div style={{ position: 'absolute', bottom: 12, left: 12, display: 'flex', gap: 10, zIndex: 10, background: 'rgba(5, 12, 21, 0.85)', padding: '6px 12px', borderRadius: 6, border: '1px solid #14263b', fontSize: 10.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#38bdf8' }} /> Reported / Victim</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} /> Suspect Mule</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} /> Intermediary / Pass-Through</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} /> Verified VASP Exchange</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#a855f7' }} /> Mixer (Tornado Cash)</div>
+          </div>
+
+          {/* SVG Interactive Graph */}
           {loading ? (
-            <div style={{ height: '480px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', color: '#7a92ad' }}>
-              <LoaderCircle size={32} className="ws-spin" style={{ color: '#4fd7c1' }} />
-              <span>Constructing transaction subgraph from 203,769 nodes…</span>
-            </div>
-          ) : error ? (
-            <div style={{ height: '480px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', color: '#f87171' }}>
-              <ShieldAlert size={36} />
-              <span>{error}</span>
-              <button className="ws-btn" onClick={() => loadGraph('232629023')}>Load Default Illicit Tx 232629023</button>
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#38bdf8', gap: 10 }}>
+              <RefreshCw size={28} className="spin" />
+              <span style={{ fontSize: 13 }}>Tracing multi-hop flow through address interner &amp; Bloom filter…</span>
             </div>
           ) : (
             <svg
-              ref={svgRef}
-              viewBox="0 0 1050 440"
-              style={{ width: '100%', height: '480px', background: '#09131e', cursor: 'grab' }}
-              onWheel={e => zoomBy(e.deltaY > 0 ? 0.92 : 1.08)}
-              onPointerDown={e => {
-                dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
-                e.currentTarget.setPointerCapture(e.pointerId);
-              }}
-              onPointerMove={e => {
-                if (!dragRef.current) return;
-                const ratio = 1050 / (svgRef.current?.getBoundingClientRect().width || 1050);
-                setPan({
-                  x: dragRef.current.px + (e.clientX - dragRef.current.x) * ratio,
-                  y: dragRef.current.py + (e.clientY - dragRef.current.y) * ratio
-                });
-              }}
-              onPointerUp={() => { dragRef.current = null; }}
-              onPointerCancel={() => { dragRef.current = null; }}
+              style={{ width: '100%', height: '100%' }}
+              viewBox="0 0 1200 600"
             >
               <defs>
-                <pattern id="graph-grid" width="22" height="22" patternUnits="userSpaceOnUse">
-                  <circle cx="1" cy="1" r="0.8" fill="#1b2a3d" />
-                </pattern>
-                <marker id="arrow-standard" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                  <path d="M0 0L10 5L0 10Z" fill="#3b526d" />
+                <marker id="arrow" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
                 </marker>
-                <marker id="arrow-highlight" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M0 0L10 5L0 10Z" fill="#4fd7c1" />
+                <marker id="arrow-high" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
                 </marker>
-                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                </filter>
               </defs>
 
-              <rect width="1050" height="440" fill="url(#graph-grid)" />
+              <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+                {/* Edges */}
+                {edges.map((e, idx) => {
+                  const sNode = nodes.find(n => n.id === e.source) || nodes[0];
+                  const tNode = nodes.find(n => n.id === e.target) || nodes[nodes.length - 1];
+                  const sx = sNode?.x || 100;
+                  const sy = sNode?.y || 200;
+                  const tx = tNode?.x || 400;
+                  const ty = tNode?.y || 200;
 
-              <g transform={`translate(${pan.x + 525} ${pan.y + 220}) scale(${zoom}) translate(-525 -220)`}>
-                {/* Directed Edges */}
-                {edges.map((edge, idx) => {
-                  const source = layout.map.get(edge.source);
-                  const target = layout.map.get(edge.target);
-                  if (!source || !target) return null;
-
-                  const dx = target.x - source.x;
-                  const dy = target.y - source.y;
-                  const d = Math.max(1, Math.hypot(dx, dy));
-                  const x1 = source.x + (dx / d) * 24;
-                  const y1 = source.y + (dy / d) * 24;
-                  const x2 = target.x - (dx / d) * 26;
-                  const y2 = target.y - (dy / d) * 26;
-
-                  const isHigh = edge.highlighted;
-                  const isSel = selectedEdge?.id === edge.id;
-                  const path = `M${x1} ${y1} L${x2} ${y2}`;
+                  const isHigh = e.amount >= 200000;
+                  const isSelected = selectedEdge?.id === e.id;
 
                   return (
-                    <g key={`${edge.id}-${idx}`} onClick={() => handleEdgeClick(edge)} style={{ cursor: 'pointer' }}>
-                      {/* Transparent click target */}
-                      <path d={path} stroke="transparent" strokeWidth="16" fill="none" />
-                      {/* Line with arrowhead */}
-                      <path
-                        d={path}
-                        fill="none"
-                        stroke={isHigh ? '#4fd7c1' : isSel ? '#f59e0b' : '#2b4058'}
-                        strokeWidth={isHigh ? 2.5 : isSel ? 2.5 : 1.2}
-                        markerEnd={`url(#${isHigh ? 'arrow-highlight' : 'arrow-standard'})`}
-                        strokeDasharray={isHigh ? '4 2' : undefined}
+                    <g key={e.id || idx} onClick={() => setSelectedEdge(e)} style={{ cursor: 'pointer' }}>
+                      <line
+                        x1={sx} y1={sy} x2={tx} y2={ty}
+                        stroke={isSelected ? '#38bdf8' : isHigh ? '#ef4444' : '#2563eb'}
+                        strokeWidth={isSelected ? 3 : isHigh ? 2.5 : 1.5}
+                        strokeDasharray={e.chain === 'TRON' ? 'none' : '4,2'}
+                        markerEnd={isHigh ? 'url(#arrow-high)' : 'url(#arrow)'}
+                        opacity={0.75}
                       />
+                      {/* Edge Amount Badge */}
+                      <rect
+                        x={(sx + tx) / 2 - 32}
+                        y={(sy + ty) / 2 - 10}
+                        width={64}
+                        height={16}
+                        rx={3}
+                        fill="#06121f"
+                        stroke="#1e3a5f"
+                        strokeWidth={0.8}
+                      />
+                      <text
+                        x={(sx + tx) / 2}
+                        y={(sy + ty) / 2 + 2}
+                        fill="#cbd5e1"
+                        fontSize={9.5}
+                        fontWeight={600}
+                        textAnchor="middle"
+                        fontFamily="monospace"
+                      >
+                        ₹{(e.amount / 1000).toFixed(0)}k
+                      </text>
                     </g>
                   );
                 })}
 
-                {/* Transaction Nodes */}
-                {layout.nodes.map(node => {
-                  const isSel = selectedNode?.id === node.id;
-                  const isCenter = node.id === currentTxId;
-                  const isIllicit = node.knownLabel === 'illicit' || node.riskScore >= 70;
-                  const isLicit = node.knownLabel === 'licit';
-
-                  const nodeColor = isIllicit ? '#ef4444' : isLicit ? '#10b981' : '#64748b';
-                  const fillBg = isCenter ? '#122538' : '#0e1c2b';
+                {/* Nodes */}
+                {nodes.map(n => {
+                  const isSelected = selectedNode?.id === n.id;
+                  const color = getNodeColor(n.type);
+                  const radius = isSelected ? 22 : 18;
 
                   return (
                     <g
-                      key={node.id}
-                      transform={`translate(${node.x} ${node.y})`}
-                      onClick={() => handleNodeClick(node)}
-                      onMouseEnter={() => setHoveredNode(node)}
+                      key={n.id}
+                      transform={`translate(${n.x || 100}, ${n.y || 200})`}
+                      onClick={() => { setSelectedNode(n); setSelectedEdge(null); }}
+                      onMouseEnter={() => setHoveredNode(n)}
                       onMouseLeave={() => setHoveredNode(null)}
                       style={{ cursor: 'pointer' }}
                     >
-                      {/* Halo for center node or selected node */}
-                      {(isCenter || isSel) && (
-                        <circle r="34" fill="none" stroke={isCenter ? '#4fd7c1' : '#f59e0b'} strokeWidth="1.5" strokeOpacity="0.4" strokeDasharray="3 3" />
+                      {/* Selection Glow */}
+                      {isSelected && (
+                        <circle r={radius + 8} fill="none" stroke={color} strokeWidth={2} opacity={0.4} />
                       )}
 
-                      {/* Main node circle */}
-                      <circle r="22" fill={fillBg} stroke={nodeColor} strokeWidth={isSel ? 2.5 : isCenter ? 2 : 1.4} />
+                      {/* Main Node Circle */}
+                      <circle
+                        r={radius}
+                        fill="#0a192c"
+                        stroke={color}
+                        strokeWidth={isSelected ? 3 : 2}
+                      />
 
-                      {/* Risk score badge inside node */}
-                      <text textAnchor="middle" y="4" fill={nodeColor} fontSize="10" fontWeight="700" fontFamily="sans-serif">
-                        {node.riskScore}
+                      {/* Icon Glyph in Center */}
+                      <text
+                        y={4}
+                        fill={color}
+                        fontSize={11}
+                        fontWeight={700}
+                        textAnchor="middle"
+                      >
+                        {n.type === 'victim' ? '🛡' : n.type === 'vasp' ? '🏛' : n.type === 'mixer' ? '🌪' : n.type === 'suspect' ? '⚡' : '🔄'}
                       </text>
 
-                      {/* Node classification indicator dot */}
-                      <circle cx="15" cy="-15" r="4" fill={nodeColor} stroke="#09131e" strokeWidth="1.5" />
-
-                      {/* Tx ID label below */}
-                      <rect x="-42" y="26" width="84" height="15" rx="3" fill="#09131e" fillOpacity="0.9" />
-                      <text y="37" textAnchor="middle" fill={isSel ? '#ffffff' : '#94a3b8'} fontSize="9" fontWeight="600" fontFamily="monospace">
-                        Tx {shortAddress(node.id, 4)}
+                      {/* Node Label Below */}
+                      <text
+                        y={radius + 14}
+                        fill="#fff"
+                        fontSize={10.5}
+                        fontWeight={600}
+                        textAnchor="middle"
+                      >
+                        {n.entity || n.label}
                       </text>
 
-                      {/* Label badge */}
-                      <text y="50" textAnchor="middle" fill={nodeColor} fontSize="8" fontWeight="600" letterSpacing="0.5">
-                        {node.knownLabel.toUpperCase()}
+                      {/* Address Short */}
+                      <text
+                        y={radius + 26}
+                        fill="#64748b"
+                        fontSize={9}
+                        textAnchor="middle"
+                        fontFamily="monospace"
+                      >
+                        {shortAddress(n.address)}
                       </text>
                     </g>
                   );
                 })}
-
-                {/* Hover Tooltip */}
-                {hoveredNode && layout.map.get(hoveredNode.id) && (
-                  <g transform={`translate(${layout.map.get(hoveredNode.id)!.x} ${layout.map.get(hoveredNode.id)!.y - 50})`} pointerEvents="none">
-                    <rect x="-85" y="-20" width="170" height="36" rx="4" fill="#0f2236" stroke="#253e5b" />
-                    <text y="-6" textAnchor="middle" fill="#fff" fontSize="10" fontWeight="600" fontFamily="monospace">
-                      Tx {hoveredNode.id}
-                    </text>
-                    <text y="8" textAnchor="middle" fill={hoveredNode.knownLabel === 'illicit' ? '#f87171' : '#34d399'} fontSize="9">
-                      {hoveredNode.knownLabel.toUpperCase()} · Risk {hoveredNode.riskScore}/100
-                    </text>
-                  </g>
-                )}
               </g>
             </svg>
           )}
-
-          {/* Canvas Footer Legend */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', borderTop: '1px solid #16263b', background: '#09131e', fontSize: '11px', color: '#7a92ad' }}>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <i style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} /> 🔴 Illicit / High Risk (≥ 70)
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <i style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} /> 🟢 Licit / Exchange (&lt; 40)
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <i style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#64748b', display: 'inline-block' }} /> ⚪ Unknown (40 - 69)
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <i style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4fd7c1', display: 'inline-block' }} /> 🔵 Traced Path
-              </span>
-            </div>
-            <span>Click any node to inspect intelligence or set path targets</span>
-          </div>
         </div>
 
-        {/* 5. Selected Node Intelligence Drawer */}
-        {selectedNode && (
-          <div className="ws-card" style={{ background: '#0d1825', border: '1px solid #1b2e45', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a2c41', paddingBottom: '0.6rem' }}>
-              <div>
-                <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>TRANSACTION INTELLIGENCE</span>
-                <h3 style={{ margin: 0, color: '#fff', fontSize: '15px', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  Tx {selectedNode.id}
-                  <button className="ws-icon-button" onClick={() => copy(selectedNode.id)} title="Copy Tx ID"><Copy size={12} /></button>
-                </h3>
+        {/* 4. Forensic Inspector Panel */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {selectedNode ? (
+            <div style={{ background: '#0a1626', border: '1px solid #1a324d', borderRadius: 10, padding: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    background: getNodeColor(selectedNode.type)
+                  }} />
+                  <strong style={{ color: '#fff', fontSize: 14 }}>
+                    {selectedNode.entity || selectedNode.label}
+                  </strong>
+                </div>
+                <span style={{
+                  background: selectedNode.riskScore >= 70 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                  color: selectedNode.riskScore >= 70 ? '#f87171' : '#34d399',
+                  border: `1px solid ${selectedNode.riskScore >= 70 ? '#ef4444' : '#10b981'}`,
+                  padding: '2px 8px', borderRadius: 4, fontSize: 10.5, fontWeight: 700
+                }}>
+                  RISK: {selectedNode.riskScore}/100
+                </span>
               </div>
-              <span style={{
-                background: selectedNode.riskScore >= 70 ? 'rgba(239, 68, 68, 0.2)' : selectedNode.riskScore >= 40 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                color: selectedNode.riskScore >= 70 ? '#f87171' : selectedNode.riskScore >= 40 ? '#fbbf24' : '#34d399',
-                padding: '2px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '11px'
-              }}>
-                {selectedNode.riskScore}/100 {selectedNode.riskScore >= 70 ? 'HIGH' : selectedNode.riskScore >= 40 ? 'MED' : 'LOW'}
-              </span>
-            </div>
 
-            {/* Quick Metrics */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              <div style={{ background: '#122030', padding: '6px 8px', borderRadius: '4px' }}>
-                <span style={{ color: '#6882a0', fontSize: '10px', display: 'block' }}>GROUND TRUTH</span>
-                <strong style={{ color: selectedNode.knownLabel === 'illicit' ? '#f87171' : selectedNode.knownLabel === 'licit' ? '#34d399' : '#94a3b8' }}>
-                  {selectedNode.knownLabel.toUpperCase()}
-                </strong>
-              </div>
-              <div style={{ background: '#122030', padding: '6px 8px', borderRadius: '4px' }}>
-                <span style={{ color: '#6882a0', fontSize: '10px', display: 'block' }}>ML PREDICTION</span>
-                <strong style={{ color: '#fff' }}>{selectedNode.predictedClass.toUpperCase()}</strong>
-              </div>
-              <div style={{ background: '#122030', padding: '6px 8px', borderRadius: '4px' }}>
-                <span style={{ color: '#6882a0', fontSize: '10px', display: 'block' }}>IN / OUT DEGREE</span>
-                <strong style={{ color: '#fff' }}>{selectedNode.inDegree} in · {selectedNode.outDegree} out</strong>
-              </div>
-              <div style={{ background: '#122030', padding: '6px 8px', borderRadius: '4px' }}>
-                <span style={{ color: '#6882a0', fontSize: '10px', display: 'block' }}>TIME STEP</span>
-                <strong style={{ color: '#fff' }}>{selectedNode.timeStep ?? 'Step 1'}</strong>
-              </div>
-            </div>
-
-            {/* Graph Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.4rem' }}>
-              <button
-                className="ws-btn"
-                style={{ justifyContent: 'center', fontSize: '11px' }}
-                onClick={() => { setSourceTx(selectedNode.id); notify(`Set ${selectedNode.id} as Dijkstra source.`); }}
-              >
-                Set as Dijkstra Source
-              </button>
-              <button
-                className="ws-btn"
-                style={{ justifyContent: 'center', fontSize: '11px' }}
-                onClick={() => { setTargetTx(selectedNode.id); notify(`Set ${selectedNode.id} as Dijkstra target.`); }}
-              >
-                Set as Dijkstra Target
-              </button>
-              <button
-                className="ws-btn primary"
-                style={{ justifyContent: 'center', fontSize: '11px' }}
-                onClick={() => setCurrentTxId(selectedNode.id)}
-              >
-                Center & Expand Subgraph
-              </button>
-            </div>
-
-            <div style={{ borderTop: '1px solid #1a2c41', paddingTop: '0.6rem', color: '#6882a0', fontSize: '11px' }}>
-              <ShieldCheck size={12} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
-              Ground truth derived from Weber et al. Elliptic Research Dataset.
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 5. Algorithm Forensic Output & Route Cost Analysis Panel */}
-      {pathResult && (
-        <div className="ws-card" style={{ marginTop: '1rem', background: '#0b1624', border: '1px solid #1c324b', padding: '1.2rem', borderRadius: '8px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem', borderBottom: '1px solid #1c324b', paddingBottom: '0.8rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ background: '#16314f', padding: '6px', borderRadius: '6px', color: '#4fd7c1', display: 'flex' }}>
-                <Zap size={18} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, color: '#fff', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {pathResult.algo === 'dijkstra' ? "Dijkstra's Shortest Path Traversal" : 'Breadth-First Search (BFS) Traversal'}
-                  <span style={{ fontSize: '11px', background: pathResult.found ? 'rgba(79, 215, 193, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: pathResult.found ? '#4fd7c1' : '#f87171', padding: '2px 8px', borderRadius: '4px' }}>
-                    {pathResult.found ? 'ROUTE VERIFIED' : 'NO PATH FOUND'}
+              {/* Address with copy */}
+              <div style={{ background: '#060d17', padding: '8px 10px', borderRadius: 6, border: '1px solid #14283f', marginBottom: 12 }}>
+                <span style={{ fontSize: 10, color: '#64748b', display: 'block', marginBottom: 2 }}>BLOCKCHAIN ADDRESS ({selectedNode.chain})</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#38bdf8', wordBreak: 'break-all' }}>
+                    {selectedNode.address}
                   </span>
-                </h3>
-                <p style={{ margin: '2px 0 0 0', color: '#8ca1b8', fontSize: '12px' }}>
-                  {pathResult.explanation}
-                </p>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-              <div style={{ background: '#112236', padding: '4px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                <span style={{ color: '#7a92ad', display: 'block', fontSize: '10px' }}>METRIC WEIGHT</span>
-                <strong style={{ color: '#4fd7c1' }}>
-                  {pathResult.chosenWeight === 'hop' ? 'Hop Count (Uniform = 1.0)' : pathResult.chosenWeight === 'time' ? 'Time Step Gap (|Δt| + 1.0)' : pathResult.chosenWeight === 'risk' ? 'Inverse Risk Penalty' : 'BFS Shortest Hops'}
-                </strong>
-              </div>
-              <div style={{ background: '#112236', padding: '4px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                <span style={{ color: '#7a92ad', display: 'block', fontSize: '10px' }}>TOTAL HOPS</span>
-                <strong style={{ color: '#fff' }}>{pathResult.hops ?? 0} hops</strong>
-              </div>
-              {pathResult.cumulativeCost !== undefined && (
-                <div style={{ background: '#112236', padding: '4px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                  <span style={{ color: '#7a92ad', display: 'block', fontSize: '10px' }}>CUMULATIVE COST</span>
-                  <strong style={{ color: '#fbbf24' }}>{pathResult.cumulativeCost}</strong>
-                </div>
-              )}
-              <div style={{ background: '#112236', padding: '4px 10px', borderRadius: '6px', fontSize: '11px' }}>
-                <span style={{ color: '#7a92ad', display: 'block', fontSize: '10px' }}>TIME / COMPLEXITY</span>
-                <strong style={{ color: '#fff' }}>{pathResult.traversalTimeMs}ms · {pathResult.evidence?.timeComplexity || 'O(V + E)'}</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Hop-by-Hop Breakdown Table for Path Results */}
-          {pathResult.hopBreakdown && pathResult.hopBreakdown.length > 0 && (
-            <div style={{ marginTop: '1rem' }}>
-              <h4 style={{ margin: '0 0 0.5rem 0', color: '#fff', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Route size={14} style={{ color: '#4fd7c1' }} />
-                Hop-by-Hop Cost &amp; Forensic Parameter Breakdown
-              </h4>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="ws-table" style={{ width: '100%', fontSize: '12px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left' }}>Hop #</th>
-                      <th style={{ textAlign: 'left' }}>Origin Transaction</th>
-                      <th style={{ textAlign: 'left' }}>Destination Transaction</th>
-                      <th style={{ textAlign: 'right' }}>Edge Weight Cost</th>
-                      <th style={{ textAlign: 'right' }}>Cumulative Cost</th>
-                      <th style={{ textAlign: 'center' }}>TimeStep Sequence</th>
-                      <th style={{ textAlign: 'center' }}>Destination Risk &amp; Ground Truth</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pathResult.hopBreakdown.map((hop: any) => (
-                      <tr key={hop.hopNumber}>
-                        <td><strong style={{ color: '#4fd7c1' }}>Hop {hop.hopNumber}</strong></td>
-                        <td>
-                          <button className="ws-btn" style={{ padding: '2px 6px', fontSize: '11px', fontFamily: 'monospace' }} onClick={() => setCurrentTxId(hop.fromTx)}>
-                            Tx {hop.fromTx}
-                          </button>
-                        </td>
-                        <td>
-                          <button className="ws-btn" style={{ padding: '2px 6px', fontSize: '11px', fontFamily: 'monospace' }} onClick={() => setCurrentTxId(hop.toTx)}>
-                            Tx {hop.toTx}
-                          </button>
-                        </td>
-                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#fbbf24', fontWeight: 600 }}>
-                          +{hop.edgeCost}
-                        </td>
-                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#fff', fontWeight: 700 }}>
-                          {hop.cumulativeCost}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span style={{ background: '#122030', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
-                            Step {hop.fromTimeStep} → Step {hop.toTimeStep} (Δt = {hop.timeStepGap})
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span style={{
-                            background: hop.toRiskScore >= 70 ? 'rgba(239, 68, 68, 0.2)' : hop.toRiskScore >= 40 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                            color: hop.toRiskScore >= 70 ? '#f87171' : hop.toRiskScore >= 40 ? '#fbbf24' : '#34d399',
-                            padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600
-                          }}>
-                            Risk {hop.toRiskScore}/100 · {hop.toLabel.toUpperCase()}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* BFS Exploration Breakdown Card */}
-          {pathResult.algo === 'bfs' && pathResult.visitedNodes && (
-            <div style={{ marginTop: '1rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.6rem', marginBottom: '0.8rem' }}>
-                <div style={{ background: '#112236', padding: '8px 12px', borderRadius: '6px' }}>
-                  <span style={{ color: '#7a92ad', fontSize: '10px' }}>EXPLORED NODES</span>
-                  <strong style={{ color: '#fff', fontSize: '15px', display: 'block' }}>{pathResult.visitedCount}</strong>
-                </div>
-                <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', padding: '8px 12px', borderRadius: '6px' }}>
-                  <span style={{ color: '#f87171', fontSize: '10px' }}>ILLICIT / HIGH RISK</span>
-                  <strong style={{ color: '#fca5a5', fontSize: '15px', display: 'block' }}>{pathResult.illicitCount ?? 0}</strong>
-                </div>
-                <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '8px 12px', borderRadius: '6px' }}>
-                  <span style={{ color: '#34d399', fontSize: '10px' }}>LICIT TRANSFERS</span>
-                  <strong style={{ color: '#6ee7b7', fontSize: '15px', display: 'block' }}>{pathResult.licitCount ?? 0}</strong>
-                </div>
-                <div style={{ background: '#112236', padding: '8px 12px', borderRadius: '6px' }}>
-                  <span style={{ color: '#7a92ad', fontSize: '10px' }}>UNKNOWN RESEARCH NODES</span>
-                  <strong style={{ color: '#94a3b8', fontSize: '15px', display: 'block' }}>{pathResult.unknownCount ?? 0}</strong>
+                  <button onClick={() => copy(selectedNode.address)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2 }}>
+                    <Copy size={13} />
+                  </button>
                 </div>
               </div>
 
-              <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {pathResult.visitedNodes.map((vn: any) => (
+              {/* Entity / Compliance Attributes */}
+              {selectedNode.type === 'vasp' && (
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', borderRadius: 6, padding: '10px 12px', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#34d399', fontSize: 11.5, fontWeight: 700 }}>
+                    <Landmark size={14} color="#10b981" />
+                    IDENTIFIED EXCHANGE (VASP)
+                  </div>
+                  <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 4, lineHeight: 1.4 }}>
+                    Entity: <strong>{selectedNode.entity || 'Exchange'}</strong><br />
+                    Compliance: <span style={{ fontFamily: 'monospace', color: '#38bdf8' }}>{selectedNode.complianceEmail || 'compliance@exchange.com'}</span><br />
+                    Status: <strong style={{ color: selectedNode.fiuRegistered ? '#34d399' : '#fbbf24' }}>{selectedNode.fiuRegistered ? 'FIU-IND Registered Reporting Entity' : 'Offshore Exchange'}</strong>
+                  </div>
                   <button
-                    key={vn.txId}
-                    className="ws-btn"
+                    onClick={() => setShowSection91Modal(true)}
                     style={{
-                      padding: '4px 8px',
-                      fontSize: '11px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      background: vn.label === 'illicit' || (vn.riskScore && vn.riskScore >= 70) ? 'rgba(239, 68, 68, 0.15)' : '#0d1c2d',
-                      borderColor: vn.label === 'illicit' || (vn.riskScore && vn.riskScore >= 70) ? 'rgba(239, 68, 68, 0.4)' : '#1e334c'
-                    }}
-                    onClick={() => {
-                      setCurrentTxId(vn.txId);
-                      setSelectedNode(nodes.find(n => n.id === vn.txId) || null);
+                      marginTop: 8, width: '100%', background: '#087f94', color: '#fff',
+                      border: 'none', borderRadius: 4, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer'
                     }}
                   >
-                    <span>{vn.label === 'illicit' || (vn.riskScore && vn.riskScore >= 70) ? '🔴' : vn.label === 'licit' ? '🟢' : '⚪'}</span>
-                    <span style={{ fontFamily: 'monospace' }}>Tx {vn.txId}</span>
-                    <span style={{ color: '#7a92ad', fontSize: '10px' }}>(Depth {vn.depth})</span>
+                    Draft Section 91 Notice to {selectedNode.entity || 'VASP'}
                   </button>
-                ))}
+                </div>
+              )}
+
+              {/* Behavior & DSA Patterns */}
+              <div style={{ marginBottom: 12 }}>
+                <span style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 600 }}>Observed Forensic Behaviors:</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                  {(selectedNode.behavior || ['Standard on-chain transaction participant']).map((b, i) => (
+                    <div key={i} style={{ fontSize: 11, color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <CheckCircle2 size={12} color="#38bdf8" /> {b}
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              {/* Flow Stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 11, color: '#94a3b8', borderTop: '1px solid #14283f', paddingTop: 10 }}>
+                <div>Inbound Transfers: <strong style={{ color: '#fff' }}>{selectedNode.incomingCount || 1}</strong></div>
+                <div>Outbound Transfers: <strong style={{ color: '#fff' }}>{selectedNode.outgoingCount || 0}</strong></div>
+                <div>Cluster Group: <strong style={{ color: '#f59e0b' }}>{selectedNode.cluster || 'Cluster-1'}</strong></div>
+                <div>Tainted Volume: <strong style={{ color: '#4fd7c1' }}>₹{((selectedNode.taintAmount || selectedNode.balance || 0) / 1000).toFixed(0)}k</strong></div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ background: '#0a1626', border: '1px solid #1a324d', borderRadius: 10, padding: 24, textAlign: 'center', color: '#64748b' }}>
+              <Eye size={32} style={{ margin: '0 auto 8px', color: '#38bdf8' }} />
+              <p style={{ margin: 0, fontSize: 12 }}>Click on any wallet node to view its verified exchange identity, compliance contact, and forensic behavior.</p>
+            </div>
+          )}
+
+          {/* AI Forensic Recommendation Card */}
+          {aiReport && (
+            <div style={{ background: '#0a1626', border: '1px solid #234e70', borderRadius: 10, padding: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <Zap size={14} color="#facc15" />
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8' }}>
+                  AI RISK SCORE: {aiReport.riskScore || 85}/100 ({aiReport.riskLevel || 'HIGH RISK'})
+                </span>
+              </div>
+              <p style={{ margin: '0 0 10px', fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.4 }}>
+                {aiReport.executiveSummary || 'Terminal outflow traces into centralized exchange infrastructure. Immediate statutory Section 91 CrPC notice required.'}
+              </p>
+
+              {/* Follow-up steps */}
+              {aiReport.cbiOfficerFollowUps && aiReport.cbiOfficerFollowUps.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#4fd7c1', letterSpacing: '0.5px' }}>OFFICER FOLLOW-UP DIRECTIVES:</span>
+                  {aiReport.cbiOfficerFollowUps.slice(0, 3).map((f: any, idx: number) => (
+                    <div key={idx} style={{ fontSize: 11, color: '#cbd5e1', lineHeight: 1.3 }}>
+                      <strong style={{ color: f.priority === 'IMMEDIATE' ? '#f87171' : '#fbbf24' }}>[{f.priority}]</strong> {f.action}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* Top Suspicious Modal */}
-      {showTopModal && (
-        <div className="ws-modal-backdrop" onClick={() => setShowTopModal(false)}>
-          <div className="ws-evidence-modal" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a2c41', paddingBottom: '0.8rem' }}>
-              <h2 style={{ margin: 0, fontSize: '16px', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <AlertTriangle size={16} style={{ color: '#f59e0b' }} />
-                Top-K Suspicious Transactions (Min-Heap Retrieval)
-              </h2>
-              <button className="ws-icon-button" onClick={() => setShowTopModal(false)}>✕</button>
+      {/* 5. Section 91 CrPC Statutory Notice Modal */}
+      {showSection91Modal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+        }}>
+          <div style={{ background: '#0a1626', border: '1px solid #1f4266', borderRadius: 10, padding: 24, maxWidth: 640, width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, color: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Scale size={18} color="#38bdf8" /> Formal Section 91 CrPC Statutory Notice
+              </h3>
+              <button onClick={() => setShowSection91Modal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 16, cursor: 'pointer' }}>✕</button>
             </div>
-            <p style={{ color: '#8ca1b8', fontSize: '12px', margin: '0.6rem 0' }}>
-              Extracted via O(N log K) binary min-heap ranking across the 203,769 transactions. Click any transaction to inspect its directed graph.
-            </p>
-            <div style={{ maxHeight: '360px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {topSuspicious.map((item, idx) => (
-                <div
-                  key={item.txId}
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0e1b2b', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}
-                  onClick={() => {
-                    setCurrentTxId(item.txId);
-                    setShowTopModal(false);
-                  }}
-                >
-                  <div>
-                    <strong style={{ color: '#fff', fontFamily: 'monospace' }}>Tx {item.txId}</strong>
-                    <div style={{ fontSize: '11px', color: item.label === 'illicit' ? '#f87171' : '#fbbf24' }}>
-                      {item.label?.toUpperCase()} · TimeStep {item.timeStep}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '12px' }}>
-                      Risk {item.riskScore}/100
-                    </span>
-                    <span style={{ display: 'block', fontSize: '10px', color: '#6882a0', marginTop: '2px' }}>
-                      Click to load →
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Sliding Window Burst Analysis Modal */}
-      {showBurstModal && temporalBursts && (
-        <div className="ws-modal-backdrop" onClick={() => setShowBurstModal(false)}>
-          <div className="ws-evidence-modal" style={{ maxWidth: '640px' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a2c41', paddingBottom: '0.8rem' }}>
-              <h2 style={{ margin: 0, fontSize: '16px', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Clock size={16} style={{ color: '#38bdf8' }} />
-                Temporal Burst Analysis (Sliding Window Algorithm)
-              </h2>
-              <button className="ws-icon-button" onClick={() => setShowBurstModal(false)}>✕</button>
+            <div style={{ background: '#050c15', padding: 14, borderRadius: 6, border: '1px solid #14283f', fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.6, maxHeight: 340, overflowY: 'auto', fontFamily: 'monospace' }}>
+              <strong>CENTRAL BUREAU OF INVESTIGATION (CBI)</strong><br />
+              CYBER CRIME DIVISION, NEW DELHI<br />
+              --------------------------------------------------<br />
+              <strong>NOTICE UNDER SECTION 91 CrPC / SECTION 94 BNSS, 2023</strong><br /><br />
+              To: Compliance &amp; Legal Liaison Officer,<br />
+              <strong>{selectedNode?.entity || 'Binance / WazirX'} Compliance Desk</strong><br />
+              Email: {selectedNode?.complianceEmail || 'case-inquiries@binance.com'}<br /><br />
+              Subject: Requisition of KYC, IP Access Logs, and Immediate Fund Preservation for Wallet Address: <strong>{selectedNode?.address}</strong><br /><br />
+              Sir/Madam,<br />
+              Whereas the above-referenced cryptocurrency address has been identified as the recipient of stolen/defrauded digital assets under FIR Case No. CR-2026-00192.<br /><br />
+              You are hereby called upon under Section 91 of the Code of Criminal Procedure, 1973 (read with Section 94 of Bharatiya Nagarik Suraksha Sanhita, 2023) to produce within 48 hours:<br />
+              1. Complete KYC documentation (Aadhaar, Passport, Government Photo ID) of the registered account holder.<br />
+              2. Complete login audit logs including IPv4/IPv6 addresses, device IMEI/browser fingerprints, and timestamps.<br />
+              3. Linked Indian and offshore bank accounts, UPI IDs, and credit/debit card funding sources.<br />
+              4. Immediate administrative freeze of all unspent balances credited to deposit address {selectedNode?.address}.<br />
             </div>
-            <p style={{ color: '#8ca1b8', fontSize: '12px', margin: '0.6rem 0' }}>
-              Sliding window temporal rate analysis O(W + T) over 49 discrete intervals detecting transaction bursts and rapid forwarding spikes.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.6rem', marginBottom: '0.8rem' }}>
-              <div style={{ background: '#0e1b2b', padding: '8px', borderRadius: '6px' }}>
-                <span style={{ color: '#6882a0', fontSize: '10px' }}>TOTAL WINDOWS</span>
-                <strong style={{ display: 'block', color: '#fff', fontSize: '14px' }}>{temporalBursts.totalWindows}</strong>
-              </div>
-              <div style={{ background: '#0e1b2b', padding: '8px', borderRadius: '6px' }}>
-                <span style={{ color: '#6882a0', fontSize: '10px' }}>BURST INTERVALS</span>
-                <strong style={{ display: 'block', color: '#f59e0b', fontSize: '14px' }}>{temporalBursts.burstCount}</strong>
-              </div>
-              <div style={{ background: '#0e1b2b', padding: '8px', borderRadius: '6px' }}>
-                <span style={{ color: '#6882a0', fontSize: '10px' }}>PEAK BURST RATIO</span>
-                <strong style={{ display: 'block', color: '#ef4444', fontSize: '14px' }}>{temporalBursts.peakWindow?.burstRatio}x</strong>
-              </div>
-            </div>
-            <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {temporalBursts.windows?.filter((w: any) => w.isBurst).map((w: any, idx: number) => (
-                <div key={idx} style={{ background: '#0e1b2b', padding: '8px 12px', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
-                  <div>
-                    <strong style={{ color: '#fff' }}>Steps {w.startStep} → {w.endStep}</strong>
-                    <div style={{ color: '#6882a0', fontSize: '11px' }}>
-                      {w.totalTransactions} transactions ({w.illicitCount} illicit, {w.illicitPercentage}%)
-                    </div>
-                  </div>
-                  <span style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                    {w.burstRatio}x Burst
-                  </span>
-                </div>
-              ))}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+              <button
+                onClick={() => {
+                  copy(`NOTICE UNDER SECTION 91 CrPC to ${selectedNode?.entity || 'VASP'}: Please furnish KYC and freeze funds for wallet ${selectedNode?.address}`);
+                  setShowSection91Modal(false);
+                }}
+                style={{ background: '#087f94', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Copy Statutory Notice &amp; Close
+              </button>
             </div>
           </div>
         </div>

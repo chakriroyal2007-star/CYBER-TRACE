@@ -158,22 +158,22 @@ export function WalletPage() {
 
     <form className="op-wallet-search" onSubmit={e => { e.preventDefault(); void search(); }}>
       <Search size={21}/>
-      <input value={query} onChange={e => setQuery(e.target.value)} aria-label="Transaction ID, wallet or case" placeholder="Enter Elliptic Tx ID (e.g. 232629023) or wallet address / case ID"/>
+      <input value={query} onChange={e => setQuery(e.target.value)} aria-label="Transaction ID, wallet or case" placeholder="Enter suspect wallet (e.g. 0x28C6c062..., TMuA6YqfCe...) or case reference ID"/>
       <Button type="submit" disabled={loading || !query.trim()}>{loading ? 'Searching…' : 'Investigate'}<ArrowRight size={16}/></Button>
     </form>
 
     <State loading={loading} error={error}><>
-      {results && <Card className="op-table-card"><div className="op-card-heading"><h2>Search results</h2><Badge>{results.length} matches</Badge></div>{results.length ? results.map((r, i) => <button className="op-search-result" key={`${r.id}-${i}`} onClick={() => r.type.toLowerCase() === 'wallet' ? void lookup(r.id) : navigate(r.path || `/app/investigations/${r.caseId || r.id}`)}><div className="op-result-icon">{r.type.toLowerCase() === 'wallet' ? <Wallet size={18}/> : <FileText size={18}/>}</div><div><small>{r.type}</small><strong>{r.title}</strong><p>{r.subtitle}</p></div><ChevronRight size={17}/></button>) : <Empty title="No indexed evidence matches" text="Try an Elliptic Transaction ID (232629023, 232438397, 230425980) or case ID."/>}</Card>}
+      {results && <Card className="op-table-card"><div className="op-card-heading"><h2>Search results</h2><Badge>{results.length} matches</Badge></div>{results.length ? results.map((r, i) => <button className="op-search-result" key={`${r.id}-${i}`} onClick={() => r.type.toLowerCase() === 'wallet' ? void lookup(r.id) : navigate(r.path || `/app/investigations/${r.caseId || r.id}`)}><div className="op-result-icon">{r.type.toLowerCase() === 'wallet' ? <Wallet size={18}/> : <FileText size={18}/>}</div><div><small>{r.type}</small><strong>{r.title}</strong><p>{r.subtitle}</p></div><ChevronRight size={17}/></button>) : <Empty title="No indexed evidence matches" text="Try a suspect wallet address (e.g. 0x28C6c062..., TMuA6YqfCe...) or case reference ID."/>}</Card>}
 
-      {!results && !wallet && !txData && <Card className="op-search-start"><Wallet size={34}/><h2>Search transaction or wallet</h2><p>Explore actual 165-feature vectors, ground-truth labels, and graph counterparty paths from the Elliptic Research Dataset.</p><div><button onClick={() => { setQuery('232629023'); void search('232629023'); }}>Investigate Illicit 232629023 <ArrowRight size={14}/></button><button onClick={() => { setQuery('232438397'); void search('232438397'); }}>Investigate Licit 232438397 <ArrowRight size={14}/></button></div></Card>}
+      {!results && !wallet && !txData && <Card className="op-search-start"><Wallet size={34}/><h2>Search suspect wallet or case</h2><p>Explore multi-hop transaction graphs, verified exchange identities, and AI forensic risk scores.</p><div><button onClick={() => { setQuery('0x28C6c06298d514Db089934071355E5743bf21d60'); void search('0x28C6c06298d514Db089934071355E5743bf21d60'); }}>Investigate Binance Hot Wallet <ArrowRight size={14}/></button><button onClick={() => { setQuery('TMuA6YqfCeX8EhbfYEg5y7S4Dqz9Dw9vVu'); void search('TMuA6YqfCeX8EhbfYEg5y7S4Dqz9Dw9vVu'); }}>Investigate TRON USDT Mule <ArrowRight size={14}/></button></div></Card>}
 
       {txData && <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
         <Card className="op-wallet-header">
           <div className="op-icon-tile"><Activity size={22}/></div>
           <div>
-            <div className="op-eyebrow">ELLIPTIC RESEARCH DATASET · BITCOIN TRANSACTION</div>
+            <div className="op-eyebrow">MULTI-CHAIN TRANSACTION FORENSICS · FORENSIC TELEMETRY</div>
             <h2 className="op-mono op-break">Transaction ID: {txData.txId}</h2>
-            <p>Ground Truth Label: <strong>{txData.knownLabel?.toUpperCase()}</strong> · TimeStep {txData.timeStep}</p>
+            <p>Risk Status: <strong>{txData.knownLabel?.toUpperCase() === 'ILLICIT' ? 'SUSPICIOUS / ILLICIT' : 'VERIFIED'}</strong> · Time-Aware Traversal</p>
           </div>
           <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:'6px'}}>
             <RiskBadge score={txData.riskScore}/>

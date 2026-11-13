@@ -9,7 +9,7 @@ export class OpenRouterRiskEngine {
   constructor(apiKey) {
     this.apiKey = apiKey || DEFAULT_KEY;
     this.endpoint = 'https://openrouter.ai/api/v1/chat/completions';
-    this.model = 'openrouter/auto';
+    this.models = ['meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat', 'openrouter/auto'];
   }
 
   /**
@@ -18,24 +18,26 @@ export class OpenRouterRiskEngine {
   async evaluateCase(caseData, graphFindings = {}) {
     const prompt = this._buildPrompt(caseData, graphFindings);
 
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 12000);
+    for (const model of this.models) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 12000);
 
-      const res = await fetch(this.endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://crypto-trace-omega.vercel.app',
-          'X-Title': 'Cyber Trace India Forensic Platform'
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a Senior Cryptocurrency Forensic Analyst & CBI Cybercrime Technical Advisor.
+        const res = await fetch(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://crypto-trace-omega.vercel.app',
+            'X-Title': 'Cyber Trace India Forensic Platform'
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 1500,
+            messages: [
+              {
+                role: 'system',
+                content: `You are a Senior Cryptocurrency Forensic Analyst & CBI Cybercrime Technical Advisor.
 Analyze the provided case dossier and on-chain graph telemetry.
 Return ONLY a valid JSON object strictly matching this schema:
 {
@@ -65,35 +67,36 @@ Return ONLY a valid JSON object strictly matching this schema:
   ],
   "targetVaspForNotice": "Name of primary identified exchange (e.g. Binance, WazirX, CoinDCX)"
 }`
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.2
-        }),
-        signal: controller.signal
-      });
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.2
+          }),
+          signal: controller.signal
+        });
 
-      clearTimeout(timer);
+        clearTimeout(timer);
 
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          const parsed = JSON.parse(content);
-          return {
-            ...parsed,
-            aiEvaluated: true,
-            model: data.model || this.model,
-            evaluatedAt: new Date().toISOString()
-          };
+        if (res.ok) {
+          const data = await res.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            const parsed = JSON.parse(content);
+            return {
+              ...parsed,
+              aiEvaluated: true,
+              model: data.model || model,
+              evaluatedAt: new Date().toISOString()
+            };
+          }
         }
+      } catch (err) {
+        console.warn(`OpenRouter model ${model} failed, trying next:`, err.message);
       }
-    } catch (err) {
-      console.warn('OpenRouter API request failed or timed out, using deterministic fallback:', err.message);
     }
 
     // Deterministic mathematical fallback
