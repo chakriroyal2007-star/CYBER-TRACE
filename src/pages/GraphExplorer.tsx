@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { api, navigate, shortAddress, money, formatTime } from '../api';
 import '../workspace.css';
+import InvestigationDsaExplainer from '../components/InvestigationDsaExplainer';
 
 interface TracedNode {
   id: string;
@@ -110,6 +111,7 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
   const [aiReport, setAiReport] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [showSection91Modal, setShowSection91Modal] = useState(false);
+  const [showDsaExplainer, setShowDsaExplainer] = useState(false);
 
   // Canvas zoom & pan
   const [zoom, setZoom] = useState(1);
@@ -341,6 +343,18 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
               }}
             >
               <RefreshCw size={13} className={loading ? 'spin' : ''} /> Trace Flow
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDsaExplainer(true)}
+              style={{
+                background: '#0a1626', color: '#38bdf8', border: '1px solid #1a324a', borderRadius: 6,
+                padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+              }}
+              title="Explain how DSA algorithms resolved this money trail"
+            >
+              <Zap size={13} color="#38bdf8" /> DSA Explainer
             </button>
           </div>
         </form>
@@ -704,6 +718,18 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
             </div>
           </div>
         </div>
+      )}
+
+      {showDsaExplainer && (
+        <InvestigationDsaExplainer
+          caseId={addressInput.length > 20 ? `TRACE-${shortAddress(addressInput)}` : addressInput}
+          graphStats={{
+            nodesCount: nodes.length,
+            edgesCount: edges.length,
+            vaspCandidate: nodes.find(n => n.type === 'vasp')?.label || 'Binance'
+          }}
+          onClose={() => setShowDsaExplainer(false)}
+        />
       )}
     </div>
   );

@@ -15,6 +15,7 @@ import { blockchainManager, VERIFICATION_STATUS } from './blockchain/provider.mj
 import { forensicTracer } from './tracing/tracer.mjs';
 import { labelStore } from './tracing/labelStore.mjs';
 import { aiRiskEngine } from './ml/openrouterRiskEngine.mjs';
+import { DSA_CATALOG, runDsaSimulation } from './graph/dsaSimulator.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
@@ -557,6 +558,13 @@ async function handle(req,res) {
    if (type) all = all.filter(l => l.type === type);
    if (chain) all = all.filter(l => l.chain?.toLowerCase() === chain.toLowerCase());
    return json(res, 200, all);
+ }
+ if(group==='dsa') {
+   if(id==='catalog' && method==='GET') return json(res, 200, DSA_CATALOG);
+   if(id==='simulate' && method==='POST') {
+     const data = await body(req);
+     return json(res, 200, runDsaSimulation(data));
+   }
  }
  // Blockchain Intelligence & Provider Integrations
  if(group==='blockchain') {

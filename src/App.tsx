@@ -4,7 +4,8 @@ import {
   LayoutDashboard, BriefcaseBusiness, ScanSearch, Wallet, Network, Landmark,
   GitBranch, Fingerprint, Bell, FileText, Code2, Settings, Database, Waypoints,
   Search, Command, Plus, Menu, X, ChevronRight, ArrowUpRight, LogOut, ShieldCheck,
-  Radio, CheckCircle2, AlertCircle, FileOutput, Inbox, UserCheck, ShieldAlert, Eye
+  Radio, CheckCircle2, AlertCircle, FileOutput, Inbox, UserCheck, ShieldAlert, Eye,
+  BookOpen, Sparkles
 } from 'lucide-react';
 import { api, navigate, toast } from './api';
 import { Badge, LoadingState, Button, ErrorState } from './components/ui';
@@ -42,6 +43,9 @@ const IncomingReportsPage = lazy(() => officer().then(m => ({ default: m.Incomin
 const CaseReviewPage = lazy(() => officer().then(m => ({ default: m.CaseReviewPage })));
 const WatchtowerPage = lazy(() => officer().then(m => ({ default: m.WatchtowerPage })));
 
+const DsaStudyStudio = lazy(() => import('./pages/DsaStudyStudio'));
+const MlBenchmarkLab = lazy(() => import('./pages/MlBenchmarkLab'));
+
 const navItems = [
   ['dashboard', 'Dashboard', LayoutDashboard],
   ['incoming', 'Incoming reports', Inbox],
@@ -55,7 +59,9 @@ const navItems = [
   ['patterns', 'Fraud patterns', Fingerprint],
   ['alerts', 'Alerts', Bell],
   ['reports', 'Reports', FileText],
-  ['requests', 'Information requests', FileOutput]
+  ['requests', 'Information requests', FileOutput],
+  ['dsa-studio', 'DSA Study Studio', BookOpen],
+  ['ml-benchmark', 'ML Benchmark Lab', Sparkles]
 ] as const;
 
 class Boundary extends Component<{ children: ReactNode }, { error: string }> {
@@ -347,6 +353,28 @@ export default function App() {
     );
   }
 
+  // 1.6 Dedicated DSA Study Studio Direct URL
+  if (location.startsWith('/dsa-studio')) {
+    return (
+      <Boundary>
+        <Suspense fallback={<LoadingState />}>
+          <DsaStudyStudio />
+        </Suspense>
+      </Boundary>
+    );
+  }
+
+  // 1.7 Dedicated ML Benchmark Lab Direct URL
+  if (location.startsWith('/ml-benchmark')) {
+    return (
+      <Boundary>
+        <Suspense fallback={<LoadingState />}>
+          <MlBenchmarkLab />
+        </Suspense>
+      </Boundary>
+    );
+  }
+
   // 2. Landing / Login View
   if (!isOfficerApp) {
     return <Boundary><Landing login={location.startsWith('/login')} /></Boundary>;
@@ -380,6 +408,8 @@ export default function App() {
     case 'settings': content = <SettingsPage />; break;
     case 'sources': content = <Sources />; break;
     case 'requests': content = <Requests />; break;
+    case 'dsa-studio': content = <DsaStudyStudio />; break;
+    case 'ml-benchmark': content = <MlBenchmarkLab />; break;
     default: content = <ErrorState message="This page does not exist." />;
   }
 
@@ -471,6 +501,65 @@ export default function App() {
                     ? `Case Review (${id})`
                     : navItems.find(n => n[0] === part)?.[1] || part.replace('-', ' ')}
                 </strong>
+              </div>
+
+              {/* THREE SEPARATE OPERATING MODES SWITCHER */}
+              <div style={{
+                display: 'flex',
+                background: '#090d16',
+                padding: '3px',
+                borderRadius: 8,
+                border: '1px solid #1e293b',
+                gap: 2
+              }}>
+                <button
+                  onClick={() => navigate('/app/dashboard')}
+                  style={{
+                    background: part !== 'dsa-studio' && part !== 'ml-benchmark' ? '#0284c7' : 'transparent',
+                    color: part !== 'dsa-studio' && part !== 'ml-benchmark' ? '#ffffff' : '#94a3b8',
+                    border: 'none',
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                  title="Live reporter cases, multi-hop forensic tracing, on-chain APIs"
+                >
+                  Mode A: Real Investigation
+                </button>
+                <button
+                  onClick={() => navigate('/app/dsa-studio')}
+                  style={{
+                    background: part === 'dsa-studio' ? '#0284c7' : 'transparent',
+                    color: part === 'dsa-studio' ? '#ffffff' : '#94a3b8',
+                    border: 'none',
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                  title="14 Educational Algorithm Simulators & Step-by-Step Traversal"
+                >
+                  Mode B: DSA Studio
+                </button>
+                <button
+                  onClick={() => navigate('/app/ml-benchmark')}
+                  style={{
+                    background: part === 'ml-benchmark' ? '#9333ea' : 'transparent',
+                    color: part === 'ml-benchmark' ? '#ffffff' : '#94a3b8',
+                    border: 'none',
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                  title="Academic Elliptic Dataset Experiments & Confusion Matrix"
+                >
+                  Mode C: ML Benchmark
+                </button>
               </div>
               <button className="global-search" onClick={() => setPalette(true)}>
                 <Search size={15} />

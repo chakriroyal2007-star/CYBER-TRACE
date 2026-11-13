@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { ethereumAlchemy } from './ethereumAlchemy.mjs';
 
 // Supported Networks
 export const SUPPORTED_CHAINS = Object.freeze(['Bitcoin', 'Ethereum', 'Polygon', 'BNB Chain', 'TRON']);
@@ -205,6 +206,38 @@ export class EthereumProvider extends BaseBlockchainProvider {
       };
     }
 
+    if (this.chain === 'Ethereum') {
+      try {
+        const tx = await ethereumAlchemy.getTransaction(txHash);
+        if (tx) {
+          const receipt = await ethereumAlchemy.getTransactionReceipt(txHash).catch(() => null);
+          return {
+            status: VERIFICATION_STATUS.VERIFIED,
+            verified: true,
+            chain: 'Ethereum',
+            provider: 'Alchemy Ethereum Mainnet',
+            retrievedAt: new Date().toISOString(),
+            txHash: tx.hash,
+            blockHeight: tx.blockNumber,
+            fromAddress: tx.from,
+            toAddress: tx.to,
+            value: tx.valueEther,
+            nativeValue: tx.valueEther,
+            currency: 'ETH',
+            gasPriceGwei: tx.gasPriceGwei,
+            gasLimit: tx.gasLimit,
+            nonce: tx.nonce,
+            isConfirmed: Boolean(tx.blockNumber),
+            receiptStatus: receipt?.status || 'SUCCESS',
+            feeEther: receipt?.txFeeEther || 0,
+            rawReference: `https://eth-mainnet.g.alchemy.com`
+          };
+        }
+      } catch (err) {
+        // Fall back to public RPC
+      }
+    }
+
     try {
       const rpcPayload = {
         jsonrpc: '2.0',
@@ -283,6 +316,24 @@ export class EthereumProvider extends BaseBlockchainProvider {
 
   async getAddressBalance(address) {
     if (!this.validateAddress(address)) return null;
+
+    if (this.chain === 'Ethereum') {
+      try {
+        const bal = await ethereumAlchemy.getBalance(address);
+        if (bal) {
+          return {
+            address: bal.address,
+            chain: 'Ethereum',
+            balanceWei: bal.wei,
+            balanceEth: bal.ether,
+            provider: 'Alchemy Ethereum Mainnet'
+          };
+        }
+      } catch {
+        // Fall back to public RPC
+      }
+    }
+
     try {
       const res = await this.fetchWithTimeout(this.rpcUrl, {
         method: 'POST',
