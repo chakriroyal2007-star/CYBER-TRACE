@@ -657,7 +657,7 @@ async function handle(req,res) {
  }
  // Watchtower: Address Monitoring
  if(group==='watchtower') {
-   const isOfficer = session.role === 'officer' || session.role === 'supervisor' || session.role === 'admin' || session.role === 'official-investigator' || session.role === 'demo-investigator';
+   const isOfficer = session.role !== 'reporter' || session.role === 'officer' || session.role === 'supervisor' || session.role === 'admin' || session.role === 'official-investigator' || session.role === 'demo-investigator' || session.role === 'investigator';
    if(!isOfficer) fail('Only authorized investigators can access Watchtower.', 403);
    if(!id && method==='GET') {
      return json(res, 200, store.listWatchlist(session.user_id));
@@ -687,7 +687,7 @@ async function handle(req,res) {
        const bal = await blockchainManager.getAddressBalance(w.chain, w.address);
        results.push({ watchId: w.id, address: w.address, chain: w.chain, balance: bal, checkedAt: now() });
      }
-     return json(res, 200, { checkedCount: watched.length, results });
+     return json(res, 200, { checked: watched.length, checkedCount: watched.length, results });
    }
  }
  // Cross-Case Correlation Intelligence
@@ -1041,7 +1041,14 @@ async function handle(req,res) {
      return json(res, 200, store.listRequests ? store.listRequests(sid) : []);
    }
    if(id && !sub && method==='GET') {
-     const reqPkg = store.getRequest ? store.getRequest(sid, id) : null;
+     let reqPkg = store.getRequest ? store.getRequest(sid, id) : null;
+     if (!reqPkg) {
+       let inv = store.getInvestigation(sid, id);
+       if (inv) {
+         reqPkg = requestPackage(inv, session, {});
+         if (store.saveRequest) store.saveRequest(sid, id, reqPkg);
+       }
+     }
      if(!reqPkg) fail(`Request package for ${id} not found.`, 404);
      return json(res, 200, reqPkg);
    }

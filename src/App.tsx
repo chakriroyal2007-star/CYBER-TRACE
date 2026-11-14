@@ -389,6 +389,13 @@ export default function App() {
     );
   }
 
+  // 1.9 Redirect root-level workspace shortcuts (e.g. /watchtower -> /app/watchtower, /requests -> /app/requests)
+  const topNav = location.split('?')[0].replace(/^\//, '');
+  if (navItems.some(([p]) => p === topNav)) {
+    navigate(`/app/${topNav}`);
+    return null;
+  }
+
   // 2. Landing / Login View
   if (!isOfficerApp) {
     return <Boundary><Landing login={location.startsWith('/login')} /></Boundary>;
