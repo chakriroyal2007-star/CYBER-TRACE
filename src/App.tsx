@@ -5,7 +5,7 @@ import {
   GitBranch, Fingerprint, Bell, FileText, Code2, Settings, Database, Waypoints,
   Search, Command, Plus, Menu, X, ChevronRight, ArrowUpRight, LogOut, ShieldCheck,
   Radio, CheckCircle2, AlertCircle, FileOutput, Inbox, UserCheck, ShieldAlert, Eye,
-  BookOpen, Sparkles
+  BookOpen, Sparkles, Bot
 } from 'lucide-react';
 import { api, navigate, toast } from './api';
 import { Badge, LoadingState, Button, ErrorState } from './components/ui';
@@ -45,9 +45,11 @@ const WatchtowerPage = lazy(() => officer().then(m => ({ default: m.WatchtowerPa
 
 const DsaStudyStudio = lazy(() => import('./pages/DsaStudyStudio'));
 const MlBenchmarkLab = lazy(() => import('./pages/MlBenchmarkLab'));
+const AiInvestigationWorkspace = lazy(() => import('./pages/AiInvestigationWorkspace'));
 
 const navItems = [
   ['dashboard', 'Dashboard', LayoutDashboard],
+  ['ai-investigation', 'AI Investigation Agent', Bot],
   ['incoming', 'Incoming reports', Inbox],
   ['cases', 'Cases', BriefcaseBusiness],
   ['investigations', 'Investigations', ScanSearch],
@@ -375,6 +377,18 @@ export default function App() {
     );
   }
 
+  // 1.8 AI Investigation Workspace Direct URL
+  if (location.startsWith('/ai-investigation')) {
+    const caseId = location.split('/')[2] || 'CR-2026-00192';
+    return (
+      <Boundary>
+        <Suspense fallback={<LoadingState />}>
+          <AiInvestigationWorkspace caseId={caseId} />
+        </Suspense>
+      </Boundary>
+    );
+  }
+
   // 2. Landing / Login View
   if (!isOfficerApp) {
     return <Boundary><Landing login={location.startsWith('/login')} /></Boundary>;
@@ -408,6 +422,7 @@ export default function App() {
     case 'settings': content = <SettingsPage />; break;
     case 'sources': content = <Sources />; break;
     case 'requests': content = <Requests />; break;
+    case 'ai-investigation': content = <AiInvestigationWorkspace caseId={id} />; break;
     case 'dsa-studio': content = <DsaStudyStudio />; break;
     case 'ml-benchmark': content = <MlBenchmarkLab />; break;
     default: content = <ErrorState message="This page does not exist." />;

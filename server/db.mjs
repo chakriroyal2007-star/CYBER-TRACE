@@ -419,6 +419,158 @@ export class Store {
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
+    if (!this.db.prepare('SELECT version FROM schema_migrations WHERE version=7').get()) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS upi_transactions (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            utr_number TEXT NOT NULL,
+            sender_upi_id TEXT NOT NULL,
+            receiver_upi_id TEXT NOT NULL,
+            beneficiary_name TEXT,
+            amount REAL NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'INR',
+            timestamp TEXT NOT NULL,
+            bank_name TEXT,
+            verification_status TEXT NOT NULL DEFAULT 'SUBMITTED',
+            screenshot_ref TEXT,
+            raw_payload TEXT,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS upi_case_id ON upi_transactions(case_id);
+          CREATE INDEX IF NOT EXISTS upi_utr ON upi_transactions(utr_number);
+          CREATE INDEX IF NOT EXISTS upi_receiver ON upi_transactions(receiver_upi_id);
+
+          CREATE TABLE IF NOT EXISTS banking_records (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            account_number TEXT NOT NULL,
+            ifsc TEXT,
+            bank_name TEXT NOT NULL,
+            account_holder TEXT,
+            transaction_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            utr_ref TEXT,
+            counterparty_account TEXT,
+            timestamp TEXT NOT NULL,
+            is_mule_suspect INTEGER NOT NULL DEFAULT 0,
+            holding_duration_seconds INTEGER,
+            source_type TEXT NOT NULL DEFAULT 'AUTHORIZED_STATEMENT',
+            raw_payload TEXT,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS bank_case_id ON banking_records(case_id);
+          CREATE INDEX IF NOT EXISTS bank_acc ON banking_records(account_number);
+
+          CREATE TABLE IF NOT EXISTS exchange_records (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            exchange_name TEXT NOT NULL,
+            account_id TEXT,
+            fiat_deposit_utr TEXT,
+            fiat_amount REAL NOT NULL,
+            crypto_purchased TEXT NOT NULL,
+            crypto_amount REAL NOT NULL,
+            withdrawal_address TEXT,
+            withdrawal_tx_hash TEXT,
+            destination_chain TEXT NOT NULL,
+            is_verified INTEGER NOT NULL DEFAULT 1,
+            source_type TEXT NOT NULL DEFAULT 'EXCHANGE_LIAISON',
+            raw_payload TEXT,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS ex_case_id ON exchange_records(case_id);
+          CREATE INDEX IF NOT EXISTS ex_fiat_utr ON exchange_records(fiat_deposit_utr);
+          CREATE INDEX IF NOT EXISTS ex_with_addr ON exchange_records(withdrawal_address);
+
+          CREATE TABLE IF NOT EXISTS financial_graph_nodes (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            node_key TEXT NOT NULL,
+            node_type TEXT NOT NULL,
+            label TEXT NOT NULL,
+            entity TEXT,
+            address_or_id TEXT NOT NULL,
+            risk_score REAL NOT NULL DEFAULT 0,
+            cluster_id TEXT,
+            metadata_json TEXT,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS fgn_case_key ON financial_graph_nodes(case_id, node_key);
+
+          CREATE TABLE IF NOT EXISTS financial_graph_edges (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            source_node_key TEXT NOT NULL,
+            target_node_key TEXT NOT NULL,
+            relationship_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'INR',
+            tx_ref TEXT,
+            timestamp TEXT NOT NULL,
+            verification_status TEXT NOT NULL DEFAULT 'VERIFIED',
+            confidence REAL NOT NULL DEFAULT 1.0,
+            provenance TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS fge_case_nodes ON financial_graph_edges(case_id, source_node_key, target_node_key);
+
+          CREATE TABLE IF NOT EXISTS ai_investigation_sessions (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'INITIALIZED',
+            current_stage TEXT NOT NULL DEFAULT 'COMPLAINT_RECEIVED',
+            stages_json TEXT NOT NULL,
+            plan_json TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS ai_inv_case ON ai_investigation_sessions(case_id);
+
+          CREATE TABLE IF NOT EXISTS ai_investigation_messages (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            case_id TEXT NOT NULL,
+            sender TEXT NOT NULL,
+            message_text TEXT NOT NULL,
+            tool_call_json TEXT,
+            tool_result_json TEXT,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS ai_msg_session ON ai_investigation_messages(session_id, created_at);
+
+          CREATE TABLE IF NOT EXISTS ai_investigation_tool_runs (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            tool_name TEXT NOT NULL,
+            status TEXT NOT NULL,
+            input_json TEXT,
+            output_json TEXT,
+            duration_ms INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS ai_tool_case ON ai_investigation_tool_runs(case_id, created_at);
+
+          CREATE TABLE IF NOT EXISTS investigation_risk_assessments (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL UNIQUE,
+            complaint_validation_score REAL NOT NULL,
+            upi_fraud_risk REAL NOT NULL,
+            mule_account_risk REAL NOT NULL,
+            crypto_exposure_risk REAL NOT NULL,
+            blockchain_risk REAL NOT NULL,
+            overall_priority TEXT NOT NULL,
+            breakdown_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS inv_risk_case ON investigation_risk_assessments(case_id);
+        `);
+        this.db.prepare('INSERT INTO schema_migrations VALUES(7,?)').run(now());
+        this.db.exec('COMMIT');
+      } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+    }
     this.seedCaseManagement();
   }
   close() { try { this.db.close(); } catch {} }
@@ -1054,7 +1206,7 @@ export class Store {
   }
 
   createComplaint(data) {
-    const caseId = this.generateCaseId();
+    const caseId = data.caseId || this.generateCaseId();
     const id = randomUUID();
     const stamp = now();
     const reporterId = data.reporterId || 'ANONYMOUS';
@@ -1253,6 +1405,10 @@ export class Store {
       evidence,
       updates
     };
+  }
+
+  getComplaintByCaseId(caseId) {
+    return this.getComplaint(caseId, true);
   }
 
   updateComplaintStatus({ caseId, newStatus, authorId, authorName, authorRole, reason = '' }) {
@@ -1568,5 +1724,438 @@ export class Store {
       totalMatches: rows.length,
       cases: rows
     };
+  }
+
+  // --- UPI-to-Crypto AI Investigation Engine Methods ---
+
+  saveUpiTransaction(tx) {
+    const id = tx.id || `UPI-${randomUUID().slice(0, 8)}`;
+    const stamp = tx.createdAt || now();
+    this.db.prepare(`
+      INSERT OR REPLACE INTO upi_transactions (
+        id, case_id, utr_number, sender_upi_id, receiver_upi_id, beneficiary_name,
+        amount, currency, timestamp, bank_name, verification_status, screenshot_ref, raw_payload, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, tx.caseId, tx.utrNumber, tx.senderUpiId, tx.receiverUpiId, tx.beneficiaryName || null,
+      Number(tx.amount || 0), tx.currency || 'INR', tx.timestamp || stamp, tx.bankName || null,
+      tx.verificationStatus || 'SUBMITTED', tx.screenshotRef || null,
+      typeof tx.rawPayload === 'string' ? tx.rawPayload : JSON.stringify(tx.rawPayload || {}), stamp
+    );
+    return this.getUpiTransactionById(id);
+  }
+
+  getUpiTransactionById(id) {
+    const row = this.db.prepare('SELECT * FROM upi_transactions WHERE id=?').get(id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      caseId: row.case_id,
+      utrNumber: row.utr_number,
+      senderUpiId: row.sender_upi_id,
+      receiverUpiId: row.receiver_upi_id,
+      beneficiaryName: row.beneficiary_name,
+      amount: row.amount,
+      currency: row.currency,
+      timestamp: row.timestamp,
+      bankName: row.bank_name,
+      verificationStatus: row.verification_status,
+      screenshotRef: row.screenshot_ref,
+      rawPayload: row.raw_payload ? JSON.parse(row.raw_payload) : {},
+      createdAt: row.created_at
+    };
+  }
+
+  getUpiTransactions(caseId) {
+    const rows = this.db.prepare('SELECT * FROM upi_transactions WHERE case_id=? ORDER BY timestamp ASC').all(caseId);
+    return rows.map(row => ({
+      id: row.id,
+      caseId: row.case_id,
+      utrNumber: row.utr_number,
+      senderUpiId: row.sender_upi_id,
+      receiverUpiId: row.receiver_upi_id,
+      beneficiaryName: row.beneficiary_name,
+      amount: row.amount,
+      currency: row.currency,
+      timestamp: row.timestamp,
+      bankName: row.bank_name,
+      verificationStatus: row.verification_status,
+      screenshotRef: row.screenshot_ref,
+      rawPayload: row.raw_payload ? JSON.parse(row.raw_payload) : {},
+      createdAt: row.created_at
+    }));
+  }
+
+  saveBankingRecord(rec) {
+    const id = rec.id || `BNK-${randomUUID().slice(0, 8)}`;
+    const stamp = rec.createdAt || now();
+    this.db.prepare(`
+      INSERT OR REPLACE INTO banking_records (
+        id, case_id, account_number, ifsc, bank_name, account_holder, transaction_type,
+        amount, utr_ref, counterparty_account, timestamp, is_mule_suspect, holding_duration_seconds,
+        source_type, raw_payload, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, rec.caseId, rec.accountNumber, rec.ifsc || null, rec.bankName, rec.accountHolder || null,
+      rec.transactionType || 'CREDIT', Number(rec.amount || 0), rec.utrRef || null,
+      rec.counterpartyAccount || null, rec.timestamp || stamp, rec.isMuleSuspect ? 1 : 0,
+      rec.holdingDurationSeconds || 0, rec.sourceType || 'AUTHORIZED_STATEMENT',
+      typeof rec.rawPayload === 'string' ? rec.rawPayload : JSON.stringify(rec.rawPayload || {}), stamp
+    );
+    return { ...rec, id, createdAt: stamp };
+  }
+
+  getBankingRecords(caseId) {
+    const rows = this.db.prepare('SELECT * FROM banking_records WHERE case_id=? ORDER BY timestamp ASC').all(caseId);
+    return rows.map(r => ({
+      id: r.id,
+      caseId: r.case_id,
+      accountNumber: r.account_number,
+      ifsc: r.ifsc,
+      bankName: r.bank_name,
+      accountHolder: r.account_holder,
+      transactionType: r.transaction_type,
+      amount: r.amount,
+      utrRef: r.utr_ref,
+      counterpartyAccount: r.counterparty_account,
+      timestamp: r.timestamp,
+      isMuleSuspect: Boolean(r.is_mule_suspect),
+      holdingDurationSeconds: r.holding_duration_seconds,
+      sourceType: r.source_type,
+      rawPayload: r.raw_payload ? JSON.parse(r.raw_payload) : {},
+      createdAt: r.created_at
+    }));
+  }
+
+  saveExchangeRecord(rec) {
+    const id = rec.id || `EXC-${randomUUID().slice(0, 8)}`;
+    const stamp = rec.createdAt || now();
+    this.db.prepare(`
+      INSERT OR REPLACE INTO exchange_records (
+        id, case_id, exchange_name, account_id, fiat_deposit_utr, fiat_amount, crypto_purchased,
+        crypto_amount, withdrawal_address, withdrawal_tx_hash, destination_chain, is_verified,
+        source_type, raw_payload, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, rec.caseId, rec.exchangeName, rec.accountId || null, rec.fiatDepositUtr || null,
+      Number(rec.fiatAmount || 0), rec.cryptoPurchased || 'USDT', Number(rec.cryptoAmount || 0),
+      rec.withdrawalAddress || null, rec.withdrawalTxHash || null, rec.destinationChain || 'Ethereum',
+      rec.isVerified ? 1 : 0, rec.sourceType || 'EXCHANGE_LIAISON',
+      typeof rec.rawPayload === 'string' ? rec.rawPayload : JSON.stringify(rec.rawPayload || {}), stamp
+    );
+    return { ...rec, id, createdAt: stamp };
+  }
+
+  getExchangeRecords(caseId) {
+    const rows = this.db.prepare('SELECT * FROM exchange_records WHERE case_id=? ORDER BY created_at ASC').all(caseId);
+    return rows.map(r => ({
+      id: r.id,
+      caseId: r.case_id,
+      exchangeName: r.exchange_name,
+      accountId: r.account_id,
+      fiatDepositUtr: r.fiat_deposit_utr,
+      fiatAmount: r.fiat_amount,
+      cryptoPurchased: r.crypto_purchased,
+      cryptoAmount: r.crypto_amount,
+      withdrawalAddress: r.withdrawal_address,
+      withdrawalTxHash: r.withdrawal_tx_hash,
+      destinationChain: r.destination_chain,
+      isVerified: Boolean(r.is_verified),
+      sourceType: r.source_type,
+      rawPayload: r.raw_payload ? JSON.parse(r.raw_payload) : {},
+      createdAt: r.created_at
+    }));
+  }
+
+  saveFinancialGraph(caseId, nodes, edges) {
+    const stamp = now();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('DELETE FROM financial_graph_nodes WHERE case_id=?').run(caseId);
+      this.db.prepare('DELETE FROM financial_graph_edges WHERE case_id=?').run(caseId);
+
+      const insNode = this.db.prepare(`
+        INSERT INTO financial_graph_nodes (
+          id, case_id, node_key, node_type, label, entity, address_or_id, risk_score, cluster_id, metadata_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const n of nodes) {
+        insNode.run(
+          n.id || `N-${randomUUID().slice(0, 8)}`,
+          caseId,
+          n.key || n.id || `NODE-${randomUUID().slice(0, 6)}`,
+          n.type || 'UNKNOWN',
+          n.label || n.id || 'Financial Node',
+          n.entity || null,
+          n.addressOrId || n.key || n.id || 'N/A',
+          Number(n.riskScore || 0),
+          n.clusterId || null,
+          JSON.stringify(n.metadata || {}),
+          stamp
+        );
+      }
+
+      const insEdge = this.db.prepare(`
+        INSERT INTO financial_graph_edges (
+          id, case_id, source_node_key, target_node_key, relationship_type, amount, currency,
+          tx_ref, timestamp, verification_status, confidence, provenance, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const e of edges) {
+        insEdge.run(
+          e.id || `E-${randomUUID().slice(0, 8)}`,
+          caseId,
+          e.source || 'SRC',
+          e.target || 'DST',
+          e.relationshipType || 'TRANSFERRED_TO',
+          Number(e.amount || 0),
+          e.currency || 'INR',
+          e.txRef || null,
+          e.timestamp || stamp,
+          e.verificationStatus || 'VERIFIED',
+          Number(e.confidence || 1.0),
+          e.provenance || 'Official Audit Record',
+          stamp
+        );
+      }
+
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+    return { nodesCount: nodes.length, edgesCount: edges.length, updatedAt: stamp };
+  }
+
+  getFinancialGraph(caseId) {
+    const nodeRows = this.db.prepare('SELECT * FROM financial_graph_nodes WHERE case_id=?').all(caseId);
+    const edgeRows = this.db.prepare('SELECT * FROM financial_graph_edges WHERE case_id=?').all(caseId);
+    return {
+      nodes: nodeRows.map(n => ({
+        id: n.id,
+        key: n.node_key,
+        type: n.node_type,
+        label: n.label,
+        entity: n.entity,
+        addressOrId: n.address_or_id,
+        riskScore: n.risk_score,
+        clusterId: n.cluster_id,
+        metadata: n.metadata_json ? JSON.parse(n.metadata_json) : {}
+      })),
+      edges: edgeRows.map(e => ({
+        id: e.id,
+        source: e.source_node_key,
+        target: e.target_node_key,
+        relationshipType: e.relationship_type,
+        amount: e.amount,
+        currency: e.currency,
+        txRef: e.tx_ref,
+        timestamp: e.timestamp,
+        verificationStatus: e.verification_status,
+        confidence: e.confidence,
+        provenance: e.provenance
+      }))
+    };
+  }
+
+  getOrCreateAiSession(caseId) {
+    let row = this.db.prepare('SELECT * FROM ai_investigation_sessions WHERE case_id=?').get(caseId);
+    if (!row) {
+      const id = `AIS-${randomUUID().slice(0, 8)}`;
+      const stamp = now();
+      const defaultStages = [
+        { id: 1, name: 'Complaint Received', status: 'COMPLETED', detail: 'Victim statement and references recorded' },
+        { id: 2, name: 'Validation', status: 'PENDING', detail: 'Verify UTR, screenshot, and format sanity' },
+        { id: 3, name: 'UPI Intelligence', status: 'PENDING', detail: 'Analyze beneficiary VPA and victim correlation' },
+        { id: 4, name: 'Banking Evidence', status: 'PENDING', detail: 'Inspect intermediary and mule accounts' },
+        { id: 5, name: 'Exchange Verification', status: 'PENDING', detail: 'Match fiat-to-crypto deposit and withdrawal' },
+        { id: 6, name: 'Blockchain Tracing', status: 'PENDING', detail: 'Multi-hop on-chain flow across supported networks' },
+        { id: 7, name: 'DSA Execution', status: 'PENDING', detail: 'Graph shortest path, centrality, and cycle checks' },
+        { id: 8, name: 'ML Analysis', status: 'PENDING', detail: 'Trained model inference on financial graph features' },
+        { id: 9, name: 'Risk Assessment', status: 'PENDING', detail: 'Synthesize 5 independent risk dimensions' },
+        { id: 10, name: 'Report Generation', status: 'PENDING', detail: 'Compile court-ready Section 65B/91 dossier' }
+      ];
+      this.db.prepare(`
+        INSERT INTO ai_investigation_sessions (id, case_id, status, current_stage, stages_json, plan_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, caseId, 'INITIALIZED', 'Complaint Received', JSON.stringify(defaultStages), JSON.stringify([]), stamp, stamp);
+      row = this.db.prepare('SELECT * FROM ai_investigation_sessions WHERE id=?').get(id);
+    }
+    return {
+      id: row.id,
+      caseId: row.case_id,
+      status: row.status,
+      currentStage: row.current_stage,
+      stages: row.stages_json ? JSON.parse(row.stages_json) : [],
+      plan: row.plan_json ? JSON.parse(row.plan_json) : [],
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  updateAiSession(caseId, updates = {}) {
+    const stamp = now();
+    const current = this.getOrCreateAiSession(caseId);
+    const newStatus = updates.status || current.status;
+    const newStage = updates.currentStage || current.currentStage;
+    const newStages = updates.stages ? JSON.stringify(updates.stages) : JSON.stringify(current.stages);
+    const newPlan = updates.plan ? JSON.stringify(updates.plan) : JSON.stringify(current.plan);
+
+    this.db.prepare(`
+      UPDATE ai_investigation_sessions
+      SET status=?, current_stage=?, stages_json=?, plan_json=?, updated_at=?
+      WHERE case_id=?
+    `).run(newStatus, newStage, newStages, newPlan, stamp, caseId);
+
+    return this.getOrCreateAiSession(caseId);
+  }
+
+  saveAiMessage({ sessionId, caseId, sender, messageText, toolCallJson = null, toolResultJson = null }) {
+    const id = `MSG-${randomUUID().slice(0, 8)}`;
+    const stamp = now();
+    this.db.prepare(`
+      INSERT INTO ai_investigation_messages (
+        id, session_id, case_id, sender, message_text, tool_call_json, tool_result_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, sessionId || caseId, caseId, sender, messageText,
+      toolCallJson ? JSON.stringify(toolCallJson) : null,
+      toolResultJson ? JSON.stringify(toolResultJson) : null,
+      stamp
+    );
+    return { id, sessionId, caseId, sender, messageText, toolCallJson, toolResultJson, createdAt: stamp };
+  }
+
+  getAiMessages(caseId) {
+    const rows = this.db.prepare('SELECT * FROM ai_investigation_messages WHERE case_id=? ORDER BY created_at ASC').all(caseId);
+    return rows.map(r => ({
+      id: r.id,
+      sessionId: r.session_id,
+      caseId: r.case_id,
+      sender: r.sender,
+      messageText: r.message_text,
+      toolCall: r.tool_call_json ? JSON.parse(r.tool_call_json) : null,
+      toolResult: r.tool_result_json ? JSON.parse(r.tool_result_json) : null,
+      createdAt: r.created_at
+    }));
+  }
+
+  saveToolRun({ caseId, toolName, status, inputJson = {}, outputJson = {}, durationMs = 0 }) {
+    const id = `TOOL-${randomUUID().slice(0, 8)}`;
+    const stamp = now();
+    this.db.prepare(`
+      INSERT INTO ai_investigation_tool_runs (
+        id, case_id, tool_name, status, input_json, output_json, duration_ms, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, caseId, toolName, status,
+      JSON.stringify(inputJson), JSON.stringify(outputJson), durationMs, stamp
+    );
+    return { id, caseId, toolName, status, input: inputJson, output: outputJson, durationMs, createdAt: stamp };
+  }
+
+  getToolRuns(caseId) {
+    const rows = this.db.prepare('SELECT * FROM ai_investigation_tool_runs WHERE case_id=? ORDER BY created_at ASC').all(caseId);
+    return rows.map(r => ({
+      id: r.id,
+      caseId: r.case_id,
+      toolName: r.tool_name,
+      status: r.status,
+      input: r.input_json ? JSON.parse(r.input_json) : {},
+      output: r.output_json ? JSON.parse(r.output_json) : {},
+      durationMs: r.duration_ms,
+      createdAt: r.created_at
+    }));
+  }
+
+  saveRiskAssessment(ass) {
+    const id = ass.id || `RISK-${randomUUID().slice(0, 8)}`;
+    const stamp = now();
+    this.db.prepare(`
+      INSERT OR REPLACE INTO investigation_risk_assessments (
+        id, case_id, complaint_validation_score, upi_fraud_risk, mule_account_risk,
+        crypto_exposure_risk, blockchain_risk, overall_priority, breakdown_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, ass.caseId, Number(ass.complaintValidationScore || 0), Number(ass.upiFraudRisk || 0),
+      Number(ass.muleAccountRisk || 0), Number(ass.cryptoExposureRisk || 0),
+      Number(ass.blockchainRisk || 0), ass.overallPriority || 'MEDIUM',
+      typeof ass.breakdownJson === 'string' ? ass.breakdownJson : JSON.stringify(ass.breakdown || {}), stamp
+    );
+    return this.getRiskAssessment(ass.caseId);
+  }
+
+  getRiskAssessment(caseId) {
+    const r = this.db.prepare('SELECT * FROM investigation_risk_assessments WHERE case_id=?').get(caseId);
+    if (!r) return null;
+    return {
+      id: r.id,
+      caseId: r.case_id,
+      complaintValidationScore: r.complaint_validation_score,
+      upiFraudRisk: r.upi_fraud_risk,
+      muleAccountRisk: r.mule_account_risk,
+      cryptoExposureRisk: r.crypto_exposure_risk,
+      blockchainRisk: r.blockchain_risk,
+      overallPriority: r.overall_priority,
+      breakdown: r.breakdown_json ? JSON.parse(r.breakdown_json) : {},
+      createdAt: r.created_at
+    };
+  }
+
+  findCorrelatedComplaints(caseId, { utr = null, receiverUpi = null, beneficiaryName = null }) {
+    const correlated = [];
+    const seenCaseIds = new Set([caseId]);
+
+    if (utr) {
+      const utrRows = this.db.prepare('SELECT * FROM upi_transactions WHERE utr_number=? AND case_id!=?').all(utr, caseId);
+      for (const r of utrRows) {
+        if (!seenCaseIds.has(r.case_id)) {
+          seenCaseIds.add(r.case_id);
+          correlated.push({
+            caseId: r.case_id,
+            matchType: 'SHARED_UTR',
+            sharedIdentifier: utr,
+            confidence: 0.99,
+            detail: `Shared identical UTR reference ${utr}`
+          });
+        }
+      }
+    }
+
+    if (receiverUpi) {
+      const upiRows = this.db.prepare('SELECT * FROM upi_transactions WHERE receiver_upi_id=? AND case_id!=?').all(receiverUpi, caseId);
+      for (const r of upiRows) {
+        if (!seenCaseIds.has(r.case_id)) {
+          seenCaseIds.add(r.case_id);
+          correlated.push({
+            caseId: r.case_id,
+            matchType: 'SHARED_BENEFICIARY_VPA',
+            sharedIdentifier: receiverUpi,
+            confidence: 0.92,
+            detail: `Receiver UPI VPA matches beneficiary in case ${r.case_id}`
+          });
+        }
+      }
+    }
+
+    if (beneficiaryName) {
+      const nameRows = this.db.prepare('SELECT * FROM upi_transactions WHERE beneficiary_name LIKE ? AND case_id!=?').all(`%${beneficiaryName}%`, caseId);
+      for (const r of nameRows) {
+        if (!seenCaseIds.has(r.case_id)) {
+          seenCaseIds.add(r.case_id);
+          correlated.push({
+            caseId: r.case_id,
+            matchType: 'SIMILAR_BENEFICIARY_NAME',
+            sharedIdentifier: beneficiaryName,
+            confidence: 0.78,
+            detail: `Similar beneficiary title observed: ${r.beneficiary_name}`
+          });
+        }
+      }
+    }
+
+    return correlated;
   }
 }

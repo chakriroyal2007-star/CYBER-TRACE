@@ -16,6 +16,8 @@ import { forensicTracer } from './tracing/tracer.mjs';
 import { labelStore } from './tracing/labelStore.mjs';
 import { aiRiskEngine } from './ml/openrouterRiskEngine.mjs';
 import { DSA_CATALOG, runDsaSimulation } from './graph/dsaSimulator.mjs';
+import { aiOrchestrator } from './investigation/agentOrchestrator.mjs';
+import * as investigationTools from './investigation/tools.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
@@ -566,6 +568,61 @@ async function handle(req,res) {
      return json(res, 200, runDsaSimulation(data));
    }
  }
+ // AI Investigation Agent & Tool Suite
+ if(group==='investigation') {
+   if(id==='launch' && method==='POST') {
+     const data = await body(req);
+     const caseId = data.caseId || 'CR-2026-00192';
+     const result = await aiOrchestrator.launchInvestigation(store, caseId);
+     return json(res, 200, result);
+   }
+   if(id && sub==='chat' && method==='POST') {
+     const data = await body(req);
+     const question = textField(data.question || '', 'Question', 2000, { required: true });
+     const answer = await aiOrchestrator.handleQuestion(store, id, question);
+     return json(res, 200, answer);
+   }
+   if(id && sub==='status' && method==='GET') {
+     const session = store.getOrCreateAiSession(id);
+     const risk = store.getRiskAssessment(id);
+     const graph = store.getFinancialGraph(id);
+     const upi = store.getUpiTransactions(id);
+     const bank = store.getBankingRecords(id);
+     const ex = store.getExchangeRecords(id);
+     const toolRuns = store.getToolRuns(id);
+     const messages = store.getAiMessages(id);
+     return json(res, 200, {
+       session,
+       stages: session.stages,
+       riskAssessment: risk,
+       graph,
+       upiTransactions: upi,
+       bankingRecords: bank,
+       exchangeRecords: ex,
+       toolRuns,
+       messages
+     });
+   }
+   if(id && sub==='tool' && segments[4] && method==='POST') {
+     const toolName = segments[4];
+     const data = await body(req);
+     let toolRes;
+     if (toolName === 'validate_complaint') toolRes = await investigationTools.validateComplaint(store, id);
+     else if (toolName === 'extract_payment_evidence') toolRes = await investigationTools.extractPaymentEvidence(store, id, data.evidenceReferences);
+     else if (toolName === 'correlate_victim_reports') toolRes = await investigationTools.correlateVictimReports(store, id);
+     else if (toolName === 'retrieve_bank_evidence') toolRes = await investigationTools.retrieveBankEvidence(store, id, data.authorizedReferences);
+     else if (toolName === 'analyze_mule_account_patterns') toolRes = await investigationTools.analyzeMuleAccountPatterns(store, id);
+     else if (toolName === 'retrieve_exchange_evidence') toolRes = await investigationTools.retrieveExchangeEvidence(store, id);
+     else if (toolName === 'investigate_blockchain') toolRes = await investigationTools.investigateBlockchain(store, { ...data, caseId: id });
+     else if (toolName === 'build_financial_graph') toolRes = await investigationTools.buildFinancialGraph(store, id);
+     else if (toolName === 'execute_dsa_analysis') toolRes = await investigationTools.executeDsaAnalysis(store, id, data.algorithms);
+     else if (toolName === 'run_ml_inference') toolRes = await investigationTools.runMlInference(store, id);
+     else if (toolName === 'calculate_risk_assessment') toolRes = await investigationTools.calculateRiskAssessment(store, id);
+     else if (toolName === 'generate_investigation_report') toolRes = await investigationTools.generateInvestigationReport(store, id);
+     else fail(`Unknown investigation tool: ${toolName}`, 404);
+     return json(res, 200, toolRes);
+   }
+ }
  // Blockchain Intelligence & Provider Integrations
  if(group==='blockchain') {
    if(id==='verify' && method==='POST') {
@@ -662,6 +719,28 @@ async function handle(req,res) {
        reporterName: session.display_name,
        reporterEmail: session.email || ''
      });
+
+     // Automatically persist UPI transactions if provided
+     if (Array.isArray(data.upiTransactions) && data.upiTransactions.length > 0) {
+       for (const utx of data.upiTransactions) {
+         store.saveUpiTransaction({
+           ...utx,
+           caseId: complaint.caseId
+         });
+       }
+     } else if (data.utrNumber || data.receiverUpiId) {
+       store.saveUpiTransaction({
+         caseId: complaint.caseId,
+         utrNumber: data.utrNumber || data.transactionHash || '402819827364',
+         senderUpiId: data.senderUpiId || 'victim@bank',
+         receiverUpiId: data.receiverUpiId || data.reportedWallet || 'scam@paytm',
+         beneficiaryName: data.beneficiaryName || 'Beneficiary Account',
+         amount: Number(complaint.reportedLoss || 0),
+         bankName: data.bankName || 'HDFC / Partner Bank',
+         timestamp: complaint.incidentDate || now()
+       });
+     }
+
      store.audit(sid, 'Complaint Filed', complaint.caseId, { incidentType: complaint.incidentType, reportedLoss: complaint.reportedLoss });
      return json(res, 201, complaint);
    }

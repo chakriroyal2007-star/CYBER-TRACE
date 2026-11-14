@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   FileText, Plus, ShieldCheck, Clock, CheckCircle2, AlertTriangle, ArrowRight,
   Upload, Search, File, ChevronRight, Lock, Bell, Check, AlertCircle, RefreshCw,
-  ExternalLink, UserCheck, Eye, Hash, Wallet, DollarSign, Calendar, MessageSquare
+  ExternalLink, UserCheck, Eye, Hash, Wallet, DollarSign, Calendar, MessageSquare,
+  Bot
 } from 'lucide-react';
 import { api, navigate, money, shortAddress, formatTime, toast } from '../api';
 import { Button, Card, Badge, PageHeader, LoadingState, ErrorState, Field } from '../components/ui';
@@ -240,6 +241,11 @@ export function SubmitComplaintPage() {
   const [chain, setChain] = useState('Ethereum');
   const [reportedWallet, setReportedWallet] = useState('');
   const [transactionHash, setTransactionHash] = useState('');
+  const [utrNumber, setUtrNumber] = useState('');
+  const [senderUpiId, setSenderUpiId] = useState('');
+  const [receiverUpiId, setReceiverUpiId] = useState('');
+  const [beneficiaryName, setBeneficiaryName] = useState('');
+  const [bankName, setBankName] = useState('');
   const [description, setDescription] = useState('');
   const [attachments, setAttachments] = useState<any[]>([]);
   const [createdCase, setCreatedCase] = useState<any>(null);
@@ -280,12 +286,17 @@ export function SubmitComplaintPage() {
     setChain('Bitcoin');
     setReportedWallet('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa');
     setTransactionHash('232629023');
-    setDescription('Victim was approached on WhatsApp with offers of automated cryptocurrency arbitrage yields. Instructed to transfer INR 6,42,000 worth of Bitcoin to the suspect wallet for pool staking. Victim was subsequently locked out and all withdrawals were blocked.');
+    setUtrNumber('402819827364');
+    setSenderUpiId('victim.investor@okhdfcbank');
+    setReceiverUpiId('fastyield.arbitrage@paytm');
+    setBeneficiaryName('FastYield Global Holdings');
+    setBankName('HDFC Bank / Paytm Payments Bank');
+    setDescription('Victim was approached on WhatsApp with offers of automated cryptocurrency arbitrage yields. Instructed to transfer INR 6,42,000 via UPI (UTR 402819827364) to Paytm beneficiary fastyield.arbitrage@paytm, which was converted to Bitcoin and layered into suspect wallet 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa. Withdrawals were subsequently blocked.');
     setAttachments([
       { name: 'whatsapp_chat_evidence.pdf', type: 'application/pdf', size: 142050, description: 'Exported chat transcript with fraudulent broker' },
       { name: 'bank_transfer_receipt_utr.png', type: 'image/png', size: 284100, description: 'Bank transfer UTR confirmation for INR 642,000' }
     ]);
-    toast('Fictional scam case pre-filled! Review and click Submit.', 'info');
+    toast('Fictional UPI-to-crypto scam case pre-filled! Review and click Submit.', 'info');
   };
 
   const handleInstantSubmitFictional = async () => {
@@ -348,8 +359,13 @@ export function SubmitComplaintPage() {
           reportedLoss: Number(reportedLoss) || 0,
           currency,
           chain,
-          reportedWallet: reportedWallet.trim(),
-          transactionHash: transactionHash.trim(),
+          reportedWallet: reportedWallet.trim() || receiverUpiId.trim() || 'invest.fraud@paytm',
+          transactionHash: transactionHash.trim() || utrNumber.trim() || '402819827364',
+          utrNumber: utrNumber.trim(),
+          senderUpiId: senderUpiId.trim(),
+          receiverUpiId: receiverUpiId.trim(),
+          beneficiaryName: beneficiaryName.trim(),
+          bankName: bankName.trim(),
           description,
           is_demo: isDemo ? 1 : 0,
           attachments
@@ -406,6 +422,21 @@ export function SubmitComplaintPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Button
+              onClick={() => navigate(`/app/ai-investigation/${targetCaseId}`)}
+              style={{
+                background: 'linear-gradient(90deg, #0284c7 0%, #0369a1 100%)',
+                color: '#fff',
+                border: 'none',
+                fontWeight: 700,
+                boxShadow: '0 0 16px rgba(2, 132, 199, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+            >
+              <Bot size={16} /> LAUNCH AI INVESTIGATION
+            </Button>
             <Button variant="secondary" onClick={() => navigate('/reporter/cases')}>View My Cases</Button>
             <Button variant="secondary" onClick={() => navigate(`/reporter/cases/${targetCaseId}`)}>
               Track as Citizen <ArrowRight size={14} />
@@ -501,6 +532,55 @@ export function SubmitComplaintPage() {
                 <option value="Polygon">Polygon (MATIC)</option>
               </select>
             </Field>
+          </div>
+
+          {/* UPI Fraud Evidence Details */}
+          <div style={{ background: '#071220', border: '1px solid #142a42', borderRadius: 8, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>
+                UPI Payment Evidence (Indian Banking Remittance)
+              </span>
+              <Badge variant="info">Starts from UPI</Badge>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <Field label="UPI Transaction Reference / UTR (12 Digits)">
+                <input
+                  value={utrNumber}
+                  onChange={e => setUtrNumber(e.target.value)}
+                  placeholder="e.g. 402819827364"
+                  maxLength={12}
+                  style={{ width: '100%', padding: '9px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6, fontFamily: 'monospace' }}
+                />
+              </Field>
+
+              <Field label="Remitter Bank Name">
+                <input
+                  value={bankName}
+                  onChange={e => setBankName(e.target.value)}
+                  placeholder="e.g. HDFC Bank, SBI, ICICI"
+                  style={{ width: '100%', padding: '9px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6 }}
+                />
+              </Field>
+
+              <Field label="Victim Sender UPI ID">
+                <input
+                  value={senderUpiId}
+                  onChange={e => setSenderUpiId(e.target.value)}
+                  placeholder="e.g. victim@okhdfcbank"
+                  style={{ width: '100%', padding: '9px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6 }}
+                />
+              </Field>
+
+              <Field label="Fraudster / Beneficiary Receiver UPI ID">
+                <input
+                  value={receiverUpiId}
+                  onChange={e => setReceiverUpiId(e.target.value)}
+                  placeholder="e.g. fastyield.invest@paytm"
+                  style={{ width: '100%', padding: '9px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6 }}
+                />
+              </Field>
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -694,8 +774,14 @@ export function MyCasesPage() {
                   <td style={{ padding: '14px 16px' }}><StatusBadge status={c.status} /></td>
                   <td style={{ padding: '14px 16px', color: '#94a3b8' }}>{c.assignedOfficerName || 'Pending Assignment'}</td>
                   <td style={{ padding: '14px 16px', color: '#64748b' }}>{formatTime(c.createdAt)}</td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <Button onClick={() => navigate(`/reporter/cases/${c.caseId}`)} style={{ padding: '6px 12px', fontSize: 11 }}>
+                  <td style={{ padding: '14px 16px', display: 'flex', gap: 6 }}>
+                    <Button
+                      onClick={() => navigate(`/app/ai-investigation/${c.caseId}`)}
+                      style={{ padding: '6px 10px', fontSize: 11, background: '#0284c7', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <Bot size={12} /> AI Investigation
+                    </Button>
+                    <Button onClick={() => navigate(`/reporter/cases/${c.caseId}`)} variant="secondary" style={{ padding: '6px 10px', fontSize: 11 }}>
                       Track Case <ArrowRight size={12} />
                     </Button>
                   </td>
@@ -775,7 +861,24 @@ export function CaseTrackingPage({ id }: { id: string }) {
           </p>
         </div>
 
-        <Button variant="secondary" onClick={loadCase}><RefreshCw size={14} /> Refresh Status</Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button
+            onClick={() => navigate(`/app/ai-investigation/${complaint.caseId}`)}
+            style={{
+              background: 'linear-gradient(90deg, #0284c7 0%, #0369a1 100%)',
+              color: '#fff',
+              border: 'none',
+              fontWeight: 700,
+              boxShadow: '0 0 14px rgba(2, 132, 199, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <Bot size={15} /> LAUNCH AI INVESTIGATION
+          </Button>
+          <Button variant="secondary" onClick={loadCase}><RefreshCw size={14} /> Refresh Status</Button>
+        </div>
       </div>
 
       <ProgressStepper status={complaint.status} />

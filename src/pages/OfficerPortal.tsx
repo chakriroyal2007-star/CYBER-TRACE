@@ -4,7 +4,7 @@ import {
   Upload, Search, File, ChevronRight, Lock, Bell, Check, AlertCircle, RefreshCw,
   ExternalLink, UserCheck, Eye, Hash, Wallet, DollarSign, Calendar, MessageSquare,
   FileText, Network, ShieldCheck, ArrowUpRight, Scale, XCircle, UserPlus, Zap,
-  FileOutput, Info
+  FileOutput, Info, Bot
 } from 'lucide-react';
 import { api, navigate, money, shortAddress, formatTime, toast } from '../api';
 import { Button, Card, Badge, PageHeader, LoadingState, ErrorState, Field, MetricCard, RiskBadge } from '../components/ui';
@@ -488,6 +488,22 @@ export function CaseReviewPage({ id }: { id: string }) {
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button
+                onClick={() => navigate(`/app/ai-investigation/${complaint.caseId || id}`)}
+                style={{
+                  background: 'linear-gradient(90deg, #0284c7 0%, #0369a1 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  fontWeight: 700,
+                  boxShadow: '0 0 14px rgba(2, 132, 199, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <Bot size={15} /> LAUNCH AI INVESTIGATION
+              </Button>
+
               {/* Accept Flow */}
               {['Submitted', 'Pending Review'].includes(complaint.status) && (
                 <Button variant="secondary" onClick={() => handleStatusChange('Accepted')}>
