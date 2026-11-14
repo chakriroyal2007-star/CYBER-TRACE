@@ -1,11 +1,12 @@
 /**
  * Malicious URL & Phishing Detection Engine
- * Extracts structural URL features (ISCX-URL benchmark methodology):
- * - URL & Domain length, Subdomain depth, IP hostname detection
- * - Protocol check (HTTPS), URL shorteners, punycode/encoded tokens
- * - Brand impersonation keywords, high-risk TLDs
- * - Safe parsing with SSRF & private IP protection
+ * Powered by OpenRouter LLaMA-3.3-70B AI Threat Intelligence + ISCX-URL Structural Benchmark
+ * Extracts structural URL features, brand impersonation, SSRF protections, and invokes
+ * frontier LLMs to analyze active phishing & financial fraud sites.
  */
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_MODELS = ['meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat', 'openrouter/auto'];
 
 const KNOWN_SHORTENERS = new Set([
   'bit.ly', 'tinyurl.com', 'is.gd', 't.co', 'cutt.ly', 'ow.ly', 'rb.gy', 'shorte.st'
@@ -51,7 +52,7 @@ export function isSafePublicUrl(urlStr) {
 }
 
 /**
- * Extracts 12 forensic structural features and evaluates phishing probability
+ * Extracts structural features and evaluates heuristic baseline
  */
 export function classifyUrl(rawUrl = '') {
   let urlToParse = String(rawUrl || '').trim();
@@ -72,7 +73,14 @@ export function classifyUrl(rawUrl = '') {
   } catch {
     return {
       isValid: false,
-      error: 'Invalid URL structure or encoding.'
+      error: 'Invalid URL syntax.'
+    };
+  }
+
+  if (!isSafePublicUrl(urlToParse)) {
+    return {
+      isValid: false,
+      error: 'Access to private or local loopback IP ranges is prohibited (SSRF prevention).'
     };
   }
 
@@ -80,53 +88,47 @@ export function classifyUrl(rawUrl = '') {
   const pathname = parsed.pathname.toLowerCase();
   const fullUrl = parsed.href;
 
-  // 1. Threat Intelligence Lookup
-  const isVerifiedPhishing = VERIFIED_PHISHING_DOMAINS.has(hostname);
-
-  // 2. Feature Extraction
   const urlLength = fullUrl.length;
   const domainLength = hostname.length;
-  const subdomains = hostname.split('.').filter(Boolean);
-  const subdomainCount = Math.max(0, subdomains.length - 2);
+  const subdomainCount = hostname.split('.').length - 2;
   const isHttps = parsed.protocol === 'https:';
   const isIpHost = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
   const isShortened = KNOWN_SHORTENERS.has(hostname);
-  const tld = subdomains[subdomains.length - 1] || '';
+  const tld = hostname.split('.').pop() || '';
   const isSuspiciousTld = SUSPICIOUS_TLDS.has(tld);
   const hasAtSymbol = fullUrl.includes('@');
   const hasEncodedChars = /%[0-9a-f]{2}/i.test(fullUrl);
   const hyphenCount = (hostname.match(/-/g) || []).length;
 
-  // Brand impersonation check
-  const impersonatedBrands = IMPERSONATED_BRANDS.filter(b => hostname.includes(b) && !hostname.endsWith(`${b}.com`) && !hostname.endsWith(`${b}.co.in`));
+  const impersonatedBrands = IMPERSONATED_BRANDS.filter(b => hostname.includes(b) || pathname.includes(b));
+  const isVerifiedPhishing = VERIFIED_PHISHING_DOMAINS.has(hostname);
 
-  // Compute Risk Score
-  let score = 0;
+  let score = 10;
   const indicators = [];
 
   if (isVerifiedPhishing) {
-    score += 95;
-    indicators.push('Matched verified active phishing feed (PhishTank/ThreatIntel).');
+    score += 85;
+    indicators.push('Domain matches confirmed CERT-In / PhishTank active phishing blocklist.');
   }
 
   if (isIpHost) {
     score += 40;
-    indicators.push('Host uses raw IP address instead of legitimate domain name.');
+    indicators.push('URL host uses raw IP address instead of registered domain name.');
   }
 
-  if (impersonatedBrands.length > 0) {
-    score += 35;
-    indicators.push(`Domain mimics legitimate institution: '${impersonatedBrands.join(', ')}'.`);
+  if (isShortened) {
+    score += 25;
+    indicators.push('URL shortener obscures destination endpoint.');
   }
 
   if (isSuspiciousTld) {
     score += 25;
-    indicators.push(`High-risk domain extension (.${tld}) frequently leveraged in disposable phishing campaigns.`);
+    indicators.push(`High-abuse Top Level Domain (.${tld}) commonly deployed in disposable phishing campaigns.`);
   }
 
-  if (isShortened) {
-    score += 20;
-    indicators.push('URL shortener obscures true destination endpoint.');
+  if (impersonatedBrands.length > 0) {
+    score += 35;
+    indicators.push(`Host contains sensitive financial / service brand keywords (${impersonatedBrands.join(', ')}).`);
   }
 
   if (subdomainCount >= 3) {
@@ -187,4 +189,97 @@ export function classifyUrl(rawUrl = '') {
       : 'No high-risk phishing indicators detected. Always confirm SSL certificate.',
     analyzedAt: new Date().toISOString()
   };
+}
+
+/**
+ * Deep AI URL Threat Analysis using OpenRouter LLaMA-3.3-70B
+ */
+export async function classifyUrlAsync(rawUrl = '') {
+  const baseResult = classifyUrl(rawUrl);
+  if (!baseResult.url || !OPENROUTER_API_KEY) {
+    return baseResult;
+  }
+
+  const prompt = `You are a Principal AI Cyber Threat & Phishing Intelligence Investigator.
+Analyze the following URL/Website for phishing, brand spoofing, credential harvesting, malware, or payment fraud in India.
+
+URL: "${baseResult.url}"
+Domain: "${baseResult.domain}"
+HTTPS: ${baseResult.features?.isHttps ? 'Yes' : 'No'}
+Impersonated Brands: ${JSON.stringify(baseResult.features?.impersonatedBrands || [])}
+Structural Heuristic Risk: ${baseResult.riskScore} / 100
+
+Return ONLY a valid JSON object strictly matching this schema:
+{
+  "isValid": true,
+  "url": "${baseResult.url}",
+  "hostname": "${baseResult.domain}",
+  "phishingProbability": number between 0.0 and 1.0,
+  "isPhishing": boolean,
+  "threatLevel": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "SAFE",
+  "category": string (e.g. "Banking Phishing & Credential Harvest", "Malicious Domain", "Brand Impersonation", "Investment Scam Portal", or "Legitimate Domain"),
+  "impersonatedBrand": string or null,
+  "detectedThreats": [string],
+  "explainableRationale": [string],
+  "investigatorActions": [string],
+  "safetyRecommendation": string,
+  "modelVersion": "OpenRouter LLaMA-3.3-70B URL Threat Analyzer"
+}`;
+
+  for (const model of OPENROUTER_MODELS) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://crypto-trace-omega.vercel.app',
+          'X-Title': 'Cyber Trace India URL Analyzer'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' }
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) continue;
+      const data = await res.json();
+      const rawContent = data.choices?.[0]?.message?.content;
+      if (!rawContent) continue;
+
+      const parsed = JSON.parse(rawContent.trim());
+      if (typeof parsed.phishingProbability === 'number') {
+        const prob = parsed.phishingProbability;
+        const classification = prob >= 0.7 ? 'MALICIOUS_PHISHING' : prob >= 0.45 ? 'SUSPICIOUS' : 'BENIGN';
+        return {
+          ...baseResult,
+          classification,
+          phishingProbability: Number(prob.toFixed(4)),
+          riskScore: Math.round(prob * 100),
+          threatLevel: parsed.threatLevel || (prob >= 0.7 ? 'CRITICAL' : 'LOW'),
+          category: parsed.category || 'Malicious URL',
+          impersonatedBrand: parsed.impersonatedBrand || null,
+          indicators: [
+            ...(parsed.detectedThreats || []),
+            ...(baseResult.indicators || [])
+          ].slice(0, 8),
+          explainableRationale: parsed.explainableRationale || [],
+          investigatorActions: parsed.investigatorActions || [],
+          safetyRecommendation: parsed.safetyRecommendation || baseResult.safetyRecommendation,
+          modelVersion: `OpenRouter ${model.split('/')[1] || model}`,
+          analyzedAt: new Date().toISOString()
+        };
+      }
+    } catch {
+      // Continue to next model or fallback
+    }
+  }
+
+  return baseResult;
 }

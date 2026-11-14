@@ -18,8 +18,8 @@ import { aiRiskEngine } from './ml/openrouterRiskEngine.mjs';
 import { DSA_CATALOG, runDsaSimulation } from './graph/dsaSimulator.mjs';
 import { aiOrchestrator } from './investigation/agentOrchestrator.mjs';
 import * as investigationTools from './investigation/tools.mjs';
-import { classifyScamMessage } from './ml/scamClassifier.mjs';
-import { classifyUrl } from './ml/urlClassifier.mjs';
+import { classifyScamMessage, classifyScamMessageAsync } from './ml/scamClassifier.mjs';
+import { classifyUrl, classifyUrlAsync } from './ml/urlClassifier.mjs';
 import { EntityIntelligenceService } from './ml/entityIntelligence.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -472,17 +472,19 @@ async function handle(req,res) {
  }
  if(path==='/api/scam-analyzer/message' && method==='POST') {
    const data = await body(req);
-   return json(res, 200, classifyScamMessage(data.text));
+   const result = await classifyScamMessageAsync(data.text);
+   return json(res, 200, result);
  }
  if(path==='/api/scam-analyzer/url' && method==='POST') {
    const data = await body(req);
-   return json(res, 200, classifyUrl(data.url));
+   const result = await classifyUrlAsync(data.url);
+   return json(res, 200, result);
  }
  if(path.startsWith('/api/scam-analyzer/entity') && method==='GET') {
    const type = url.searchParams.get('type') || 'phone';
    const identifier = url.searchParams.get('identifier') || '';
-   const found = entityIntelligence.lookupIdentifier(type, identifier);
-   return json(res, 200, { found: Boolean(found), entity: found });
+   const result = await entityIntelligence.lookupIdentifierAsync(type, identifier);
+   return json(res, 200, result);
  }
  if(path==='/api/auth/register' && method==='POST') {
    const data = await body(req);

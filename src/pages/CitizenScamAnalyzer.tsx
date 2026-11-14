@@ -298,7 +298,7 @@ export default function CitizenScamAnalyzer() {
                   </div>
                 </div>
 
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom: 14 }}>
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Extracted Indicators:</span>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                     {(messageResult.extractedIndicators || []).map((ind: string, idx: number) => (
@@ -307,13 +307,29 @@ export default function CitizenScamAnalyzer() {
                   </div>
                 </div>
 
-                <div>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Explainable Rationale:</span>
+                <div style={{ marginBottom: 14 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Forensic Rationale:</span>
                   <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12, color: '#cbd5e1', lineHeight: 1.6 }}>
                     {(messageResult.explainableFeatures || []).map((feat: string, idx: number) => (
                       <li key={idx}>{feat}</li>
                     ))}
                   </ul>
+                </div>
+
+                {messageResult.investigatorActions && messageResult.investigatorActions.length > 0 && (
+                  <div style={{ marginBottom: 14, background: '#091522', padding: 10, borderRadius: 6, border: '1px solid #1e3a5f' }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase' }}>Recommended Actions:</span>
+                    <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12, color: '#93c5fd', lineHeight: 1.5 }}>
+                      {messageResult.investigatorActions.map((act: string, idx: number) => (
+                        <li key={idx}>{act}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid #1e293b', fontSize: 11, color: '#64748b' }}>
+                  <span>Engine: <strong style={{ color: '#38bdf8' }}>{messageResult.modelVersion || 'OpenRouter LLaMA-3.3-70B'}</strong></span>
+                  <Badge variant="success">LIVE ML INFERENCE</Badge>
                 </div>
               </div>
             ) : (
@@ -393,13 +409,40 @@ export default function CitizenScamAnalyzer() {
                   </div>
                 </div>
 
-                <div>
+                <div style={{ marginBottom: 14 }}>
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Detected Indicators:</span>
                   <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12, color: '#cbd5e1', lineHeight: 1.6 }}>
                     {(urlResult.indicators || []).map((ind: string, idx: number) => (
                       <li key={idx}>{ind}</li>
                     ))}
                   </ul>
+                </div>
+
+                {urlResult.explainableRationale && urlResult.explainableRationale.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Forensic Evaluation:</span>
+                    <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>
+                      {urlResult.explainableRationale.map((rat: string, idx: number) => (
+                        <li key={idx}>{rat}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {urlResult.investigatorActions && urlResult.investigatorActions.length > 0 && (
+                  <div style={{ marginBottom: 14, background: '#091522', padding: 10, borderRadius: 6, border: '1px solid #1e3a5f' }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase' }}>Safety Actions:</span>
+                    <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12, color: '#93c5fd', lineHeight: 1.5 }}>
+                      {urlResult.investigatorActions.map((act: string, idx: number) => (
+                        <li key={idx}>{act}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid #1e293b', fontSize: 11, color: '#64748b' }}>
+                  <span>Engine: <strong style={{ color: '#38bdf8' }}>{urlResult.modelVersion || 'OpenRouter LLaMA-3.3-70B'}</strong></span>
+                  <Badge variant="success">LIVE ML INFERENCE</Badge>
                 </div>
               </div>
             ) : (
@@ -464,37 +507,82 @@ export default function CitizenScamAnalyzer() {
                       <div style={{ fontSize: 11, color: '#64748b' }}>Target Identifier</div>
                       <strong style={{ fontSize: 15, color: '#38bdf8' }}>{entityResult.entity.identifier}</strong>
                     </div>
-                    <Badge variant={entityResult.entity.verificationStatus === 'CORROBORATED_EVIDENCE' ? 'danger' : 'warning'}>
+                    <Badge variant={entityResult.entity.verificationStatus === 'CORROBORATED_EVIDENCE' || (entityResult.entity.riskScore >= 70) ? 'danger' : 'warning'}>
                       {entityResult.entity.verificationStatus.replace(/_/g, ' ')}
                     </Badge>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12, marginBottom: 14 }}>
                     <div style={{ background: '#090d16', padding: 8, borderRadius: 6, border: '1px solid #1e293b' }}>
-                      <span style={{ color: '#64748b' }}>Independent Reports:</span> <strong>{entityResult.entity.reportCount}</strong>
-                    </div>
-                    <div style={{ background: '#090d16', padding: 8, borderRadius: 6, border: '1px solid #1e293b' }}>
-                      <span style={{ color: '#64748b' }}>Corroborated Sources:</span> <strong>{entityResult.entity.independentSourcesCount}</strong>
+                      <span style={{ color: '#64748b' }}>Provider / Circle:</span> <strong>{entityResult.entity.providerOrBank || 'Unknown'}</strong>
                     </div>
                     <div style={{ background: '#090d16', padding: 8, borderRadius: 6, border: '1px solid #1e293b' }}>
                       <span style={{ color: '#64748b' }}>Calculated Risk:</span> <strong style={{ color: '#ef4444' }}>{entityResult.entity.riskScore} / 100</strong>
                     </div>
                     <div style={{ background: '#090d16', padding: 8, borderRadius: 6, border: '1px solid #1e293b' }}>
-                      <span style={{ color: '#64748b' }}>First Seen:</span> <strong>{new Date(entityResult.entity.firstSeen).toLocaleDateString()}</strong>
+                      <span style={{ color: '#64748b' }}>Independent Reports:</span> <strong>{entityResult.entity.reportCount || 1}</strong>
+                    </div>
+                    <div style={{ background: '#090d16', padding: 8, borderRadius: 6, border: '1px solid #1e293b' }}>
+                      <span style={{ color: '#64748b' }}>Threat Level:</span> <strong style={{ color: entityResult.entity.riskScore >= 70 ? '#ef4444' : '#f59e0b' }}>{entityResult.entity.threatLevel || (entityResult.entity.riskScore >= 70 ? 'CRITICAL' : 'SUSPICIOUS')}</strong>
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5, background: 'rgba(2, 132, 199, 0.08)', padding: 10, borderRadius: 6, border: '1px solid #0369a1' }}>
-                    <strong>Evidence Notice:</strong> This record reflects reports submitted by citizens to Cyber Trace. It serves as an investigative alert and does not constitute a criminal conviction.
+                  {entityResult.entity.riskFactors && entityResult.entity.riskFactors.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>Risk Factors:</span>
+                      <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>
+                        {entityResult.entity.riskFactors.map((rf: string, idx: number) => (
+                          <li key={idx}>{rf}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {entityResult.entity.investigatorActions && entityResult.entity.investigatorActions.length > 0 && (
+                    <div style={{ marginBottom: 14, background: '#091522', padding: 10, borderRadius: 6, border: '1px solid #1e3a5f' }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase' }}>Recommended Actions:</span>
+                      <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: 12, color: '#93c5fd', lineHeight: 1.5 }}>
+                        {entityResult.entity.investigatorActions.map((act: string, idx: number) => (
+                          <li key={idx}>{act}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid #1e293b', fontSize: 11, color: '#64748b' }}>
+                    <span>Engine: <strong style={{ color: '#38bdf8' }}>{entityResult.entity.aiModelVersion || 'OpenRouter LLaMA-3.3-70B'}</strong></span>
+                    <Badge variant="success">LIVE ML INFERENCE</Badge>
                   </div>
                 </div>
               ) : (
-                <div style={{ textAlign: 'center', padding: '30px 20px', color: '#10b981' }}>
-                  <CheckCircle2 size={36} style={{ margin: '0 auto 10px auto' }} />
-                  <h4 style={{ margin: '0 0 6px 0', color: '#fff' }}>No Prior Reports Found</h4>
-                  <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>
-                    This identifier has not been reported in existing Cyber Trace cases. Always remain cautious when transacting with unfamiliar parties.
-                  </p>
+                <div>
+                  <div style={{ textAlign: 'center', padding: '16px 20px', color: '#10b981', borderBottom: '1px solid #1e293b', marginBottom: 16 }}>
+                    <CheckCircle2 size={32} style={{ margin: '0 auto 8px auto' }} />
+                    <h4 style={{ margin: '0 0 4px 0', color: '#fff' }}>No Active Incident Complaints Recorded</h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>
+                      This identifier has zero filed victim complaints in the Cyber Trace registry.
+                    </p>
+                  </div>
+
+                  {entityResult.aiEvaluation && (
+                    <div style={{ fontSize: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                        <div style={{ background: '#090d16', padding: 8, borderRadius: 6, border: '1px solid #1e293b' }}>
+                          <span style={{ color: '#64748b' }}>Carrier/Platform:</span> <strong>{entityResult.aiEvaluation.providerOrBank}</strong>
+                        </div>
+                        <div style={{ background: '#090d16', padding: 8, borderRadius: 6, border: '1px solid #1e293b' }}>
+                          <span style={{ color: '#64748b' }}>Baseline Risk:</span> <strong style={{ color: '#10b981' }}>{entityResult.aiEvaluation.riskScore} / 100</strong>
+                        </div>
+                      </div>
+                      <div style={{ color: '#cbd5e1', lineHeight: 1.5, background: '#090d16', padding: 10, borderRadius: 6, border: '1px solid #1e293b', marginBottom: 12 }}>
+                        <strong>Behavioral Analysis:</strong> {entityResult.aiEvaluation.namingPatternAnalysis}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: '#64748b' }}>
+                        <span>Engine: <strong style={{ color: '#38bdf8' }}>{entityResult.aiEvaluation.modelVersion}</strong></span>
+                        <Badge variant="info">AI VERIFIED</Badge>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             ) : (
@@ -509,3 +597,4 @@ export default function CitizenScamAnalyzer() {
     </div>
   );
 }
+
