@@ -589,8 +589,8 @@ export class Store {
     };
   }
   createSession(displayName = 'Demo Investigator', role = 'demo-investigator', userId = null) {
-    // Reclaim expired anonymous demo workspaces; never touch an active workspace.
-    this.db.prepare('DELETE FROM users WHERE id IN (SELECT user_id FROM sessions WHERE expires_at<?)').run(now());
+    // Reclaim expired anonymous demo workspaces; never touch registered or active workspaces.
+    this.db.prepare('DELETE FROM users WHERE id IN (SELECT user_id FROM sessions WHERE expires_at<?) AND id NOT IN (SELECT id FROM system_users)').run(now());
     const count = this.db.prepare('SELECT COUNT(*) count FROM sessions').get().count;
     if(count >= Number(process.env.MAX_DEMO_SESSIONS || 1000)) throw Object.assign(new Error('Demo capacity reached. Please try again later.'),{status:503});
     const id = randomUUID(), token = randomBytes(32).toString('hex'), createdAt=now();

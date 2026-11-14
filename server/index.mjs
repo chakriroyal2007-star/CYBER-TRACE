@@ -515,14 +515,33 @@ async function handle(req,res) {
      return json(res, 200, { token, user: authUser, mode: authUser.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
    }
 
-   // Automatic fallback for new signins
+   const existingUser = store.getUserByEmail(email);
+   if(existingUser) {
+     fail('Invalid password for this registered account. Please check your credentials and try again.', 401);
+   }
+
+   // Provision new permanent account for first-time signins so complaints are never lost
    const rawName = email.split('@')[0].replace(/[\._\-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
    const role = (data.role === 'reporter' || (!email.includes('cbi') && !email.includes('cryptotrace') && !email.includes('officer') && !email.includes('police'))) ? 'reporter' : 'officer';
    const displayName = role === 'officer' ? `${rawName} (CBI Officer)` : rawName;
-   const { token, session } = store.createSession(displayName, role);
-   res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-   res.setHeader('x-new-session-token', token);
-   return json(res, 200, { token, user: { id: session.user_id, name: session.display_name, email, role }, mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   try {
+     const newUser = store.registerUser({
+       email,
+       password,
+       name: displayName,
+       role,
+       phone: data.phone || ''
+     });
+     const { token, session } = store.createSession(newUser.name, newUser.role, newUser.id);
+     res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
+     res.setHeader('x-new-session-token', token);
+     return json(res, 200, { token, user: newUser, mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   } catch {
+     const { token, session } = store.createSession(displayName, role);
+     res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
+     res.setHeader('x-new-session-token', token);
+     return json(res, 200, { token, user: { id: session.user_id, name: session.display_name, email, role }, mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   }
  }
  const authHeader = req.headers.authorization || '';
  const tokenFromHeader = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;

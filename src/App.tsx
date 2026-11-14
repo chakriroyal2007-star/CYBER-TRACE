@@ -207,14 +207,32 @@ export default function App() {
   useEffect(() => {
     if ((isOfficerApp || isReporter) && !ready) {
       api('/auth/me').then(r => {
-        if (r?.user) setUser(r.user);
+        if (r?.user) {
+          setUser(r.user);
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('ct_user', JSON.stringify(r.user));
+          }
+        }
         setReady(true);
       }).catch(() => {
-        const demoEndpoint = isReporter ? '/auth/demo-reporter' : '/auth/demo';
-        api(demoEndpoint, { method: 'POST', body: '{}' }).then(r => {
-          if (r?.user) setUser(r.user);
-          setReady(true);
-        }).catch(e => setSessionError(e.message));
+        const hasSavedToken = typeof localStorage !== 'undefined' && Boolean(localStorage.getItem('ct_token'));
+        if (!hasSavedToken) {
+          const demoEndpoint = isReporter ? '/auth/demo-reporter' : '/auth/demo';
+          api(demoEndpoint, { method: 'POST', body: '{}' }).then(r => {
+            if (r?.token && typeof localStorage !== 'undefined') localStorage.setItem('ct_token', r.token);
+            if (r?.user) {
+              setUser(r.user);
+              if (typeof localStorage !== 'undefined') localStorage.setItem('ct_user', JSON.stringify(r.user));
+            }
+            setReady(true);
+          }).catch(e => setSessionError(e.message));
+        } else {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('ct_token');
+            localStorage.removeItem('ct_user');
+          }
+          navigate('/login');
+        }
       });
     }
   }, [isOfficerApp, isReporter, ready]);
@@ -230,6 +248,12 @@ export default function App() {
 
   const handleLogout = async () => {
     try { await api('/auth/logout', { method: 'POST', body: '{}' }); } catch { }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('ct_token');
+      localStorage.removeItem('ct_user');
+    }
+    setUser(undefined);
+    setReady(false);
     navigate('/login');
   };
 
@@ -411,7 +435,7 @@ export default function App() {
 
   // 2. Landing / Login View
   if (!isOfficerApp) {
-    return <Boundary><Landing login={location.startsWith('/login')} /></Boundary>;
+    return <Boundary><Landing login={location.startsWith('/login') || location.startsWith('/register')} /></Boundary>;
   }
 
   // 3. Officer Intelligence Console App Shell
