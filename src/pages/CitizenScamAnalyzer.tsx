@@ -21,7 +21,6 @@ export default function CitizenScamAnalyzer() {
   const [urlResult, setUrlResult] = useState<any>(null);
 
   // Entity lookup state
-  const [entityType, setEntityType] = useState<'phone' | 'upi'>('phone');
   const [entityInput, setEntityInput] = useState('');
   const [analyzingEntity, setAnalyzingEntity] = useState(false);
   const [entityResult, setEntityResult] = useState<any>(null);
@@ -70,16 +69,16 @@ export default function CitizenScamAnalyzer() {
     }
   };
 
-  // Lookup Entity
+  // Lookup UPI Identifier
   const handleLookupEntity = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!entityInput.trim()) {
-      toast('Please enter an identifier to inspect', 'error');
+      toast('Please enter a UPI handle to inspect', 'error');
       return;
     }
     setAnalyzingEntity(true);
     try {
-      const res = await api(`/scam-analyzer/entity?type=${encodeURIComponent(entityType)}&identifier=${encodeURIComponent(entityInput.trim())}`);
+      const res = await api(`/scam-analyzer/entity?type=upi&identifier=${encodeURIComponent(entityInput.trim())}`);
       setEntityResult(res);
     } catch (err: any) {
       toast(err.message || 'Lookup failed', 'error');
@@ -222,7 +221,7 @@ export default function CitizenScamAnalyzer() {
             gap: 8
           }}
         >
-          <ShieldAlert size={15} /> Check Phone Number or UPI ID
+          <ShieldAlert size={15} /> Verify UPI ID / Handle
         </button>
       </div>
 
@@ -455,30 +454,20 @@ export default function CitizenScamAnalyzer() {
         </div>
       )}
 
-      {/* Tab 3: Entity Lookup */}
+      {/* Tab 3: UPI Identifier Lookup */}
       {activeTab === 'entity' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
           <Card style={{ padding: 22 }}>
-            <h3 style={{ margin: '0 0 10px 0', fontSize: 15, color: '#fff' }}>Check Phone Number or UPI Identifier</h3>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: 15, color: '#fff' }}>Verify Suspicious UPI Handle (VPA)</h3>
             <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 16px 0' }}>
-              Queries reported cybercrime complaints and evidence connections. Does not make unverified accusations.
+              Inspects UPI Virtual Payment Addresses against reported cybercrime complaints, fake customer care handles, and mule accounts.
             </p>
             <form onSubmit={handleLookupEntity}>
-              <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#fff', cursor: 'pointer' }}>
-                  <input type="radio" checked={entityType === 'phone'} onChange={() => setEntityType('phone')} />
-                  Mobile Phone Number
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#fff', cursor: 'pointer' }}>
-                  <input type="radio" checked={entityType === 'upi'} onChange={() => setEntityType('upi')} />
-                  UPI VPA Handle
-                </label>
-              </div>
               <input
                 type="text"
                 value={entityInput}
                 onChange={e => setEntityInput(e.target.value)}
-                placeholder={entityType === 'phone' ? 'e.g. 9810123456 or +91 98101 23456' : 'e.g. suspect.fastyield@paytm'}
+                placeholder="e.g. sbi.helpdesk.kyc@ybl or support.payment@okhdfcbank"
                 style={{
                   width: '100%',
                   background: '#090d16',
@@ -492,7 +481,7 @@ export default function CitizenScamAnalyzer() {
               />
               <Button disabled={analyzingEntity}>
                 {analyzingEntity ? <RefreshCw size={14} className="spin" /> : <Search size={14} />}
-                {analyzingEntity ? 'Searching Records…' : 'Check Intelligence Records'}
+                {analyzingEntity ? 'Verifying Handle…' : 'Verify UPI ID'}
               </Button>
             </form>
           </Card>
@@ -588,7 +577,7 @@ export default function CitizenScamAnalyzer() {
             ) : (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
                 <Search size={36} style={{ margin: '0 auto 12px auto', opacity: 0.4 }} />
-                <p style={{ margin: 0, fontSize: 13 }}>Enter a phone number or UPI handle to check previous cybercrime case references.</p>
+                <p style={{ margin: 0, fontSize: 13 }}>Enter a UPI handle (e.g. name@bank) to check against fraudulent handle patterns.</p>
               </div>
             )}
           </Card>
