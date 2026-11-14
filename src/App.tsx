@@ -5,7 +5,7 @@ import {
   GitBranch, Fingerprint, Bell, FileText, Code2, Settings, Database, Waypoints,
   Search, Command, Plus, Menu, X, ChevronRight, ArrowUpRight, LogOut, ShieldCheck,
   Radio, CheckCircle2, AlertCircle, FileOutput, Inbox, UserCheck, ShieldAlert, Eye,
-  BookOpen, Sparkles, Bot
+  BookOpen, Sparkles, Bot, Activity
 } from 'lucide-react';
 import { api, navigate, toast } from './api';
 import { Badge, LoadingState, Button, ErrorState } from './components/ui';
@@ -46,9 +46,11 @@ const WatchtowerPage = lazy(() => officer().then(m => ({ default: m.WatchtowerPa
 const DsaStudyStudio = lazy(() => import('./pages/DsaStudyStudio'));
 const MlBenchmarkLab = lazy(() => import('./pages/MlBenchmarkLab'));
 const AiInvestigationWorkspace = lazy(() => import('./pages/AiInvestigationWorkspace'));
+const CitizenScamAnalyzer = lazy(() => import('./pages/CitizenScamAnalyzer'));
 
 const navItems = [
   ['dashboard', 'Dashboard', LayoutDashboard],
+  ['scam-analyzer', 'Threat & scam scanner', Sparkles],
   ['ai-investigation', 'AI Investigation Agent', Bot],
   ['incoming', 'Incoming reports', Inbox],
   ['cases', 'Cases', BriefcaseBusiness],
@@ -63,7 +65,7 @@ const navItems = [
   ['reports', 'Reports', FileText],
   ['requests', 'Information requests', FileOutput],
   ['dsa-studio', 'DSA Study Studio', BookOpen],
-  ['ml-benchmark', 'ML Benchmark Lab', Sparkles]
+  ['ml-benchmark', 'ML Benchmark Lab', Activity]
 ] as const;
 
 class Boundary extends Component<{ children: ReactNode }, { error: string }> {
@@ -389,6 +391,17 @@ export default function App() {
     );
   }
 
+  // 1.85 Citizen Scam Analyzer Direct URL
+  if (location.startsWith('/scam-analyzer')) {
+    return (
+      <Boundary>
+        <Suspense fallback={<LoadingState />}>
+          <CitizenScamAnalyzer />
+        </Suspense>
+      </Boundary>
+    );
+  }
+
   // 1.9 Redirect root-level workspace shortcuts (e.g. /watchtower -> /app/watchtower, /requests -> /app/requests)
   const topNav = location.split('?')[0].replace(/^\//, '');
   if (navItems.some(([p]) => p === topNav)) {
@@ -408,6 +421,7 @@ export default function App() {
 
   switch (part) {
     case 'dashboard': content = <Dashboard />; break;
+    case 'scam-analyzer': content = <CitizenScamAnalyzer />; break;
     case 'incoming': content = <IncomingReportsPage />; break;
     case 'case-review': content = <CaseReviewPage id={id} />; break;
     case 'cases': content = <Cases />; break;

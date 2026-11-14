@@ -18,9 +18,13 @@ import { aiRiskEngine } from './ml/openrouterRiskEngine.mjs';
 import { DSA_CATALOG, runDsaSimulation } from './graph/dsaSimulator.mjs';
 import { aiOrchestrator } from './investigation/agentOrchestrator.mjs';
 import * as investigationTools from './investigation/tools.mjs';
+import { classifyScamMessage } from './ml/scamClassifier.mjs';
+import { classifyUrl } from './ml/urlClassifier.mjs';
+import { EntityIntelligenceService } from './ml/entityIntelligence.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
+const entityIntelligence = new EntityIntelligenceService(store.db);
 const PORT=Number(process.env.PORT || 8000),HOST=process.env.HOST || '0.0.0.0';
 const dist=resolve(root,'dist');
 const rateBuckets=new Map(),streamCounts=new Map();
@@ -52,7 +56,8 @@ function csrfAndCors(req,res) {
   res.setHeader('Access-Control-Allow-Credentials','true');
   res.setHeader('Vary','Origin');
   res.setHeader('Access-Control-Allow-Methods','GET, POST, PATCH, PUT, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type');
+  res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization, x-session-token');
+  res.setHeader('Access-Control-Expose-Headers','x-new-session-token');
 }
 function limited(req,path) {
   const ip=req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
@@ -416,10 +421,15 @@ async function handle(req,res) {
  if(path==='/api/docs' && method==='GET') {res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});return res.end(docsHtml());}
  if(path==='/api/auth/demo' && method==='POST') {
    await body(req);
-   const existing=store.session(cookies(req).ct_session);
-   if(existing) return json(res,200,{user:{id:existing.user_id,name:existing.display_name,role:existing.role||'demo-investigator'},mode:'DEMO ENVIRONMENT',expiresAt:existing.expires_at});
+   const existingToken = cookies(req).ct_session || req.headers['x-session-token'];
+   const existing = existingToken ? store.session(existingToken) : null;
+   if(existing) {
+     if(existingToken) res.setHeader('x-new-session-token', existingToken);
+     return json(res,200,{token: existingToken, user:{id:existing.user_id,name:existing.display_name,role:existing.role||'demo-investigator'},mode:'DEMO ENVIRONMENT',expiresAt:existing.expires_at});
+   }
    const {token,session}=store.createSession();res.setHeader('Set-Cookie',sessionCookie(req,token,Math.floor((Date.parse(session.expires_at)-Date.now())/1000)));
-   return json(res,200,{user:{id:session.user_id,name:session.display_name,role:session.role||'demo-investigator'},mode:'DEMO ENVIRONMENT',expiresAt:session.expires_at});
+   res.setHeader('x-new-session-token', token);
+   return json(res,200,{token, user:{id:session.user_id,name:session.display_name,role:session.role||'demo-investigator'},mode:'DEMO ENVIRONMENT',expiresAt:session.expires_at});
  }
  if(path==='/api/auth/demo-reporter' && method==='POST') {
    await body(req);
@@ -427,7 +437,8 @@ async function handle(req,res) {
    const uid = reporter?.id || 'USR-REPORTER-001';
    const { token, session } = store.createSession('Priya Nair', 'reporter', uid);
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-   return json(res, 200, { user: { id: uid, name: 'Priya Nair', email: 'priya.nair@example.in', role: 'reporter' }, mode: 'REPORTER PORTAL', expiresAt: session.expires_at });
+   res.setHeader('x-new-session-token', token);
+   return json(res, 200, { token, user: { id: uid, name: 'Priya Nair', email: 'priya.nair@example.in', role: 'reporter' }, mode: 'REPORTER PORTAL', expiresAt: session.expires_at });
  }
  if(path==='/api/auth/demo-officer' && method==='POST') {
    await body(req);
@@ -435,33 +446,57 @@ async function handle(req,res) {
    const uid = officer?.id || 'USR-OFFICER-001';
    const { token, session } = store.createSession('Insp. Rajesh Sharma (CBI Officer)', 'officer', uid);
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-   return json(res, 200, { user: { id: uid, name: 'Insp. Rajesh Sharma (CBI Officer)', email: 'officer.sharma@cbi.gov.in', role: 'officer' }, mode: 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   res.setHeader('x-new-session-token', token);
+   return json(res, 200, { token, user: { id: uid, name: 'Insp. Rajesh Sharma (CBI Officer)', email: 'officer.sharma@cbi.gov.in', role: 'officer' }, mode: 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
  }
  if(path==='/api/auth/demo-supervisor' && method==='POST') {
    await body(req);
    const uid = 'USR-SUPERVISOR-001';
    const { token, session } = store.createSession('SP Vikram Rathore (Supervisory Special Agent)', 'supervisor', uid);
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-   return json(res, 200, { user: { id: uid, name: 'SP Vikram Rathore (Supervisory Special Agent)', email: 'sp.rathore@cbi.gov.in', role: 'supervisor' }, mode: 'SUPERVISORY OVERSIGHT PORTAL', expiresAt: session.expires_at });
+   res.setHeader('x-new-session-token', token);
+   return json(res, 200, { token, user: { id: uid, name: 'SP Vikram Rathore (Supervisory Special Agent)', email: 'sp.rathore@cbi.gov.in', role: 'supervisor' }, mode: 'SUPERVISORY OVERSIGHT PORTAL', expiresAt: session.expires_at });
  }
  if(path==='/api/auth/demo-admin' && method==='POST') {
    await body(req);
    const uid = 'USR-ADMIN-001';
    const { token, session } = store.createSession('Dr. Ananya Roy (Chief Forensic Director)', 'admin', uid);
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-   return json(res, 200, { user: { id: uid, name: 'Dr. Ananya Roy (Chief Forensic Director)', email: 'director.roy@cbi.gov.in', role: 'admin' }, mode: 'EXECUTIVE INTELLIGENCE ADMIN', expiresAt: session.expires_at });
+   res.setHeader('x-new-session-token', token);
+   return json(res, 200, { token, user: { id: uid, name: 'Dr. Ananya Roy (Chief Forensic Director)', email: 'director.roy@cbi.gov.in', role: 'admin' }, mode: 'EXECUTIVE INTELLIGENCE ADMIN', expiresAt: session.expires_at });
  }
  if(path==='/api/demo/reset' && method==='POST') {
    await body(req);
    const result = store.resetDemoData();
    return json(res, 200, { ok: true, purgedCount: result.purgedCount, caseIds: result.caseIds });
  }
+ if(path==='/api/scam-analyzer/message' && method==='POST') {
+   const data = await body(req);
+   return json(res, 200, classifyScamMessage(data.text));
+ }
+ if(path==='/api/scam-analyzer/url' && method==='POST') {
+   const data = await body(req);
+   return json(res, 200, classifyUrl(data.url));
+ }
+ if(path.startsWith('/api/scam-analyzer/entity') && method==='GET') {
+   const type = url.searchParams.get('type') || 'phone';
+   const identifier = url.searchParams.get('identifier') || '';
+   const found = entityIntelligence.lookupIdentifier(type, identifier);
+   return json(res, 200, { found: Boolean(found), entity: found });
+ }
  if(path==='/api/auth/register' && method==='POST') {
    const data = await body(req);
+   if(data.role === 'officer') {
+     const expectedCode = process.env.OFFICER_SIGNUP_CODE || 'dsaproject';
+     if(!data.officerCode || String(data.officerCode).trim() !== expectedCode) {
+       fail('Invalid Officer Registration Secret Code. Please enter the authorized department code.', 403);
+     }
+   }
    const user = store.registerUser(data);
    const { token, session } = store.createSession(user.name, user.role, user.id);
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-   return json(res, 201, { user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone }, mode: user.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   res.setHeader('x-new-session-token', token);
+   return json(res, 201, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone }, mode: user.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
  }
  if(path==='/api/auth/login' && method==='POST') {
    const data = await body(req);
@@ -474,7 +509,8 @@ async function handle(req,res) {
    if(authUser) {
      const { token, session } = store.createSession(authUser.name, authUser.role, authUser.id);
      res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-     return json(res, 200, { user: authUser, mode: authUser.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+     res.setHeader('x-new-session-token', token);
+     return json(res, 200, { token, user: authUser, mode: authUser.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
    }
 
    // Automatic fallback for new signins
@@ -483,10 +519,30 @@ async function handle(req,res) {
    const displayName = role === 'officer' ? `${rawName} (CBI Officer)` : rawName;
    const { token, session } = store.createSession(displayName, role);
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-   return json(res, 200, { user: { id: session.user_id, name: session.display_name, email, role }, mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   res.setHeader('x-new-session-token', token);
+   return json(res, 200, { token, user: { id: session.user_id, name: session.display_name, email, role }, mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
  }
- const session=store.session(cookies(req).ct_session);if(!session) fail('Start a demo session to access this workspace.',401);
+ const authHeader = req.headers.authorization || '';
+ const tokenFromHeader = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+ const token = tokenFromHeader || req.headers['x-session-token'] || cookies(req).ct_session || '';
+ const session = token ? store.session(token) : null;
+ if(!session) fail('Start a demo session to access this workspace.',401);
  const sid=session.id;
+ if(path==='/api/officer/override' && method==='POST') {
+   const isOfficer = session.role === 'officer' || session.role === 'supervisor' || session.role === 'admin';
+   if(!isOfficer) fail('Only authorized officers can override ML predictions.', 403);
+   const data = await body(req);
+   const override = entityIntelligence.recordOfficerOverride({
+     caseId: data.caseId,
+     entityId: data.entityId,
+     officerId: session.user_id,
+     officerName: session.display_name,
+     originalScore: data.originalScore,
+     overriddenScore: data.overriddenScore,
+     justification: data.justification
+   });
+   return json(res, 200, override);
+ }
  if(path==='/api/auth/me' && method==='GET') return json(res,200,{user:{id:session.user_id,name:session.display_name,role:session.role || 'investigator',email:session.email||null,agency:session.agency||null,badgeNumber:session.badge_number||null},mode:session.role==='reporter'?'REPORTER PORTAL':(session.role==='officer'||session.role==='official-investigator')?'CBI OFFICER PORTAL':'DEMO ENVIRONMENT',expiresAt:session.expires_at});
  if(path==='/api/auth/logout' && method==='POST') {store.audit(sid,'Session Signed Out','workspace');store.db.prepare('UPDATE sessions SET expires_at=? WHERE id=?').run(now(),sid);res.setHeader('Set-Cookie',sessionCookie(req,'',0));return json(res,200,{ok:true});}
  if(group==='officers' && method==='GET') {

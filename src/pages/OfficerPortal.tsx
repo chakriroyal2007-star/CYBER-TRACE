@@ -265,6 +265,12 @@ export function CaseReviewPage({ id }: { id: string }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyticsResult, setAnalyticsResult] = useState<any>(null);
 
+  // ML Prediction Override State
+  const [overrideModal, setOverrideModal] = useState(false);
+  const [overrideScore, setOverrideScore] = useState(45);
+  const [overrideJustification, setOverrideJustification] = useState('');
+  const [submittingOverride, setSubmittingOverride] = useState(false);
+
   // On-chain address & verification state
   const [onChainData, setOnChainData] = useState<any>(null);
   const [verifyingTx, setVerifyingTx] = useState(false);
@@ -428,6 +434,35 @@ export function CaseReviewPage({ id }: { id: string }) {
     }
   };
 
+  // Officer ML Prediction Override Handler
+  const handleSaveOverride = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!overrideJustification || overrideJustification.trim().length < 10) {
+      toast('Please provide a documented justification of at least 10 characters.', 'error');
+      return;
+    }
+    setSubmittingOverride(true);
+    try {
+      await api('/officer/override', {
+        method: 'POST',
+        body: JSON.stringify({
+          caseId: id,
+          originalScore: complaint?.riskScore || 70,
+          overriddenScore: Number(overrideScore),
+          justification: overrideJustification.trim()
+        })
+      });
+      toast('ML risk score overridden and recorded in officer audit log.', 'success');
+      setOverrideModal(false);
+      setOverrideJustification('');
+      loadCase();
+    } catch (err: any) {
+      toast(err.message || 'Override failed', 'error');
+    } finally {
+      setSubmittingOverride(false);
+    }
+  };
+
   const isTerminal = ['Resolved', 'Closed', 'Rejected'].includes(complaint.status);
   const displayCaseId = complaint.caseId || complaint.id;
 
@@ -502,6 +537,10 @@ export function CaseReviewPage({ id }: { id: string }) {
                 }}
               >
                 <Bot size={15} /> LAUNCH AI INVESTIGATION
+              </Button>
+
+              <Button variant="secondary" onClick={() => setOverrideModal(true)}>
+                <Scale size={14} /> Override ML Prediction
               </Button>
 
               {/* Accept Flow */}
@@ -1053,6 +1092,58 @@ export function CaseReviewPage({ id }: { id: string }) {
         </div>
       )}
 
+      {/* Officer ML Prediction Override Modal */}
+      {overrideModal && (
+        <div className="modal-backdrop" onClick={() => setOverrideModal(false)}>
+          <div className="command-modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <form onSubmit={handleSaveOverride} style={{ padding: 22 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <Scale size={22} color="#38bdf8" />
+                <h3 style={{ margin: 0, fontSize: 16, color: '#fff' }}>Override ML Risk Assessment</h3>
+              </div>
+              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16, lineHeight: 1.5 }}>
+                Statutory requirement: Overriding model-generated risk scores requires documented factual justification. All overrides are permanently recorded in the immutable officer audit trail.
+              </p>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6 }}>
+                  Adjusted Risk Score (0 - 100): <strong style={{ color: overrideScore >= 70 ? '#ef4444' : overrideScore >= 40 ? '#f59e0b' : '#22c55e' }}>{overrideScore}</strong>
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={overrideScore}
+                  onChange={e => setOverrideScore(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#0284c7' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6 }}>
+                  Documented Officer Justification (Minimum 10 characters):
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={overrideJustification}
+                  onChange={e => setOverrideJustification(e.target.value)}
+                  placeholder="Detail corroborated external intelligence, verified FIR corroboration, bank confirmations, or false-positive evidence justifying this adjustment..."
+                  style={{ width: '100%', padding: '10px 12px', background: '#0a1624', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6, fontSize: 12 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <Button variant="secondary" type="button" onClick={() => setOverrideModal(false)}>Cancel</Button>
+                <Button disabled={submittingOverride || overrideJustification.trim().length < 10}>
+                  {submittingOverride ? 'Saving to Audit Log…' : 'Record Official Override'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Request Evidence Modal */}
       {evidenceModal && (
         <div className="modal-backdrop" onClick={() => setEvidenceModal(false)}>
@@ -1080,6 +1171,58 @@ export function CaseReviewPage({ id }: { id: string }) {
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Officer ML Prediction Override Modal */}
+      {overrideModal && (
+        <div className="modal-backdrop" onClick={() => setOverrideModal(false)}>
+          <div className="command-modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <form onSubmit={handleSaveOverride} style={{ padding: 22 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <Scale size={22} color="#38bdf8" />
+                <h3 style={{ margin: 0, fontSize: 16, color: '#fff' }}>Override ML Risk Assessment</h3>
+              </div>
+              <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16, lineHeight: 1.5 }}>
+                Statutory requirement: Overriding model-generated risk scores requires documented factual justification. All overrides are permanently recorded in the immutable officer audit trail.
+              </p>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6 }}>
+                  Adjusted Risk Score (0 - 100): <strong style={{ color: overrideScore >= 70 ? '#ef4444' : overrideScore >= 40 ? '#f59e0b' : '#22c55e' }}>{overrideScore}</strong>
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={overrideScore}
+                  onChange={e => setOverrideScore(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#0284c7' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6 }}>
+                  Documented Officer Justification (Minimum 10 characters):
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={overrideJustification}
+                  onChange={e => setOverrideJustification(e.target.value)}
+                  placeholder="Detail corroborated external intelligence, verified FIR corroboration, bank confirmations, or false-positive evidence justifying this adjustment..."
+                  style={{ width: '100%', padding: '10px 12px', background: '#0a1624', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6, fontSize: 12 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <Button variant="secondary" type="button" onClick={() => setOverrideModal(false)}>Cancel</Button>
+                <Button disabled={submittingOverride || overrideJustification.trim().length < 10}>
+                  {submittingOverride ? 'Saving to Audit Log…' : 'Record Official Override'}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

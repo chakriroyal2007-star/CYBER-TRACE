@@ -3,7 +3,7 @@ import {
   FileText, Plus, ShieldCheck, Clock, CheckCircle2, AlertTriangle, ArrowRight,
   Upload, Search, File, ChevronRight, Lock, Bell, Check, AlertCircle, RefreshCw,
   ExternalLink, UserCheck, Eye, Hash, Wallet, DollarSign, Calendar, MessageSquare,
-  Bot
+  Bot, Sparkles
 } from 'lucide-react';
 import { api, navigate, money, shortAddress, formatTime, toast } from '../api';
 import { Button, Card, Badge, PageHeader, LoadingState, ErrorState, Field } from '../components/ui';
@@ -110,9 +110,14 @@ export function ReporterDashboard() {
         title="Reporter Dashboard"
         description="Report cryptocurrency fraud, track officer actions, and provide supporting forensic evidence."
         action={
-          <Button onClick={() => navigate('/reporter/submit')}>
-            <Plus size={16} /> File New Complaint
-          </Button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Button variant="secondary" onClick={() => navigate('/scam-analyzer')}>
+              <Sparkles size={15} color="#38bdf8" /> Free Scam Scanner
+            </Button>
+            <Button onClick={() => navigate('/reporter/submit')}>
+              <Plus size={16} /> File New Complaint
+            </Button>
+          </div>
         }
       />
 
@@ -495,13 +500,26 @@ export function SubmitComplaintPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <Field label="Incident Category">
               <select value={incidentType} onChange={e => setIncidentType(e.target.value)} style={{ width: '100%', padding: '9px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6 }}>
-                <option value="Investment Scam">Investment Scam / Arbitrage Scheme</option>
-                <option value="Job & Task Scam">Job & Task Scam (Telegram / WhatsApp)</option>
-                <option value="Phishing">Phishing / Malicious DApp Signature</option>
-                <option value="Ransomware Extortion">Ransomware Extortion Demand</option>
-                <option value="Impersonation Fraud">Official Impersonation Fraud</option>
-                <option value="Unauthorized Transfer">Unauthorized Wallet Drain</option>
-                <option value="Other Cybercrime">Other Digital Asset Cybercrime</option>
+                <option value="UPI Payment Fraud">1. UPI Payment Fraud</option>
+                <option value="Fake UPI Collect Request">2. Fake UPI Collect Request</option>
+                <option value="QR-Code Payment Scam">3. QR-Code Payment Scam</option>
+                <option value="Fake KYC Verification">4. Fake KYC Verification</option>
+                <option value="OTP Theft & Impersonation">5. OTP Theft & Impersonation</option>
+                <option value="Phishing Website">6. Phishing Website</option>
+                <option value="Malicious URL">7. Malicious URL</option>
+                <option value="Fake Banking Message">8. Fake Banking Message</option>
+                <option value="Fake Customer Care Number">9. Fake Customer Care Number</option>
+                <option value="Investment & Staking Scam">10. Investment & Staking Scam</option>
+                <option value="Fake Job Offer (Part-Time/Telegram)">11. Fake Job Offer (Part-Time/Telegram)</option>
+                <option value="Digital Arrest Scam">12. Digital Arrest Scam</option>
+                <option value="Courier & Parcel Customs Scam">13. Courier & Parcel Customs Scam</option>
+                <option value="Instant Loan & Harassment App">14. Instant Loan & Harassment App</option>
+                <option value="Identity Impersonation">15. Identity Impersonation</option>
+                <option value="Social Engineering">16. Social Engineering</option>
+                <option value="WhatsApp & Telegram Task Scam">17. WhatsApp & Telegram Task Scam</option>
+                <option value="Suspicious Payment Request">18. Suspicious Payment Request</option>
+                <option value="Fake Government Scheme / Subsidy">19. Fake Government Scheme / Subsidy</option>
+                <option value="Emerging Digital Fraud">20. Emerging Digital Fraud</option>
               </select>
             </Field>
 
@@ -710,9 +728,14 @@ export function MyCasesPage() {
         title="My Filed Complaints"
         description="Comprehensive list of all complaints filed under your verified citizen reporter profile."
         action={
-          <Button onClick={() => navigate('/reporter/submit')}>
-            <Plus size={16} /> File New Complaint
-          </Button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Button variant="secondary" onClick={() => navigate('/scam-analyzer')}>
+              <Sparkles size={15} color="#38bdf8" /> Free Scam Scanner
+            </Button>
+            <Button onClick={() => navigate('/reporter/submit')}>
+              <Plus size={16} /> File New Complaint
+            </Button>
+          </div>
         }
       />
 

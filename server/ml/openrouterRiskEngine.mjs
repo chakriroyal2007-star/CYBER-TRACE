@@ -3,7 +3,7 @@
  * Evaluates complaints using frontier LLMs for deep forensic pattern analysis,
  * risk scoring, 6-parameter readiness grading, and CBI Officer follow-up action plans.
  */
-const DEFAULT_KEY = process.env.OPENROUTER_API_KEY || Buffer.from('c2stb3ItdjEtNGE4N2U2MDAyY2Q5MGM3ZmU3ODBjMzZjMWU0MTQyYjA2NDMzN2I4Y2E1MDQ3ZDAzYjNiYzY4ZGJkZWE0MWY0ZA==', 'base64').toString('utf8');
+const DEFAULT_KEY = process.env.OPENROUTER_API_KEY || '';
 
 export class OpenRouterRiskEngine {
   constructor(apiKey) {

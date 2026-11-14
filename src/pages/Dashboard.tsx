@@ -9,7 +9,8 @@ const colors=['#56cbbd','#6593e9','#9e87d5','#dbb479','#77889e'];
 export default function Dashboard(){
   const [data,setData]=useState<any>(),[error,setError]=useState('');
   const [incomingComplaints,setIncomingComplaints]=useState<any[]>([]);
-  useEffect(()=>{
+  const loadDashboard = () => {
+    setError('');
     api('/dashboard').then(async d=>{
       let featuredRelated = 0;
       try {
@@ -24,8 +25,12 @@ export default function Dashboard(){
     api('/complaints').then(r=>{
       if(Array.isArray(r)) setIncomingComplaints(r.slice(0, 5));
     }).catch(()=>{});
+  };
+
+  useEffect(()=>{
+    loadDashboard();
   },[]);
-  if(error)return <ErrorState message={error}/>;
+  if(error)return <ErrorState message={error} retry={loadDashboard}/>;
   if(!data)return <LoadingState/>;
   const m=data.metrics;
   const selected=data.cases.find((c:any)=>c.id==='CR-2026-00192')||data.cases[0];
