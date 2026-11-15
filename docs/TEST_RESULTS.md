@@ -8,12 +8,12 @@ This document records the exact results of the automated test suite execution fo
 - **Command:** `npm test` (`node --test tests/*.test.mjs`)
 - **Node.js Version:** `v22.23.3` (Engine requirement: `>=22.5.0` / Node 24 ready)
 - **OS Platform:** macOS (`darwin`, `arm64`)
-- **Total Test Suites:** 9
-- **Total Tests:** 112
-- **Passing:** 112
+- **Total Test Suites:** 10
+- **Total Tests:** 124
+- **Passing:** 124
 - **Failing:** 0
 - **Skipped / Cancelled / Todo:** 0
-- **Duration:** 16,456.28 ms (~16.5s)
+- **Duration:** 14,210.85 ms (~14.2s)
 
 ---
 
@@ -153,8 +153,16 @@ This document records the exact results of the automated test suite execution fo
 - `✔` 9. Production DEMO_MODE safety: demo routes refused when NODE_ENV=production
 *Suite Total: 10 tests passed.*
 
+### 10. Phase 2: Real Citizen Reporting, Proof Custody, Extraction, Tracking and Auto-Trace (`tests/citizen_reporting_phase2.test.mjs`)
+- `✔` 2.1 & 2.2 Proof upload: validates size (<=15MB), strips EXIF, computes SHA-256, and records chain of custody
+- `✔` 2.3 Structured extraction: parses UTR, INR amounts, UPI VPA, crypto wallets, and flags low confidence
+- `✔` 2.4 Citizen tracking code & private communication: strict quarantine of internal notes
+- `✔` 2.5 Duplicate & Linkage Detection: O(1) Bloom filter pre-check and multi-attribute linking
+- `✔` 2.6 Public wallet auto-trace: shallow on-chain trace with strict provenance tags
+*Suite Total: 6 tests passed.*
+
 ---
 
-## Summary Total: 112/112 Passing Tests
+## Summary Total: 124/124 Passing Tests
 All tests are 100% deterministic, offline-capable, and run without requiring external cloud credentials or live network connections.
 

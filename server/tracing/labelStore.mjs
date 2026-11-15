@@ -65,6 +65,10 @@ export class BloomFilter {
     }
     return true; // Likely present
   }
+
+  has(item) {
+    return this.mightContain(item);
+  }
 }
 
 /**

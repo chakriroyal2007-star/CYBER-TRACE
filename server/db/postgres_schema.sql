@@ -75,6 +75,13 @@ CREATE TABLE IF NOT EXISTS complaints (
   unit TEXT,
   rejection_reason TEXT,
   priority TEXT NOT NULL DEFAULT 'Medium',
+  tracking_code TEXT UNIQUE,
+  suspect_upi TEXT,
+  suspect_phone TEXT,
+  extracted_fields JSONB,
+  provenance_tags JSONB,
+  duplicate_alert INTEGER DEFAULT 0,
+  linked_case_ids JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   payload JSONB NOT NULL
@@ -83,6 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_complaints_reporter ON complaints(reporter_id);
 CREATE INDEX IF NOT EXISTS idx_complaints_case_id ON complaints(case_id);
 CREATE INDEX IF NOT EXISTS idx_complaints_status ON complaints(status);
 CREATE INDEX IF NOT EXISTS idx_complaints_officer ON complaints(assigned_officer_id);
+CREATE INDEX IF NOT EXISTS idx_complaints_tracking ON complaints(tracking_code);
 
 CREATE TABLE IF NOT EXISTS case_evidence (
   id TEXT PRIMARY KEY,
@@ -95,6 +103,9 @@ CREATE TABLE IF NOT EXISTS case_evidence (
   file_size BIGINT NOT NULL,
   description TEXT,
   sha256 TEXT NOT NULL,
+  chain_of_custody JSONB,
+  av_scan_status TEXT DEFAULT 'CLEAN_SHA256_SEALED',
+  storage_path TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_case_evidence_case ON case_evidence(case_id);

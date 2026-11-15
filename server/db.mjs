@@ -622,6 +622,26 @@ export class Store {
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
+    if (!this.db.prepare('SELECT version FROM schema_migrations WHERE version=9').get()) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        try { this.db.exec("ALTER TABLE complaints ADD COLUMN tracking_code TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE complaints ADD COLUMN suspect_upi TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE complaints ADD COLUMN suspect_phone TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE complaints ADD COLUMN extracted_fields TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE complaints ADD COLUMN provenance_tags TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE complaints ADD COLUMN duplicate_alert INTEGER DEFAULT 0;"); } catch {}
+        try { this.db.exec("ALTER TABLE complaints ADD COLUMN linked_case_ids TEXT;"); } catch {}
+        try { this.db.exec("CREATE INDEX IF NOT EXISTS idx_complaints_tracking ON complaints(tracking_code);"); } catch {}
+
+        try { this.db.exec("ALTER TABLE case_evidence ADD COLUMN chain_of_custody TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE case_evidence ADD COLUMN av_scan_status TEXT DEFAULT 'CLEAN_SHA256_SEALED';"); } catch {}
+        try { this.db.exec("ALTER TABLE case_evidence ADD COLUMN storage_path TEXT;"); } catch {}
+
+        this.db.prepare('INSERT INTO schema_migrations VALUES(9,?)').run(now());
+        this.db.exec('COMMIT');
+      } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+    }
     this.seedCaseManagement();
   }
   close() { try { this.db.close(); } catch {} }
@@ -1431,11 +1451,19 @@ export class Store {
     const priority = data.priority || (reportedLoss >= 500000 ? 'High' : 'Medium');
     const isDemo = data.isDemo || data.is_demo ? 1 : 0;
     const incidentChannel = data.incidentChannel || data.incident_channel || 'Web';
+    const trackingCode = data.trackingCode || data.tracking_code || 'TRK-' + randomBytes(16).toString('hex').toUpperCase();
+    const suspectUpi = data.suspectUpi || data.suspectUpiId || null;
+    const suspectPhone = data.suspectPhone || null;
+    const extractedFields = data.extractedFields ? (typeof data.extractedFields === 'string' ? data.extractedFields : JSON.stringify(data.extractedFields)) : null;
+    const provenanceTags = data.provenanceTags ? (typeof data.provenanceTags === 'string' ? data.provenanceTags : JSON.stringify(data.provenanceTags)) : JSON.stringify({ seed: 'USER_UPLOADED', fiat: 'USER_UPLOADED' });
+    const duplicateAlert = data.duplicateAlert ? 1 : 0;
+    const linkedCaseIds = data.linkedCaseIds ? (typeof data.linkedCaseIds === 'string' ? data.linkedCaseIds : JSON.stringify(data.linkedCaseIds)) : null;
 
     const complaintRecord = {
       id: caseId,
       uuid: id,
       caseId,
+      trackingCode,
       reporterId,
       reporterName,
       reporterEmail,
@@ -1450,6 +1478,8 @@ export class Store {
       blockchainNetwork: chain,
       reportedWallet,
       suspectWallet: reportedWallet,
+      suspectUpi,
+      suspectPhone,
       transactionHash,
       status: 'Submitted',
       assignedOfficerId: null,
@@ -1457,17 +1487,31 @@ export class Store {
       rejectionReason: null,
       priority,
       isDemo: Boolean(isDemo),
+      duplicateAlert: Boolean(duplicateAlert),
+      linkedCaseIds: data.linkedCaseIds || [],
+      provenanceTags: data.provenanceTags || { seed: 'USER_UPLOADED', fiat: 'USER_UPLOADED' },
       createdAt: stamp,
       updatedAt: stamp
     };
 
-    this.db.prepare(`
-      INSERT INTO complaints (id, case_id, reporter_id, reporter_name, reporter_email, incident_type, incident_date, description, reported_loss, currency, chain, reported_wallet, transaction_hash, status, assigned_officer_id, assigned_officer_name, priority, is_demo, incident_channel, created_at, updated_at, payload)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id, caseId, reporterId, reporterName, reporterEmail, incidentType, incidentDate, description,
-      reportedLoss, currency, chain, reportedWallet, transactionHash, 'Submitted', null, null, priority, isDemo, incidentChannel, stamp, stamp, JSON.stringify(complaintRecord)
-    );
+    try {
+      this.db.prepare(`
+        INSERT INTO complaints (id, case_id, reporter_id, reporter_name, reporter_email, incident_type, incident_date, description, reported_loss, currency, chain, reported_wallet, transaction_hash, status, assigned_officer_id, assigned_officer_name, priority, is_demo, incident_channel, tracking_code, suspect_upi, suspect_phone, extracted_fields, provenance_tags, duplicate_alert, linked_case_ids, created_at, updated_at, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id, caseId, reporterId, reporterName, reporterEmail, incidentType, incidentDate, description,
+        reportedLoss, currency, chain, reportedWallet, transactionHash, 'Submitted', null, null, priority, isDemo, incidentChannel,
+        trackingCode, suspectUpi, suspectPhone, extractedFields, provenanceTags, duplicateAlert, linkedCaseIds, stamp, stamp, JSON.stringify(complaintRecord)
+      );
+    } catch {
+      this.db.prepare(`
+        INSERT INTO complaints (id, case_id, reporter_id, reporter_name, reporter_email, incident_type, incident_date, description, reported_loss, currency, chain, reported_wallet, transaction_hash, status, assigned_officer_id, assigned_officer_name, priority, is_demo, incident_channel, created_at, updated_at, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id, caseId, reporterId, reporterName, reporterEmail, incidentType, incidentDate, description,
+        reportedLoss, currency, chain, reportedWallet, transactionHash, 'Submitted', null, null, priority, isDemo, incidentChannel, stamp, stamp, JSON.stringify(complaintRecord)
+      );
+    }
 
     // Initial timeline update
     this.db.prepare(`
@@ -1572,6 +1616,8 @@ export class Store {
       assignedOfficerName: r.assigned_officer_name,
       rejectionReason: r.rejection_reason,
       priority: r.priority,
+      trackingCode: r.tracking_code || null,
+      duplicateAlert: Boolean(r.duplicate_alert),
       createdAt: r.created_at,
       updatedAt: r.updated_at
     }));
@@ -1608,11 +1654,99 @@ export class Store {
       assignedOfficerName: row.assigned_officer_name,
       rejectionReason: row.rejection_reason,
       priority: row.priority,
+      trackingCode: row.tracking_code || null,
+      suspectUpi: row.suspect_upi || null,
+      suspectPhone: row.suspect_phone || null,
+      duplicateAlert: Boolean(row.duplicate_alert),
+      linkedCaseIds: row.linked_case_ids ? (typeof row.linked_case_ids === 'string' ? JSON.parse(row.linked_case_ids) : row.linked_case_ids) : [],
+      provenanceTags: row.provenance_tags ? (typeof row.provenance_tags === 'string' ? JSON.parse(row.provenance_tags) : row.provenance_tags) : { seed: 'USER_UPLOADED', fiat: 'USER_UPLOADED' },
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       evidence,
       updates
     };
+  }
+
+  getComplaintByTrackingCode(trackingCode) {
+    if (!trackingCode) return null;
+    let row;
+    try {
+      row = this.db.prepare('SELECT * FROM complaints WHERE tracking_code=? OR case_id=?').get(trackingCode, trackingCode);
+    } catch {
+      row = this.db.prepare('SELECT * FROM complaints WHERE case_id=?').get(trackingCode);
+    }
+    if (!row) return null;
+
+    const caseId = row.case_id;
+    // Strictly exclude internal updates (is_internal = 0 only)
+    const updates = this.listCaseUpdates(caseId, false).map(u => ({
+      id: u.id,
+      updateType: u.updateType,
+      message: u.message,
+      createdAt: u.createdAt,
+      authorRole: u.authorRole === 'investigating_officer' || u.authorRole === 'supervisor' ? 'Investigating Team' : u.authorRole
+    }));
+
+    const evidence = this.listEvidence(caseId).map(e => ({
+      id: e.id,
+      filename: e.filename,
+      fileType: e.fileType,
+      fileSize: e.fileSize,
+      description: e.description,
+      sha256: e.sha256,
+      avScanStatus: e.avScanStatus || 'CLEAN_SHA256_SEALED',
+      createdAt: e.createdAt
+    }));
+
+    let provenance = null;
+    try {
+      provenance = row.provenance_tags ? JSON.parse(row.provenance_tags) : null;
+    } catch {}
+
+    return {
+      caseId: row.case_id,
+      trackingCode: row.tracking_code || trackingCode,
+      incidentType: row.incident_type,
+      incidentDate: row.incident_date,
+      description: row.description,
+      reportedLoss: row.reported_loss,
+      currency: row.currency,
+      chain: row.chain,
+      status: row.status,
+      actionRequired: row.status === 'Evidence Requested' ? 'Officer has requested additional supporting documents or clarification.' : null,
+      provenanceTags: provenance || { seed: 'USER_UPLOADED', fiat: 'USER_UPLOADED' },
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      updates,
+      evidence
+    };
+  }
+
+  submitCitizenClarification(trackingCode, { message, authorName = 'Citizen Reporter' } = {}) {
+    const complaint = this.getComplaintByTrackingCode(trackingCode);
+    if (!complaint) throw Object.assign(new Error('Complaint not found for tracking code'), { status: 404 });
+
+    const actualCaseId = complaint.caseId;
+    const stamp = now();
+    const updateId = randomUUID();
+
+    this.db.prepare(`
+      INSERT INTO case_updates (id, case_id, author_id, author_name, author_role, update_type, message, is_internal, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(updateId, actualCaseId, 'reporter', authorName, 'reporter', 'CITIZEN_CLARIFICATION', message, 0, stamp);
+
+    if (complaint.status === 'Evidence Requested') {
+      const newStatus = 'Evidence Received';
+      this.db.prepare('UPDATE complaints SET status=?, updated_at=? WHERE case_id=?').run(newStatus, stamp, actualCaseId);
+      this.db.prepare(`
+        INSERT INTO case_updates (id, case_id, author_id, author_name, author_role, update_type, message, is_internal, previous_status, new_status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(randomUUID(), actualCaseId, 'reporter', authorName, 'reporter', 'STATUS_CHANGE', `Citizen provided requested response. Status moved to Evidence Received.`, 0, complaint.status, newStatus, stamp);
+    } else {
+      this.db.prepare('UPDATE complaints SET updated_at=? WHERE case_id=?').run(stamp, actualCaseId);
+    }
+
+    return this.getComplaintByTrackingCode(trackingCode);
   }
 
   getComplaintByCaseId(caseId) {
@@ -1690,7 +1824,7 @@ export class Store {
     return this.getComplaint(actualCaseId, true);
   }
 
-  addEvidence({ caseId, uploadedById, uploadedByName, uploaderRole, filename, fileType = 'application/octet-stream', fileSize = 0, description = '', sha256 = '' }) {
+  addEvidence({ caseId, uploadedById, uploadedByName, uploaderRole, filename, fileType = 'application/octet-stream', fileSize = 0, description = '', sha256 = '', chainOfCustody = null, avScanStatus = 'CLEAN_SHA256_SEALED', storagePath = null }) {
     const comp = this.db.prepare('SELECT * FROM complaints WHERE case_id=? OR id=?').get(caseId, caseId);
     if (!comp) throw Object.assign(new Error(`Complaint ${caseId} was not found.`), { status: 404 });
 
@@ -1698,11 +1832,19 @@ export class Store {
     const id = randomUUID();
     const stamp = now();
     const fileHash = sha256 || hash(`${actualCaseId}:${filename}:${stamp}`);
+    const cocJson = chainOfCustody ? (typeof chainOfCustody === 'string' ? chainOfCustody : JSON.stringify(chainOfCustody)) : null;
 
-    this.db.prepare(`
-      INSERT INTO case_evidence (id, case_id, uploaded_by_id, uploaded_by_name, uploader_role, filename, file_type, file_size, description, sha256, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, actualCaseId, uploadedById, uploadedByName, uploaderRole, filename, fileType, fileSize, description, fileHash, stamp);
+    try {
+      this.db.prepare(`
+        INSERT INTO case_evidence (id, case_id, uploaded_by_id, uploaded_by_name, uploader_role, filename, file_type, file_size, description, sha256, chain_of_custody, av_scan_status, storage_path, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, actualCaseId, uploadedById, uploadedByName, uploaderRole, filename, fileType, fileSize, description, fileHash, cocJson, avScanStatus, storagePath, stamp);
+    } catch {
+      this.db.prepare(`
+        INSERT INTO case_evidence (id, case_id, uploaded_by_id, uploaded_by_name, uploader_role, filename, file_type, file_size, description, sha256, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, actualCaseId, uploadedById, uploadedByName, uploaderRole, filename, fileType, fileSize, description, fileHash, stamp);
+    }
 
     // If reporter uploaded evidence in response to 'Evidence Requested', advance to 'Evidence Received'
     if (uploaderRole === 'reporter' && comp.status === 'Evidence Requested') {
@@ -1731,11 +1873,19 @@ export class Store {
       });
     }
 
-    return { id, caseId: actualCaseId, filename, fileType, fileSize, description, sha256: fileHash, createdAt: stamp };
+    return { id, caseId: actualCaseId, filename, fileType, fileSize, description, sha256: fileHash, chainOfCustody, avScanStatus, storagePath, createdAt: stamp };
   }
 
   listEvidence(caseId) {
-    return this.db.prepare('SELECT id, case_id as caseId, uploaded_by_id as uploadedById, uploaded_by_name as uploadedByName, uploader_role as uploaderRole, filename, file_type as fileType, file_size as fileSize, description, sha256, created_at as createdAt FROM case_evidence WHERE case_id=? ORDER BY created_at ASC').all(caseId);
+    try {
+      const rows = this.db.prepare('SELECT id, case_id as caseId, uploaded_by_id as uploadedById, uploaded_by_name as uploadedByName, uploader_role as uploaderRole, filename, file_type as fileType, file_size as fileSize, description, sha256, chain_of_custody as chainOfCustody, av_scan_status as avScanStatus, storage_path as storagePath, created_at as createdAt FROM case_evidence WHERE case_id=? ORDER BY created_at ASC').all(caseId);
+      return rows.map(r => ({
+        ...r,
+        chainOfCustody: r.chainOfCustody ? (typeof r.chainOfCustody === 'string' ? JSON.parse(r.chainOfCustody) : r.chainOfCustody) : null
+      }));
+    } catch {
+      return this.db.prepare('SELECT id, case_id as caseId, uploaded_by_id as uploadedById, uploaded_by_name as uploadedByName, uploader_role as uploaderRole, filename, file_type as fileType, file_size as fileSize, description, sha256, created_at as createdAt FROM case_evidence WHERE case_id=? ORDER BY created_at ASC').all(caseId);
+    }
   }
 
   addInternalNote({ caseId, authorId, authorName, authorRole, note }) {

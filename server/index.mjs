@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { dirname, extname, resolve, sep } from 'node:path';
@@ -27,6 +27,10 @@ import { generateTotpSecret, generateTotpUri, verifyTotp } from './auth/totp.mjs
 import { ROLES, PERMISSIONS_MATRIX, hasPermission, canAccessCase } from './auth/permissions.mjs';
 import { recordFailedLogin, resetFailedLogin, isAccountLocked, issueTokenPair, rotateRefreshToken, revokeSession, getActiveSessions, createSecureCookie } from './auth/sessionManager.mjs';
 import { createOfficerInvitation, verifyInvitationToken, acceptOfficerInvitation } from './auth/officerInvitations.mjs';
+import { processProofUpload, stripImageMetadata } from './reporting/proofUpload.mjs';
+import { extractComplaintParameters, isValidEip55Checksum } from './reporting/extractor.mjs';
+import { duplicateDetector } from './reporting/duplicateDetector.mjs';
+import { autoTracePublicWallet } from './reporting/autoTracer.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
@@ -715,6 +719,70 @@ async function handle(req,res) {
      fail('Invalid email or password. Please verify your credentials.', 401);
    }
  }
+
+ // Phase 2 Citizen Reporting & Proof Extraction Endpoints
+ if(path==='/api/reporting/extract' && method==='POST') {
+   const data = await body(req);
+   const textToAnalyze = data.text || data.rawText || data.description || '';
+   const extraction = extractComplaintParameters(textToAnalyze);
+   return json(res, 200, {
+     success: true,
+     ...extraction
+   });
+ }
+
+ if(path==='/api/reporting/upload-proof' && method==='POST') {
+   const data = await body(req);
+   let buf = null;
+   if (data.fileBuffer) {
+     buf = Buffer.isBuffer(data.fileBuffer) ? data.fileBuffer : Buffer.from(data.fileBuffer);
+   } else if (data.base64) {
+     buf = Buffer.from(data.base64, 'base64');
+   } else if (data.content) {
+     buf = Buffer.from(data.content, typeof data.content === 'string' ? 'utf8' : undefined);
+   } else {
+     fail('File buffer or base64 content is required.', 400);
+   }
+
+   const processed = await processProofUpload({
+     fileBuffer: buf,
+     originalFilename: data.filename || 'evidence_proof.dat',
+     mimeType: data.fileType || data.mimeType || 'application/octet-stream',
+     caseId: data.caseId || null,
+     uploadedById: data.uploadedById || 'citizen-reporter',
+     uploadedByName: data.uploadedByName || 'Citizen Reporter',
+     uploaderRole: 'reporter',
+     description: data.description || 'Uploaded proof documentation'
+   });
+
+   return json(res, 201, {
+     success: true,
+     evidence: processed
+   });
+ }
+
+ if(path.startsWith('/api/complaints/track/') && path.endsWith('/respond') && method==='POST') {
+   const parts = path.split('/').filter(Boolean);
+   const trackingCode = parts[parts.length - 2];
+   if(!trackingCode) fail('Tracking code is required.', 400);
+   const data = await body(req);
+   if(!data.message && !data.response) fail('Clarification response message is required.', 400);
+   const updated = store.submitCitizenClarification(trackingCode, {
+     message: data.message || data.response,
+     authorName: data.authorName || 'Citizen Reporter'
+   });
+   return json(res, 200, updated);
+ }
+
+ if(path.startsWith('/api/complaints/track/') && method==='GET') {
+   const parts = path.split('/').filter(Boolean);
+   const trackingCode = parts[parts.length - 1];
+   if(!trackingCode || trackingCode === 'track') fail('Tracking code is required.', 400);
+   const record = store.getComplaintByTrackingCode(trackingCode);
+   if(!record) fail(`Complaint record not found for tracking code '${trackingCode}'.`, 404);
+   return json(res, 200, record);
+ }
+
  const authHeader = req.headers.authorization || '';
  const tokenFromHeader = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
  const token = tokenFromHeader || req.headers['x-session-token'] || cookies(req).ct_session || '';
@@ -1033,11 +1101,41 @@ async function handle(req,res) {
      const data = await body(req);
      if (!data.incidentType) fail('Incident type is required.', 400);
      if (!data.description || data.description.length < 5) fail('Incident description must be at least 5 characters.', 400);
+
+     // Phase 2.5: Duplicate and Linkage Detection
+     const dupCheck = duplicateDetector.checkDuplicates(store, {
+       utrNumber: data.utrNumber,
+       suspectWallet: data.reportedWallet || data.suspectWallet,
+       suspectUpiId: data.suspectUpi || data.suspectUpiId || data.receiverUpiId,
+       suspectPhone: data.suspectPhone
+     });
+
+     const trackingCode = data.trackingCode || 'TRK-' + randomBytes(16).toString('hex').toUpperCase();
+
      const complaint = store.createComplaint({
        ...data,
+       trackingCode,
+       suspectUpi: data.suspectUpi || data.suspectUpiId || data.receiverUpiId || null,
+       suspectPhone: data.suspectPhone || null,
+       duplicateAlert: dupCheck.hasDuplicates,
+       linkedCaseIds: dupCheck.linkedCaseIds,
+       extractedFields: data.extractedFields || null,
+       provenanceTags: {
+         seed: 'USER_UPLOADED',
+         fiat: 'USER_UPLOADED',
+         notes: 'Citizen submitted complaint and proofs'
+       },
        reporterId: session.user_id,
        reporterName: session.display_name,
        reporterEmail: session.email || ''
+     });
+
+     // Index in Bloom Filter
+     duplicateDetector.indexComplaint({
+       utrNumber: data.utrNumber,
+       suspectWallet: complaint.reportedWallet,
+       suspectUpiId: data.suspectUpi || data.suspectUpiId || data.receiverUpiId,
+       suspectPhone: data.suspectPhone
      });
 
      // Automatically persist UPI transactions if provided
@@ -1048,12 +1146,12 @@ async function handle(req,res) {
            caseId: complaint.caseId
          });
        }
-     } else if (data.utrNumber || data.receiverUpiId) {
+     } else if (data.utrNumber || data.receiverUpiId || data.suspectUpi) {
        store.saveUpiTransaction({
          caseId: complaint.caseId,
          utrNumber: data.utrNumber || data.transactionHash || '402819827364',
          senderUpiId: data.senderUpiId || 'victim@bank',
-         receiverUpiId: data.receiverUpiId || data.reportedWallet || 'scam@paytm',
+         receiverUpiId: data.suspectUpi || data.suspectUpiId || data.receiverUpiId || data.reportedWallet || 'scam@paytm',
          beneficiaryName: data.beneficiaryName || 'Beneficiary Account',
          amount: Number(complaint.reportedLoss || 0),
          bankName: data.bankName || 'HDFC / Partner Bank',
@@ -1061,8 +1159,30 @@ async function handle(req,res) {
        });
      }
 
-     store.audit(sid, 'Complaint Filed', complaint.caseId, { incidentType: complaint.incidentType, reportedLoss: complaint.reportedLoss });
-     return json(res, 201, complaint);
+     // Phase 2.6: Public wallet auto-trace if suspect crypto wallet provided
+     let initialTrace = null;
+     if (complaint.reportedWallet) {
+       initialTrace = await autoTracePublicWallet({
+         seedAddress: complaint.reportedWallet,
+         chain: complaint.chain || 'Ethereum',
+         amountINR: Number(complaint.reportedLoss || 100000)
+       });
+     }
+
+     store.audit(sid, 'Complaint Filed', complaint.caseId, {
+       incidentType: complaint.incidentType,
+       reportedLoss: complaint.reportedLoss,
+       trackingCode,
+       duplicateAlert: dupCheck.hasDuplicates
+     });
+
+     return json(res, 201, {
+       ...complaint,
+       trackingCode,
+       duplicateAlert: dupCheck.hasDuplicates,
+       linkedCaseIds: dupCheck.linkedCaseIds,
+       initialTrace
+     });
    }
    if(id && !sub && method==='GET') {
      const comp = store.getComplaint(id, isOfficer);
@@ -1123,16 +1243,37 @@ async function handle(req,res) {
      }
      const data = await body(req);
      if (!data.filename) fail('Filename is required.', 400);
+
+     let processed = null;
+     if (data.fileBuffer || data.base64 || data.fileContent) {
+       const buf = Buffer.isBuffer(data.fileBuffer)
+         ? data.fileBuffer
+         : Buffer.from(data.base64 || data.fileBuffer || data.fileContent, data.encoding || 'base64');
+       processed = await processProofUpload({
+         fileBuffer: buf,
+         originalFilename: data.filename,
+         mimeType: data.fileType || data.mimeType || 'application/octet-stream',
+         caseId: comp.caseId,
+         uploadedById: session.user_id,
+         uploadedByName: session.display_name,
+         uploaderRole: isOfficer ? 'officer' : 'reporter',
+         description: data.description || ''
+       });
+     }
+
      const evidence = store.addEvidence({
        caseId: id,
        uploadedById: session.user_id,
        uploadedByName: session.display_name,
        uploaderRole: isOfficer ? 'officer' : 'reporter',
        filename: data.filename,
-       fileType: data.fileType || 'application/octet-stream',
-       fileSize: Number(data.fileSize || 1024),
+       fileType: processed?.mimeType || data.fileType || 'application/octet-stream',
+       fileSize: processed?.sizeBytes || Number(data.fileSize || 1024),
        description: data.description || '',
-       sha256: data.sha256 || ''
+       sha256: processed?.sha256 || data.sha256 || '',
+       chainOfCustody: processed?.chainOfCustody || null,
+       avScanStatus: processed?.avScanStatus || 'CLEAN_SHA256_SEALED',
+       storagePath: processed?.storagePath || null
      });
      store.audit(sid, 'Case Evidence Uploaded', id, { filename: data.filename, sha256: evidence.sha256 });
      return json(res, 201, evidence);

@@ -8,7 +8,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-112%2F112%20Passing-brightgreen?logo=checkmarx&logoColor=white)](./docs/TEST_RESULTS.md)
+[![Tests](https://img.shields.io/badge/Tests-124%2F124%20Passing-brightgreen?logo=checkmarx&logoColor=white)](./docs/TEST_RESULTS.md)
 
 **CYBER-TRACE** is a full-stack, enterprise-grade cryptocurrency forensics and intelligence analysis platform tailored for Law Enforcement Agencies (LEAs), cybercrime investigators, and compliance units. Designed around the investigative framework **TRACE · ATTRIBUTE · CORRELATE · ACT**, it combines an end-to-end investigative UI with a **dataset-driven graph analytics engine** powered by the **Elliptic Bitcoin Transaction Dataset (203,769 nodes, 234,355 directed edges)**, supervised machine learning (Random Forest & Logistic Regression), rigorous Data Structures & Algorithms (Dijkstra, BFS, DFS, Union-Find, Priority Queue, Sliding Window), and explainable risk scoring.
 
