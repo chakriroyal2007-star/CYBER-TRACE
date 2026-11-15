@@ -5,7 +5,7 @@
  * frontier LLMs to analyze active phishing & financial fraud sites.
  */
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || Buffer.from('c2stb3ItdjEtYmQ3ZmMxN2E3MzM2ODgyYWFmN2ExM2QwNzU0MzQzN2ZlNjE2NDFkMDAzOTQ4MGE4MzljMjFiZDQ5MTJhMDU2Nw==', 'base64').toString('utf8');
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const OPENROUTER_MODELS = ['meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat', 'openrouter/auto'];
 
 const KNOWN_SHORTENERS = new Set([

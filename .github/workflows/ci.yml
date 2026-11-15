@@ -14,6 +14,15 @@ jobs:
       - name: Install PDF runtime
         run: sudo apt-get update && sudo apt-get install -y python3-reportlab fonts-dejavu-core poppler-utils
       - run: npm ci
+      - name: Verify Documentation Consistency
+        run: node scripts/check-doc-consistency.mjs
+      - name: Dependency Security Audit
+        run: npm audit --audit-level=high || true
+      - name: Secret Scan (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
       - run: npm run build
       - run: npm test
         env:

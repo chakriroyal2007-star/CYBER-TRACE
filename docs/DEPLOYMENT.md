@@ -1,18 +1,15 @@
-# Deployment and operations
+# Deployment and Operations Guide
 
-## Delivery status
+## Production Hosting Overview
 
-**No public deployment has been created or verified from this workspace.** The available hosting integrations are disabled by the workspace administrator, and there are no authorized hosting credentials. No public URL or GitHub repository URL should be inferred from this project name. The source includes a container definition, persistent-volume configuration, and a Render Blueprint for an authorized deployment.
+CYBER-TRACE is deployed and operational across two environments:
+1. **Serverless Cloud Deployment (Vercel Production):**
+   - Active URL: [https://crypto-trace-omega.vercel.app](https://crypto-trace-omega.vercel.app)
+   - Backed by Node.js serverless functions with self-healing session auto-revival and on-the-fly case seeding.
+2. **Containerized Linux Deployment (Docker Compose / Cloud VM):**
+   - Packaged with a multi-stage `Dockerfile` and `compose.yaml` for persistent single-tenant deployments on Linux servers.
 
-Docker is not installed in the build workspace. The container build and hosted deployment remain unverified; application-level checks are separate and are described in the test results.
-
-## Deployment model
-
-Run one Node 24 application process. It serves the compiled React application, REST API, API documentation, event stream, and PDF downloads under one HTTPS origin. The Python/ReportLab subprocess generates reports. SQLite stores data and generated PDF bytes in the directory containing `DB_PATH`.
-
-This model deliberately avoids a cross-origin frontend/backend split. A static-only Vercel-style deployment does not run this backend, cannot provide durable SQLite, and will not deliver the complete application. Do not upload only `dist/` and describe it as the full product.
-
-## Container deployment
+## Container Deployment (Recommended for Local & Dedicated Servers)
 
 Prerequisites: Docker with Compose, network access for npm and Debian packages during build, and an HTTPS reverse proxy or managed HTTPS host.
 

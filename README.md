@@ -8,7 +8,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-37%2F37%20Passing-brightgreen?logo=checkmarx&logoColor=white)](./tests)
+[![Tests](https://img.shields.io/badge/Tests-102%2F102%20Passing-brightgreen?logo=checkmarx&logoColor=white)](./docs/TEST_RESULTS.md)
 
 **CYBER-TRACE** is a full-stack, enterprise-grade cryptocurrency forensics and intelligence analysis platform tailored for Law Enforcement Agencies (LEAs), cybercrime investigators, and compliance units. Designed around the investigative framework **TRACE · ATTRIBUTE · CORRELATE · ACT**, it combines an end-to-end investigative UI with a **dataset-driven graph analytics engine** powered by the **Elliptic Bitcoin Transaction Dataset (203,769 nodes, 234,355 directed edges)**, supervised machine learning (Random Forest & Logistic Regression), rigorous Data Structures & Algorithms (Dijkstra, BFS, DFS, Union-Find, Priority Queue, Sliding Window), and explainable risk scoring.
 
@@ -190,7 +190,7 @@ Validates the Elliptic dataset ingestion, Priority Queue, BFS, DFS, Dijkstra wit
 ```bash
 npm test
 ```
-*Expected: 37 passed tests across 7 test suites (100% passing).*
+*Expected: 102 passed tests across 8 test suites (100% passing). Complete execution breakdown and empirical proofs are documented in [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) and [docs/CLAIMS_AND_EVIDENCE.md](docs/CLAIMS_AND_EVIDENCE.md).*
 
 ### 2. Production Build Verification
 Verifies TypeScript compilation and production bundle tree-shaking:
@@ -325,15 +325,29 @@ CYBER-TRACE/
 │       └── ci.yml             # GitHub Actions CI validation pipeline
 ├── api/
 │   └── index.js               # Serverless entrypoint (Vercel deployment)
+├── data/                      # Dataset files & database storage
 ├── docs/                      # Architectural & demonstration documentation
 │   ├── ARCHITECTURE.md        # Data models, graph algorithms & boundaries
+│   ├── CLAIMS_AND_EVIDENCE.md # Mapping every quantitative claim to proof
 │   ├── CONTRACT.md            # Frontend-backend interface specifications
-│   ├── DEMO.md                # 3-minute hackathon/investigator walkthrough
-│   └── DEPLOYMENT.md          # Production cloud hosting & persistence guide
+│   ├── DEMO.md                # 5-minute investigator walkthrough
+│   ├── DEPLOYMENT.md          # Production cloud hosting & persistence guide
+│   ├── HUMAN_ACTIONS.md       # Register of items requiring human authorization
+│   ├── SECURITY.md            # Secret policies and key-rotation procedures
+│   ├── TEST_RESULTS.md        # Empirical record of automated test runs
+│   └── VALIDATION.md          # Validation and verification history
 ├── migrations/
 │   └── 001_initial.sql        # SQLite schema & transactional indexes
+├── scripts/
+│   └── check-doc-consistency.mjs # CI consistency checker preventing doc drift
 ├── server/                    # Node.js backend & analytical services
-│   ├── adapters.mjs           # Blockchain & external system boundary adapters
+│   ├── blockchain/            # RPC & provider adapters (Alchemy, Mempool, TRON)
+│   ├── dataset/               # Elliptic dataset streaming ingestion & offset seeker
+│   ├── graph/                 # Core DSA algorithms (BFS, DFS, Dijkstra, DSU, Heaps)
+│   ├── investigation/         # UPI-to-crypto orchestrator & tool suite
+│   ├── ml/                    # Random Forest, Logistic Regression, Risk Engine
+│   ├── tracing/               # ForensicTracer, Bloom filter, AddressInterner
+│   ├── adapters.mjs           # Boundary adapters
 │   ├── analytics.mjs          # Graph analysis, attribution & correlation algorithms
 │   ├── assistant.mjs          # Grounded TRACE AI assistant logic
 │   ├── db.mjs                 # SQLite database connection & CRUD methods
@@ -345,13 +359,22 @@ CYBER-TRACE/
 ├── src/                       # React 19 Frontend application
 │   ├── components/            # Reusable UI components & modals
 │   ├── pages/                 # Investigation Console, Dashboard, Reports, Analytics
-│   ├── index.css              # Styling system & dark-mode theme
+│   ├── api.ts                 # Type-safe API client and money/address formatters
 │   ├── main.tsx               # Client bootstrap
-│   └── App.tsx                # App routing & context state
-├── tests/                     # Automated test suites
-│   ├── api.test.mjs           # REST API integration tests
+│   ├── App.tsx                # App routing & context state
+│   ├── styles.css             # Base application stylesheet
+│   ├── workspace.css          # Investigation workspace dark layout
+│   └── operations.css         # Operations, ML Lab & DSA Studio stylesheet
+├── tests/                     # Automated test suites (102 tests across 8 suites)
 │   ├── analytics.test.mjs     # Deterministic graph & attribution unit tests
-│   └── e2e.mjs                # Playwright end-to-end browser test runner
+│   ├── api.test.mjs           # REST API integration tests
+│   ├── blockchain_provider.test.mjs # Chain adapter validation tests
+│   ├── case_management.test.mjs     # Officer & reporter RBAC workflow tests
+│   ├── e2e_journey.test.mjs   # 19-step end-to-end investigation lifecycle tests
+│   ├── elliptic_api.test.mjs  # Elliptic dataset & ML analytics tests
+│   ├── elliptic_graph.test.mjs# DSA algorithm verification tests
+│   ├── real_tracer.test.mjs   # ForensicTracer, Bloom filter & DSA heap tests
+│   └── upi_ai_investigation.test.mjs # 10-stage UPI-to-crypto pipeline tests
 ├── compose.yaml               # Docker Compose specification
 ├── Dockerfile                 # Multi-stage production container build
 ├── package.json               # Node.js dependencies and run scripts

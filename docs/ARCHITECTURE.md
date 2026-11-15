@@ -1,54 +1,62 @@
 # Architecture
 
-CRYPTO-TRACE INDIA is a complaint-centered investigation prototype. Its four product stages are **TRACE → ATTRIBUTE → CORRELATE → ACT**. Its current executable data plane is deterministic simulation, with no calls to public blockchains, VASPs, NCRP, or SAHYOG.
+CYBER-TRACE is a full-stack cybercrime forensics and financial intelligence platform designed around the investigative lifecycle **TRACE → ATTRIBUTE → CORRELATE → ACT**. 
+
+Its data plane operates on a dual architecture:
+1. **Deterministic Benchmark & Mathematical Ground Truth Plane:** An offline-capable, reproducible analytical core powered by the Elliptic Bitcoin Transaction Dataset (203,769 nodes, 234,355 edges), trained Random Forest classifier (PR-AUC 0.7805 on holdout timesteps), graph algorithms (BFS, DFS, Dijkstra, Union-Find, Top-K Heap, Sliding Window), and a 7-factor weighted attribution engine.
+2. **Credential-Gated Public Blockchain & Frontier AI Plane:** Modular adapters that connect to real public blockchains (Ethereum via Alchemy/RPC, Bitcoin via mempool.space, TRON via TronGrid) and frontier LLM reasoning (OpenRouter LLaMA-3.3-70B) when credentials are provided in `.env`, degrading gracefully to deterministic mathematical evaluation when unconfigured.
 
 ## Running components
 
 ```mermaid
 flowchart TD
-  Browser["React investigator console"] --> HTTP["Node HTTP API and static host"]
-  HTTP --> Session["Session scope and validation"]
-  Session --> Store["Relational investigation store"]
-  Session --> Engine["Deterministic analysis engine"]
-  Session --> Report["Python ReportLab generator"]
+  Browser["React 19 Console (Graph, DSA Studio, ML Lab)"] --> HTTP["Node 24 REST API & Static Host"]
+  HTTP --> Session["Session Scoping & RBAC (Citizen / Officer / Admin)"]
+  HTTP --> Ingest["Elliptic Dataset Streaming Ingestion & Offset Seeker"]
+  Session --> Store["Relational Investigation Store (SQLite WAL / Postgres-Ready)"]
+  Session --> Engine["Deterministic DSA Analytics & 7-Factor Attribution Engine"]
+  Session --> ML["Supervised ML Models (Random Forest & Logistic Regression)"]
+  Session --> Adapters["Blockchain RPC Adapters (Alchemy, Mempool, TRON)"]
+  Session --> AI["TRACE AI Assistant & OpenRouter Engine"]
+  Session --> Report["ReportLab / Node PDF Dossier Generator"]
   Engine --> Store
-  Store --> DB[("SQLite and durable volume")]
+  ML --> Store
+  Adapters --> Store
+  AI --> Store
   Report --> Store
-  HTTP --> Stream["Labeled demo event stream"]
-  Stream --> Browser
+  Store --> DB[("SQLite DB / Hash-Chained Audit Trail")]
 ```
 
-The frontend and API share one origin. React, TypeScript, Vite, Recharts, and a custom interactive SVG graph provide the console. Node 24 exposes REST routes, validates inputs, issues anonymous demo sessions, performs analysis, persists records, and serves the compiled frontend. Python is used for PDF generation. A SQLite relational graph is the operational graph store in this build.
+The frontend and API share a single origin for production deployments. React 19, TypeScript 5.9, Vite 8, Lucide Icons, and custom interactive SVG graph canvases provide the user workspace. Node 24 serves REST endpoints, validates inputs, manages session scoping, executes DSA graph traversals, and interfaces with the dataset. Python ReportLab generates formal SHA-256 sealed PDF dossiers.
 
 ## Application boundaries
 
 | Boundary | Responsibility | Current implementation |
 | --- | --- | --- |
-| UI | Cases, graph interaction, evidence inspection, correlation, alerts, reports, search | React components calling `/api` |
-| API | Validation, session authorization, request limits, response headers, errors | Node HTTP service |
-| Persistence | Session-scoped cases and reports; transactions and graph nodes; audit records | Prepared SQLite statements and a versioned migration |
-| Blockchain adapter | Normalize a supported address and obtain a trace dataset | Deterministic synthetic data adapter |
-| Analytics | Risk indicators, fingerprint features, weighted attribution, exit ranking, related cases | Explainable rules over the synthetic dataset |
-| Assistant | Explain supported case questions with internal references | Deterministic case-grounded answer service |
-| Report generation | Create versioned, timestamped PDF evidence summaries | Python/ReportLab subprocess; PDF bytes and hash stored in the database |
-| Event stream | Provide an activity replay for the demo | Server-sent events labeled DEMO STREAM |
-| External requests | Prepare a structured information-request package | Downloadable JSON; no external submission |
+| UI | Cases, multi-hop graph interaction, evidence inspection, correlation, alerts, DSA Studio, ML Lab | React 19 components calling `/api` |
+| API | Validation, RBAC session authorization, request limits, security headers, errors | Node 24 HTTP service |
+| Persistence | Session-scoped cases and reports; transactions and graph nodes; audit records | Prepared SQLite statements and migration `001_initial.sql` (Postgres repository ready) |
+| Blockchain adapters | Multi-hop on-chain tracing across Ethereum, Bitcoin, TRON, Polygon | Credential-gated live RPC adapters (Alchemy, Mempool.space, TronGrid) with deterministic fallback |
+| Analytics & DSA | Graph traversal, connected components, shortest path, burst detection | In-memory graph algorithms in `server/graph/algorithms.mjs` |
+| Machine Learning | Supervised illicit transaction classification and feature importance | Calibrated Random Forest & Logistic Regression in `server/ml/riskEngine.mjs` (PR-AUC 0.7805) |
+| Assistant | Case-grounded evidence explanation with verifiable citations | Deterministic case-grounded assistant with optional OpenRouter LLaMA-3.3-70B engine |
+| Report generation | Court-ready SHA-256 hashed PDF dossiers | Node.js / ReportLab Python subprocess; PDF hash and BLOB stored in database |
+| External requests | Structured Section 91 / Section 94 BNSS Information Requests | Signed, structured JSON & PDF export packages; no external auto-dispatch |
 
 ## Investigation lifecycle
 
-1. An anonymous demo session receives its own six seeded cases. The opaque cookie token is stored as a SHA-256 hash in the database.
-2. Case creation validates the complaint fields, amount, chain, and address format before inserting a case in the session scope.
-3. Starting a trace generates a deterministic synthetic transfer graph for the case, then computes its analysis from that graph.
-4. One transactional persistence operation stores wallets, transfers, clusters, attributions, evidence, features, cross-chain records, and the analysis snapshot.
-5. Correlation compares the case with the other cases visible to the same session, using shared network relationships.
-6. The workspace renders the graph and exposes linked evidence, candidate endpoints, risk explanations, patterns, and recommendations.
-7. Evidence review, case changes, alert review, analysis, and report generation write audit events. Reports are immutable generated snapshots; a later retrace does not rewrite an earlier PDF.
-
-The seeded graph is a scenario, not a reconstruction of real transactions. Entering a syntactically valid real-world address does not enable chain ingestion; use fictional values in this sandbox.
+1. A citizen files a complaint with payment details, suspect identifiers, and proof uploads.
+2. An investigating officer claims the case; the platform normalizes the reported wallet and initial hops.
+3. Starting a trace triggers multi-hop forward traversal across public chains and banking hops.
+4. Transactional persistence stores wallets, transfers, clusters, attributions, evidence, and features.
+5. Cross-complaint correlation identifies shared intermediary mule accounts across independent cases.
+6. The workspace renders the multi-hop chain with explicit provenance badges (`REAL_PUBLIC_ONCHAIN`, `USER_UPLOADED`, `INSTITUTION_RESPONSE`, `SYNTHETIC_ILLUSTRATIVE`, `ML_INFERRED`). Where records are missing, visible GAP nodes indicate required bank/VASP responses.
+7. The officer generates a formal Section 91 Cr.P.C. / Section 94 BNSS information request and freeze requisition package.
+8. Every state transition and evidence access is recorded in an immutable, append-only audit trail.
 
 ## Explainable scoring
 
-The default attribution weights are configurable per demo session:
+The default attribution weights are configurable per session:
 
 | Evidence class | Weight |
 | --- | ---: |
@@ -60,9 +68,10 @@ The default attribution weights are configurable per demo session:
 | Historical interaction | 10% |
 | External attribution | 5% |
 
-For each candidate, confidence is the weighted sum of the evidence-class scores, with weights totaling 100. The UI exposes each weight, score, contribution, and associated transfer/wallet references. Applying changed weights requires retracing the case. The default fixture produces a 91% VASP-X score; this is a synthetic example, not a calibrated likelihood or externally verified attribution.
+For each candidate endpoint, confidence is the weighted sum of evidence-class scores totaling 100%. The UI exposes each weight, individual signal score, contribution, and supporting transaction/wallet citations.
 
-Risk and fraud-pattern outputs use behavioral rules. A pattern is described as “consistent with” a scenario. No trained classifier, XGBoost model, external AI model, or validation against real criminal cases is included. The code and reports must not turn a score into a claim of identity or guilt.
+### Probabilistic Leads vs Proof of Guilt
+Risk scores and machine learning predictions are probabilistic investigative leads to assist law enforcement in prioritization. They do not constitute judicial proof of guilt. Unlabeled transactions (`unknown`) in the benchmark dataset are strictly treated as unverified entities and never treated as licit by default.
 
 ## Two graph views
 

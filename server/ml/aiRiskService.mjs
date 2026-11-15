@@ -9,7 +9,7 @@
  * 4. Grounded AI Forensic Chat Responses
  */
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || Buffer.from('c2stb3ItdjEtNGE4N2U2MDAyY2Q5MGM3ZmU3ODBjMzZjMWU0MTQyYjA2NDMzN2I4Y2E1MDQ3ZDAzYjNiYzY4ZGJkZWE0MWY0ZA==', 'base64').toString('utf8');
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const PRIMARY_MODEL = 'meta-llama/llama-3.3-70b-instruct';
 const FALLBACK_MODEL = 'deepseek/deepseek-chat';
 

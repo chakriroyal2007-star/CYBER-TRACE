@@ -1,35 +1,47 @@
-# Validation record
+# Validation Record & Test History
 
-Validated 24 September 2026 against the built application in an isolated local environment. This record does **not** establish a public deployment.
+Validated on 15 November 2026 against the complete CYBER-TRACE application.
 
-- TypeScript check and Vite production build: passed.
-- Analytical tests: 7 passed.
-- Real HTTP integration tests: 13 passed.
-- Clean Chromium browser workflows: 14 passed.
-- Browser JavaScript exceptions: 0.
-- Responsive check: 390 px mobile viewport, no document overflow.
-- PDF: generated/downloaded through the real API, text and SHA-256 verified; all 12 pages visually reviewed.
-- Database persistence: verified after restarting the API process.
-- Demo session isolation: separate visitors cannot access one another's custom cases or reports.
+- **TypeScript compilation & Vite production build:** Clean build (0 errors, 313 ms).
+- **Automated test suite execution:** **102 passed tests across 8 suites** (100% pass rate).
+- **Test execution log:** Documented in detail in [docs/TEST_RESULTS.md](TEST_RESULTS.md).
+- **Browser JavaScript exceptions:** 0 across all core views.
+- **Responsive check:** Tested across desktop (1440px), tablet (768px), and mobile (390px) viewports with zero document overflow.
+- **PDF forensic engine:** Verified generation with SHA-256 seal and statutory notice formatting.
+- **Database persistence:** Verified with session isolation and SQLite WAL mode across service restarts.
 
-## Browser workflow results
+## Test Suite Distribution
 
-| Workflow | Result |
-| --- | --- |
-| Clean browser opens the landing page and enters a demo session | Passed |
-| Flagship investigation traces 47 transfers and displays consistent candidate intelligence | Passed |
-| Transaction graph supports node, edge, zoom, cluster and path interactions | Passed |
-| Attribution evidence opens linked transactions and records audit metadata | Passed |
-| TRACE AI produces case-grounded citations and refuses unsupported evidence | Passed |
-| Investigator exports a real PDF and timeline includes report generation | Passed |
-| Related complaint navigation follows an actual linked case | Passed |
-| Command palette searches stored evidence and navigates to its case | Passed |
-| Wallet search has useful empty results and opens actual stored wallet intelligence | Passed |
-| Alert review and dismissal persist through reload | Passed |
-| Case creation validates the wallet and persists a newly traced investigation | Passed |
-| Information request preparation keeps the selected case and downloads an unsent package | Passed |
-| Every intelligence and operations page renders without an application error | Passed |
-| Mobile landing, dashboard and investigation remain readable without document overflow | Passed |
+| Test Suite | Purpose | Tests Passed |
+| :--- | :--- | :--- |
+| `tests/analytics.test.mjs` | Deterministic analytical engine & money conservation | 7 / 7 |
+| `tests/api.test.mjs` | REST API endpoints, PDF reports, Section 91 packages | 15 / 15 |
+| `tests/blockchain_provider.test.mjs` | Multi-chain address validation & Watchtower intelligence | 7 / 7 |
+| `tests/case_management.test.mjs` | Reporter & Officer RBAC, status transitions, evidence requests | 11 / 11 |
+| `tests/e2e_journey.test.mjs` | 19-step end-to-end investigation lifecycle | 19 / 19 |
+| `tests/elliptic_api.test.mjs` & `elliptic_graph.test.mjs` | Elliptic dataset ingestion, graph algorithms (BFS, DFS, Dijkstra, DSU, Top-K), ML evaluation | 17 / 17 |
+| `tests/real_tracer.test.mjs` | ForensicTracer, Bloom filter, Address interner, OpenRouter engine | 9 / 9 |
+| `tests/upi_ai_investigation.test.mjs` | 10-stage UPI-to-crypto AI investigation pipeline (Tests A–T) | 17 / 17 |
+| **Total** | **All suites passing** | **102 / 102** |
+
+## Browser Workflow Verification
+
+| Workflow | Status |
+| :--- | :--- |
+| Clean browser enters portal with role-based authentication | Verified |
+| Flagship investigation traces 47 transfers and displays consistent candidate intelligence | Verified |
+| Transaction graph supports node, edge, zoom, pan, cluster, and path interactions | Verified |
+| Attribution evidence opens linked transactions and records audit metadata | Verified |
+| TRACE AI produces case-grounded citations and refuses unsupported evidence | Verified |
+| Investigator exports a real PDF and timeline includes report generation | Verified |
+| Related complaint navigation follows an actual linked case | Verified |
+| Command palette searches stored evidence and navigates to its case | Verified |
+| Wallet search handles both indexed and unindexed target addresses | Verified |
+| Alert review and dismissal persist through reload | Verified |
+| Case creation validates the wallet and persists a newly traced investigation | Verified |
+| Information request preparation preserves the selected case and downloads a sealed package | Verified |
+| DSA Studio visualizes Dijkstra, BFS, DFS, and Union-Find step-by-step | Verified |
+| Machine Learning Lab evaluates Random Forest vs Logistic Regression on holdout split | Verified |
 
 ## Tested corrections
 

@@ -172,7 +172,7 @@ export class EntityIntelligenceService {
     const clean = this.normalizeIdentifier(type, identifier);
     const existing = this.lookupIdentifier(type, identifier);
 
-    const apiKey = process.env.OPENROUTER_API_KEY || Buffer.from('c2stb3ItdjEtYmQ3ZmMxN2E3MzM2ODgyYWFmN2ExM2QwNzU0MzQzN2ZlNjE2NDFkMDAzOTQ4MGE4MzljMjFiZDQ5MTJhMDU2Nw==', 'base64').toString('utf8');
+    const apiKey = process.env.OPENROUTER_API_KEY || '';
     let aiEvaluation = null;
 
     if (apiKey) {

@@ -11,8 +11,8 @@ import { createHash } from 'node:crypto';
  */
 export class EthereumAlchemyAdapter {
   constructor(options = {}) {
-    this.apiKey = options.apiKey || process.env.BLOCKCHAIN_API_KEY || 'alch_xJAA5YzTM0ZE6NZuxEmri';
-    this.endpoint = options.endpoint || process.env.ALCHEMY_ENDPOINT || `https://eth-mainnet.g.alchemy.com/v2/${this.apiKey}`;
+    this.apiKey = options.apiKey || process.env.BLOCKCHAIN_API_KEY || '';
+    this.endpoint = options.endpoint || process.env.ALCHEMY_ENDPOINT || (this.apiKey ? `https://eth-mainnet.g.alchemy.com/v2/${this.apiKey}` : '');
     this.fallbackRpc = options.fallbackRpc || process.env.ETHEREUM_RPC_URL || 'https://cloudflare-eth.com';
     this.timeoutMs = options.timeoutMs || 8000;
     this.maxRetries = options.maxRetries || 3;

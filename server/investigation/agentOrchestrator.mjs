@@ -19,7 +19,7 @@ import {
   generateInvestigationReport
 } from './tools.mjs';
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || Buffer.from('c2stb3ItdjEtYmQ3ZmMxN2E3MzM2ODgyYWFmN2ExM2QwNzU0MzQzN2ZlNjE2NDFkMDAzOTQ4MGE4MzljMjFiZDQ5MTJhMDU2Nw==', 'base64').toString('utf8');
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct';
 const FALLBACK_MODEL = 'deepseek/deepseek-chat';
 
