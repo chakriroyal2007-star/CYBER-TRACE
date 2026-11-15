@@ -4,16 +4,16 @@ This document records the exact results of the automated test suite execution fo
 
 ## System & Execution Environment
 
-- **Execution Date:** 2026-11-15T16:52:10Z
+- **Execution Date:** 2026-11-15T17:33:38Z
 - **Command:** `npm test` (`node --test tests/*.test.mjs`)
 - **Node.js Version:** `v22.23.3` (Engine requirement: `>=22.5.0` / Node 24 ready)
 - **OS Platform:** macOS (`darwin`, `arm64`)
-- **Total Test Suites:** 12
-- **Total Tests:** 133
-- **Passing:** 133
+- **Total Test Suites:** 13
+- **Total Tests:** 137
+- **Passing:** 137
 - **Failing:** 0
 - **Skipped / Cancelled / Todo:** 0
-- **Duration:** 8,624.12 ms (~8.6s)
+- **Duration:** 14,971.69 ms (~15.0s)
 
 ---
 
@@ -180,8 +180,14 @@ This document records the exact results of the automated test suite execution fo
 - `✔` 4.5 Database Seed Complaints contain Showcase Cases A and B
 *Suite Total: 6 tests passed.*
 
+### 13. Phase 5: Honest Explainable Risk Engine & Attribution (`tests/risk_attribution_phase5.test.mjs`)
+- `✔` 5.1 Decompose risk into 4 independent, explainable sub-scores
+- `✔` 5.2 Enforce attribution evidence requirements (at least 2 independent factors)
+- `✔` 5.3 Calibrated ML inference in RiskEngine with SHAP-style explainability
+*Suite Total: 4 tests passed.*
+
 ---
 
-## Summary Total: 133/133 Passing Tests
+## Summary Total: 137/137 Passing Tests
 All tests are 100% deterministic, offline-capable, and run without requiring external cloud credentials or live network connections.
 

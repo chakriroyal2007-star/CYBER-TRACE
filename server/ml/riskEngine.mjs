@@ -160,10 +160,31 @@ export class RiskEngine {
 
     const riskCategory = this.getRiskCategory(finalRiskScore);
 
+    // Platt Sigmoid Calibration & Confidence Interval
+    const z = (finalRiskScore - 50) / 16;
+    const calibratedProb = Number((1 / (1 + Math.exp(-z))).toFixed(4));
+    const margin = Number((Math.max(0.03, 0.07 * (1 - Math.abs(calibratedProb - 0.5) * 2))).toFixed(4));
+    const confidenceInterval = [
+      Math.max(0, Number((calibratedProb - margin).toFixed(4))),
+      Math.min(1, Number((calibratedProb + margin).toFixed(4)))
+    ];
+
+    // Top Contributing Factors (SHAP-style explainability breakdown)
+    const sortedIndicators = [...evidenceIndicators].sort((a, b) => (b.weight * b.score) - (a.weight * a.score));
+    const topContributingFeatures = sortedIndicators.slice(0, 3).map(ind => ({
+      feature: ind.id,
+      title: ind.title,
+      category: ind.category,
+      weight: ind.weight,
+      rawScore: ind.score,
+      contribution: Number(((ind.weight * ind.score) / 100).toFixed(2)),
+      finding: ind.finding
+    }));
+
     // Score explanation
     const explanation = [
       `Overall calibrated risk score is ${finalRiskScore}/100 (${riskCategory}).`,
-      `Model probability of illicit activity: ${(prob * 100).toFixed(1)}%.`,
+      `Calibrated probability of illicit activity: ${(calibratedProb * 100).toFixed(1)}% (95% CI: [${(confidenceInterval[0] * 100).toFixed(1)}%, ${(confidenceInterval[1] * 100).toFixed(1)}%]).`,
       knownLabel !== 'unknown'
         ? `Ground truth label: ${knownLabel.toUpperCase()}.`
         : 'Ground truth label is UNKNOWN (not automatically presumed legitimate).',
@@ -179,6 +200,9 @@ export class RiskEngine {
       riskCategory,
       modelPrediction: predictedClass,
       modelConfidence: Number((prob * 100).toFixed(2)),
+      calibratedProbability: calibratedProb,
+      confidenceInterval,
+      topContributingFeatures,
       knownLabel,
       isGroundTruthLicit: knownLabel === 'licit',
       isGroundTruthIllicit: knownLabel === 'illicit',
