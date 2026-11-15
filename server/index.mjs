@@ -16,6 +16,7 @@ import { forensicTracer } from './tracing/tracer.mjs';
 import { labelStore } from './tracing/labelStore.mjs';
 import { aiRiskEngine } from './ml/openrouterRiskEngine.mjs';
 import { DSA_CATALOG, runDsaSimulation } from './graph/dsaSimulator.mjs';
+import { runFullDsaBenchmarks } from './graph/benchmarkRig.mjs';
 import { aiOrchestrator } from './investigation/agentOrchestrator.mjs';
 import * as investigationTools from './investigation/tools.mjs';
 import { classifyScamMessage, classifyScamMessageAsync } from './ml/scamClassifier.mjs';
@@ -917,6 +918,15 @@ async function handle(req,res) {
  }
  if(group==='dsa') {
    if(id==='catalog' && method==='GET') return json(res, 200, DSA_CATALOG);
+   if(id==='benchmarks' && method==='GET') {
+     const size = Number(params?.get('size') || 500);
+     return json(res, 200, runFullDsaBenchmarks(size));
+   }
+   if(id==='benchmarks' && method==='POST') {
+     const data = await body(req);
+     const size = Number(data?.size || 500);
+     return json(res, 200, runFullDsaBenchmarks(size));
+   }
    if(id==='simulate' && method==='POST') {
      const data = await body(req);
      if (data.caseId) {

@@ -4,16 +4,16 @@ This document records the exact results of the automated test suite execution fo
 
 ## System & Execution Environment
 
-- **Execution Date:** 2026-11-15T17:33:38Z
+- **Execution Date:** 2026-11-15T17:41:46Z
 - **Command:** `npm test` (`node --test tests/*.test.mjs`)
 - **Node.js Version:** `v22.23.3` (Engine requirement: `>=22.5.0` / Node 24 ready)
 - **OS Platform:** macOS (`darwin`, `arm64`)
-- **Total Test Suites:** 13
-- **Total Tests:** 137
-- **Passing:** 137
+- **Total Test Suites:** 14
+- **Total Tests:** 145
+- **Passing:** 145
 - **Failing:** 0
 - **Skipped / Cancelled / Todo:** 0
-- **Duration:** 14,971.69 ms (~15.0s)
+- **Duration:** 12,037.64 ms (~12.0s)
 
 ---
 
@@ -186,8 +186,18 @@ This document records the exact results of the automated test suite execution fo
 - `✔` 5.3 Calibrated ML inference in RiskEngine with SHAP-style explainability
 *Suite Total: 4 tests passed.*
 
+### 14. Phase 6: Explainable DSA Studio & Benchmark Rig (`tests/dsa_benchmarks_phase6.test.mjs`)
+- `✔` 6.1 Synthetic Benchmark Graph generator
+- `✔` 6.2 Dijkstra Benchmark: MinHeap O((V+E) log V) vs Unsorted Array Scan O(V^2)
+- `✔` 6.3 BFS Benchmark: Head-Pointer Circular Queue O(1) vs Array.shift() O(V)
+- `✔` 6.4 Union-Find Benchmark: Path Compression + Rank O(alpha(N)) vs Naive DFS
+- `✔` 6.5 Bloom Filter Benchmark: O(k) Bit Probing vs O(N) Array.includes()
+- `✔` 6.6 Top-K Heap Benchmark: Bounded MinHeap O(N log K) vs Array.sort() O(N log N)
+- `✔` 6.7 Full Benchmark Suite Execution
+*Suite Total: 8 tests passed.*
+
 ---
 
-## Summary Total: 137/137 Passing Tests
+## Summary Total: 145/145 Passing Tests
 All tests are 100% deterministic, offline-capable, and run without requiring external cloud credentials or live network connections.
 
