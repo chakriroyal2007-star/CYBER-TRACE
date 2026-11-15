@@ -239,12 +239,12 @@ export default function MlBenchmarkLab() {
           gap: 14
         }}>
           {[
-            { label: 'Precision', val: `${(activeModel?.precision * 100).toFixed(1)}%`, desc: 'TP / (TP + FP)' },
-            { label: 'Recall', val: `${(activeModel?.recall * 100).toFixed(1)}%`, desc: 'TP / (TP + FN)' },
-            { label: 'F1 Score', val: activeModel?.f1?.toFixed(3), desc: 'Harmonic mean of P & R' },
-            { label: 'ROC-AUC', val: activeModel?.roc_auc?.toFixed(3), desc: 'Area under ROC curve' },
-            { label: 'PR-AUC', val: activeModel?.pr_auc?.toFixed(3), desc: 'Precision-Recall AUC' },
-            { label: 'False Positive Rate', val: `${(activeModel?.fpr * 100).toFixed(2)}%`, desc: 'FP / (TN + FP)' }
+            { label: 'Precision', val: `${((Number(activeModel?.precision) || 0) * 100).toFixed(1)}%`, desc: 'TP / (TP + FP)' },
+            { label: 'Recall', val: `${((Number(activeModel?.recall) || 0) * 100).toFixed(1)}%`, desc: 'TP / (TP + FN)' },
+            { label: 'F1 Score', val: activeModel?.f1 != null ? Number(activeModel.f1).toFixed(3) : '0.000', desc: 'Harmonic mean of P & R' },
+            { label: 'ROC-AUC', val: activeModel?.roc_auc != null ? Number(activeModel.roc_auc).toFixed(3) : '0.000', desc: 'Area under ROC curve' },
+            { label: 'PR-AUC', val: activeModel?.pr_auc != null ? Number(activeModel.pr_auc).toFixed(3) : '0.000', desc: 'Precision-Recall AUC' },
+            { label: 'False Positive Rate', val: `${((Number(activeModel?.fpr) || 0) * 100).toFixed(2)}%`, desc: 'FP / (TN + FP)' }
           ].map(m => (
             <div
               key={m.label}
@@ -297,7 +297,7 @@ export default function MlBenchmarkLab() {
               <div style={{ fontSize: 24, fontWeight: 700, color: '#34d399', margin: '4px 0' }}>
                 {cm.tn.toLocaleString()}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>Correctly flagged Licit ({((cm.tn / total) * 100).toFixed(1)}%)</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>Correctly flagged Licit ({total > 0 ? ((cm.tn / total) * 100).toFixed(1) : '0.0'}%)</div>
             </div>
 
             {/* False Positive */}
@@ -312,7 +312,7 @@ export default function MlBenchmarkLab() {
               <div style={{ fontSize: 24, fontWeight: 700, color: '#f87171', margin: '4px 0' }}>
                 {cm.fp.toLocaleString()}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>False alarm on Licit ({((cm.fp / total) * 100).toFixed(1)}%)</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>False alarm on Licit ({total > 0 ? ((cm.fp / total) * 100).toFixed(1) : '0.0'}%)</div>
             </div>
 
             {/* False Negative */}
@@ -327,7 +327,7 @@ export default function MlBenchmarkLab() {
               <div style={{ fontSize: 24, fontWeight: 700, color: '#fbbf24', margin: '4px 0' }}>
                 {cm.fn.toLocaleString()}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>Missed Illicit ({((cm.fn / total) * 100).toFixed(1)}%)</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>Missed Illicit ({total > 0 ? ((cm.fn / total) * 100).toFixed(1) : '0.0'}%)</div>
             </div>
 
             {/* True Positive */}
@@ -342,7 +342,7 @@ export default function MlBenchmarkLab() {
               <div style={{ fontSize: 24, fontWeight: 700, color: '#e9d5ff', margin: '4px 0' }}>
                 {cm.tp.toLocaleString()}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>Caught Illicit ({((cm.tp / total) * 100).toFixed(1)}%)</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>Caught Illicit ({total > 0 ? ((cm.tp / total) * 100).toFixed(1) : '0.0'}%)</div>
             </div>
           </div>
         </div>
@@ -366,7 +366,7 @@ export default function MlBenchmarkLab() {
                     #{f.rank} {f.feature_name}
                   </span>
                   <span style={{ color: '#c084fc', fontWeight: 700 }}>
-                    {(f.importance * 100).toFixed(2)}%
+                    {((Number(f?.importance) || 0) * 100).toFixed(2)}%
                   </span>
                 </div>
                 <div style={{ background: '#020617', height: 6, borderRadius: 3, overflow: 'hidden' }}>

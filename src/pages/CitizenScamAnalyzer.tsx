@@ -277,7 +277,7 @@ export default function CitizenScamAnalyzer() {
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 11, color: '#94a3b8' }}>Scam Probability</div>
                     <strong style={{ fontSize: 18, color: '#fff' }}>
-                      {(messageResult.scamProbability * 100).toFixed(1)}%
+                      {((Number(messageResult?.scamProbability) || 0) * 100).toFixed(1)}%
                     </strong>
                   </div>
                 </div>

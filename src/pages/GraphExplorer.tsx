@@ -583,7 +583,7 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
                           textAnchor="middle"
                           fontFamily="monospace"
                         >
-                          ₹{(e.amount / 1000).toFixed(0)}k
+                          ₹{((Number(e?.amount) || 0) / 1000).toFixed(0)}k
                         </text>
                       </g>
                     );
@@ -686,7 +686,7 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
                           textAnchor="middle"
                           fontFamily="monospace"
                         >
-                          {n.type === 'vasp' ? 'Candidate exit' : n.balance ? `₹${(n.balance / 1000).toFixed(0)}k` : shortAddress(n.address)}
+                          {n.type === 'vasp' ? 'Candidate exit' : n.balance ? `₹{((Number(n.balance) || 0) / 1000).toFixed(0)}k` : shortAddress(n.address)}
                         </text>
                       </g>
                     );
@@ -852,7 +852,7 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
                 <div>Inbound Transfers: <strong style={{ color: '#fff' }}>{selectedNode.incomingCount || 1}</strong></div>
                 <div>Outbound Transfers: <strong style={{ color: '#fff' }}>{selectedNode.outgoingCount || 0}</strong></div>
                 <div>Cluster Group: <strong style={{ color: '#f59e0b' }}>{selectedNode.cluster || 'Cluster-1'}</strong></div>
-                <div>Tainted Volume: <strong style={{ color: '#4fd7c1' }}>₹{((selectedNode.taintAmount || selectedNode.balance || 0) / 1000).toFixed(0)}k</strong></div>
+                <div>Tainted Volume: <strong style={{ color: '#4fd7c1' }}>₹{(((Number(selectedNode?.taintAmount) || Number(selectedNode?.balance) || 0)) / 1000).toFixed(0)}k</strong></div>
               </div>
             </div>
           ) : (

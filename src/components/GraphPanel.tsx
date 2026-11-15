@@ -15,7 +15,10 @@ export interface GraphEdge {
 }
 interface GraphProps { nodes: GraphNode[]; edges: GraphEdge[]; onNodeSelect?: (node: GraphNode)=>void; onEdgeSelect?: (edge: GraphEdge)=>void; selectedId?: string; compact?: boolean; }
 const colorFor = (type: string) => ({victim:'#9bb4d6',suspect:'#fa9c72',intermediary:'#6e8aaa',bridge:'#a99bed',dex:'#70a5db',mixer:'#d080a5',vasp:'#4fd7c1',unknown:'#677b93'}[type]||'#8397b1');
-const currency = (value: number) => value>=100000 ? `₹${(value/100000).toFixed(2)}L` : `₹${Math.round(value).toLocaleString('en-IN')}`;
+const currency = (value: number) => {
+  const num = Number(value) || 0;
+  return num >= 100000 ? `₹${(num / 100000).toFixed(2)}L` : `₹${Math.round(num).toLocaleString('en-IN')}`;
+};
 const short = (value: string) => value.length>17 ? `${value.slice(0,8)}…${value.slice(-5)}` : value;
 
 function NodeGlyph({type,color}:{type:string;color:string}) {

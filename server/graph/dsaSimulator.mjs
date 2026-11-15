@@ -515,7 +515,7 @@ export function runDsaSimulation(params = {}) {
         distances: Object.fromEntries(dist),
         heapState: [...pq.heap],
         visited: Array.from(visited),
-        explanation: `Popped node ${u} with minimum cumulative cost ${top.cost.toFixed(2)} from priority queue.`
+        explanation: `Popped node ${u} with minimum cumulative cost ${Number(top?.cost || 0).toFixed(2)} from priority queue.`
       });
 
       for (const edge of adj.get(u) || []) {
@@ -534,7 +534,7 @@ export function runDsaSimulation(params = {}) {
             activeEdge: { from: u, to: v, weight: w },
             distances: Object.fromEntries(dist),
             heapState: [...pq.heap],
-            explanation: `Relaxed edge (${u} → ${v}): updated dist[${v}] from Infinity to ${alt.toFixed(2)}. Pushed to priority queue.`
+            explanation: `Relaxed edge (${u} → ${v}): updated dist[${v}] from Infinity to ${Number(alt || 0).toFixed(2)}. Pushed to priority queue.`
           });
         }
       }

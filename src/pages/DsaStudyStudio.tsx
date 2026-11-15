@@ -597,7 +597,7 @@ export default function DsaStudyStudio() {
                         fontWeight="600"
                         textAnchor="middle"
                       >
-                        {e.amount ? `${(e.amount / 1000).toFixed(0)}k` : e.weight ? `w:${e.weight}` : ''}
+                        {e.amount ? `${(Number(e.amount) / 1000).toFixed(0)}k` : e.weight ? `w:${e.weight}` : ''}
                       </text>
                     </g>
                   );
@@ -760,8 +760,8 @@ export default function DsaStudyStudio() {
                       {Object.entries(currentStep.distances).map(([k, v]) => (
                         <tr key={k} style={{ borderBottom: '1px solid #0f172a' }}>
                           <td style={{ padding: '4px 6px', fontWeight: 600, color: '#f8fafc' }}>{k}</td>
-                          <td style={{ textAlign: 'right', padding: '4px 6px', color: v === Infinity ? '#64748b' : '#38bdf8' }}>
-                            {v === Infinity ? '∞' : v.toFixed(2)}
+                          <td style={{ textAlign: 'right', padding: '4px 6px', color: (v == null || v === Infinity || isNaN(Number(v))) ? '#64748b' : '#38bdf8' }}>
+                            {v == null || v === Infinity || isNaN(Number(v)) ? '∞' : Number(v).toFixed(2)}
                           </td>
                         </tr>
                       ))}

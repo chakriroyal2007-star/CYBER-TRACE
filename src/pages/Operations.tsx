@@ -10,7 +10,7 @@ const chains = ['Ethereum', 'Polygon', 'BNB Chain', 'Bitcoin', 'TRON'];
 const toast = (message: string, type = 'success') => window.dispatchEvent(new CustomEvent('toast', { detail: { message, type } }));
 const humanize = (name: string) => name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/^./, s => s.toUpperCase());
 const timestamp = (value: string) => value ? new Date(value).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC' : 'Not observed';
-const featureValue = (key: string, value: unknown, features: AnyData) => ((key === 'stablecoinConcentration' || key === 'assetCoverage') && features.assetCoverage === 0) ? 'Unavailable · synthetic INR' : typeof value === 'number' ? Number(value.toFixed(2)).toLocaleString('en-IN') : String(value);
+const featureValue = (key: string, value: unknown, features: AnyData) => ((key === 'stablecoinConcentration' || key === 'assetCoverage') && features?.assetCoverage === 0) ? 'Unavailable · synthetic INR' : typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(2)).toLocaleString('en-IN') : String(value ?? '');
 const openCase = (id: string) => navigate(`/app/investigations/${encodeURIComponent(id)}`);
 
 function useData<T>(path: string) {
@@ -347,10 +347,10 @@ export function SourcesPage() {
           <div><span>PR-AUC (Priority Metric)</span><strong>{rf.pr_auc || 0.7805}</strong></div>
           <div><span>ROC-AUC</span><strong>{rf.roc_auc || 0.9254}</strong></div>
           <div><span>F1-Score</span><strong>{rf.f1 || 0.7538}</strong></div>
-          <div><span>Precision</span><strong>{rf.precision ? (rf.precision * 100).toFixed(2) + '%' : '78.31%'}</strong></div>
-          <div><span>Recall</span><strong>{rf.recall ? (rf.recall * 100).toFixed(2) + '%' : '72.67%'}</strong></div>
-          <div><span>False Positive Rate (FPR)</span><strong>{rf.fpr ? (rf.fpr * 100).toFixed(2) + '%' : '1.40%'}</strong></div>
-          <div><span>False Negative Rate (FNR)</span><strong>{rf.fnr ? (rf.fnr * 100).toFixed(2) + '%' : '27.33%'}</strong></div>
+          <div><span>Precision</span><strong>{rf?.precision != null ? (Number(rf.precision) * 100).toFixed(2) + '%' : '78.31%'}</strong></div>
+          <div><span>Recall</span><strong>{rf?.recall != null ? (Number(rf.recall) * 100).toFixed(2) + '%' : '72.67%'}</strong></div>
+          <div><span>False Positive Rate (FPR)</span><strong>{rf?.fpr != null ? (Number(rf.fpr) * 100).toFixed(2) + '%' : '1.40%'}</strong></div>
+          <div><span>False Negative Rate (FNR)</span><strong>{rf?.fnr != null ? (Number(rf.fnr) * 100).toFixed(2) + '%' : '27.33%'}</strong></div>
           <div><span>Train / Test Split</span><strong>{modelEval.data?.train_samples?.toLocaleString() || '29,894'} / {modelEval.data?.test_samples?.toLocaleString() || '16,670'}</strong></div>
         </div>
         <h3 className="op-subtitle">Confusion matrix (Holdout test split)</h3>
@@ -389,7 +389,7 @@ export function SourcesPage() {
         <div style={{display:'flex',flexDirection:'column',gap:'4px',marginTop:'6px'}}>
           {(modelEval.data?.top_features || []).slice(0, 5).map((f: any) => <div key={f.rank} style={{display:'flex',justifyContent:'space-between',fontSize:'12px',background:'#0d1927',padding:'4px 8px',borderRadius:'4px'}}>
             <span>#{f.rank} {f.feature_name} (Col {f.feature_index})</span>
-            <strong style={{color:'#4fd7c1'}}>{(f.importance * 100).toFixed(2)}%</strong>
+            <strong style={{color:'#4fd7c1'}}>{((Number(f?.importance) || 0) * 100).toFixed(2)}%</strong>
           </div>)}
         </div>
       </Card>
