@@ -9,9 +9,10 @@ const colors=['#56cbbd','#6593e9','#9e87d5','#dbb479','#77889e'];
 export default function Dashboard(){
   const [data,setData]=useState<any>(),[error,setError]=useState('');
   const [incomingComplaints,setIncomingComplaints]=useState<any[]>([]);
-  const loadDashboard = () => {
+  const loadDashboard = async () => {
     setError('');
-    api('/dashboard').then(async d=>{
+    try {
+      const d = await api('/dashboard');
       let featuredRelated = 0;
       try {
         const related = await api('/cases/CR-2026-00192/related');
@@ -19,8 +20,18 @@ export default function Dashboard(){
       } catch {
         featuredRelated = 0;
       }
-      setData({...d,featuredRelated});
-    }).catch(e=>setError(e.message));
+      setData({...d, featuredRelated});
+    } catch(e: any) {
+      if (e.message?.includes('session')) {
+        try {
+          await api('/auth/demo-officer', { method: 'POST', body: '{}' });
+          const retryData = await api('/dashboard');
+          setData(retryData);
+          return;
+        } catch {}
+      }
+      setError(e.message);
+    }
 
     api('/complaints').then(r=>{
       if(Array.isArray(r)) setIncomingComplaints(r.slice(0, 5));
