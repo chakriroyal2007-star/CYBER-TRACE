@@ -22,7 +22,7 @@ const inr = value => new Intl.NumberFormat('en-IN', { style: 'currency', currenc
 /**
  * Parses user question to detect intent and extract parameters.
  */
-function parseIntent(question) {
+function parseIntent(question, hasCaseContext = false) {
   const q = question.trim().toLowerCase();
 
   // Extract all numeric transaction IDs (Elliptic txIds are 5-12 digits)
@@ -65,8 +65,10 @@ function parseIntent(question) {
   }
 
   // How is risk score calculated / explain scoring engine
-  if (/how\s*(?:is|was).*?(?:risk|score).*?calculated|explain.*?(?:how|model|scoring|algorithm|risk\s*score|score|risk\s*engine)/i.test(q)) {
-    return { intent: 'EXPLAIN_SCORING_METHOD' };
+  if (!hasCaseContext || !/case|subscore|breakdown/i.test(q)) {
+    if (/how\s*(?:is|was).*?(?:risk|score).*?calculated|explain.*?(?:how|model|scoring|algorithm|risk\s*score|score|risk\s*engine)/i.test(q)) {
+      return { intent: 'EXPLAIN_SCORING_METHOD' };
+    }
   }
 
   // Default fallback for single transaction inquiry
@@ -89,7 +91,8 @@ export async function answerQuestion(investigationOrContext, question) {
     };
   }
 
-  const parsed = parseIntent(question);
+  const hasCase = Boolean(investigationOrContext && investigationOrContext.case);
+  const parsed = parseIntent(question, hasCase);
   let graphEngine = null;
   let riskEngine = null;
 
@@ -248,10 +251,32 @@ export async function answerQuestion(investigationOrContext, question) {
 
     if (/private key|password|kyc|owner|guilty|real identity|freeze|arrest|deanonym|legal advice/.test(q)) {
       return {
-        answer: 'Insufficient evidence in the current dataset.',
+        answer: 'Insufficient evidence in the current dataset. The platform never deanonymizes private credentials or gives legal advice. All attribution leads must be corroborated under BNSS statutory process.',
         citations: [],
         mode: 'case-grounded deterministic assistant'
       };
+    }
+
+    if (/provenance|synthetic|real|onchain|mule.*bank/i.test(q)) {
+      const realNodes = nodes.filter(n => n.provenance === 'REAL_PUBLIC_ONCHAIN');
+      const synthNodes = nodes.filter(n => n.provenance === 'SYNTHETIC_ILLUSTRATIVE');
+      const userNodes = nodes.filter(n => n.provenance === 'USER_UPLOADED');
+      const instNodes = nodes.filter(n => n.provenance === 'INSTITUTION_RESPONSE');
+      const answer = `Case provenance breakdown: ${realNodes.length} Real On-Chain Verified nodes (public block explorer linked), ${synthNodes.length} Synthetic Illustrative mule nodes, ${userNodes.length} User Uploaded complaint nodes, and ${instNodes.length} Institution Response records. Real on-chain addresses are verified from public forensic disclosures.`;
+      const citations = [
+        ...realNodes.slice(0, 3).map(n => cite(n.id, 'wallet', `${n.label} (REAL_PUBLIC_ONCHAIN)`)),
+        ...synthNodes.slice(0, 2).map(n => cite(n.id, 'wallet', `${n.label} (SYNTHETIC_ILLUSTRATIVE)`))
+      ];
+      return { answer, citations, mode: 'case-grounded deterministic assistant' };
+    }
+
+    if (/subscore|breakdown|decompose|component.*risk/i.test(q) || (/risk/i.test(q) && /sub/i.test(q))) {
+      const subs = investigationOrContext.subScores;
+      if (subs) {
+        const answer = `Case risk is decomposed into 4 explainable sub-scores: 1) On-Chain Risk: ${subs.onChain.score}/100 (${subs.onChain.status}), 2) Mule Account Risk: ${subs.mule.score}/100 (${subs.mule.status}), 3) Victim Vulnerability: ${subs.victim.score}/100 (${subs.victim.status}), and 4) Behavioral Anomaly: ${subs.behavioral.score}/100 (${subs.behavioral.status}). Composite calibrated risk: ${subs.composite}/100 with Platt calibrated probability ${(subs.calibration.calibratedProbability * 100).toFixed(1)}%.`;
+        const citations = riskIndicators.map(e => cite(e.id, 'evidence', e.title));
+        return { answer, citations, mode: 'case-grounded deterministic assistant' };
+      }
     }
 
     if (/related|complaint|correlat/.test(q)) {
@@ -296,7 +321,10 @@ export async function answerQuestion(investigationOrContext, question) {
 
     if (/vasp|exchange|attribut|confidence|evidence/.test(q)) {
       if (a) {
-        const answer = `The strongest candidate is ${a.candidate}, with ${a.confidence}% attribution confidence. ${inr(a.tracedAmount)} reaches the candidate cluster across ${a.transactionCount} terminal transaction(s). The weighted evidence signals are: ${a.evidence.map(e => `${e.title} (${e.score}/100 × ${e.weight}% weight = ${e.contribution} pts)`).join('; ')}.`;
+        const statusNote = a.attributionStatus === 'CORROBORATED_ATTRIBUTION'
+          ? `Attribution status: CORROBORATED_ATTRIBUTION (${a.factorCount || a.independentFactors?.length || 2} independent factors).`
+          : `Attribution status: ${a.attributionStatus || 'PROVISIONAL_LEAD'}.`;
+        const answer = `The strongest candidate is ${a.candidate}, with ${a.confidence}% attribution confidence. ${statusNote} ${inr(a.tracedAmount)} reaches the candidate cluster across ${a.transactionCount} terminal transaction(s). The weighted evidence signals are: ${a.evidence.map(e => `${e.title} (${e.score}/100 × ${e.weight}% weight = ${e.contribution} pts)`).join('; ')}. Statutory notice under BNSS Section 94 recommended to confirm KYC.`;
         const citations = a.evidence.map(e => cite(e.id, 'evidence', e.title));
         return { answer, citations, mode: 'case-grounded deterministic assistant' };
       }
