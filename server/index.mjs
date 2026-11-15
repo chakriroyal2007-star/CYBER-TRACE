@@ -21,6 +21,12 @@ import * as investigationTools from './investigation/tools.mjs';
 import { classifyScamMessage, classifyScamMessageAsync } from './ml/scamClassifier.mjs';
 import { classifyUrl, classifyUrlAsync } from './ml/urlClassifier.mjs';
 import { EntityIntelligenceService } from './ml/entityIntelligence.mjs';
+import { validatePasswordPolicy, hashPasswordSecure, verifyPasswordSecure } from './auth/password.mjs';
+import { sendEmailVerificationCode, verifyEmailCode, getEmailVerificationStatus } from './auth/emailVerification.mjs';
+import { generateTotpSecret, generateTotpUri, verifyTotp } from './auth/totp.mjs';
+import { ROLES, PERMISSIONS_MATRIX, hasPermission, canAccessCase } from './auth/permissions.mjs';
+import { recordFailedLogin, resetFailedLogin, isAccountLocked, issueTokenPair, rotateRefreshToken, revokeSession, getActiveSessions, createSecureCookie } from './auth/sessionManager.mjs';
+import { createOfficerInvitation, verifyInvitationToken, acceptOfficerInvitation } from './auth/officerInvitations.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
@@ -489,6 +495,13 @@ async function handle(req,res) {
  }
  if(path==='/api/openapi.json' && method==='GET') return json(res,200,openapi);
  if(path==='/api/docs' && method==='GET') {res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});return res.end(docsHtml());}
+
+ // Phase 1 DEMO_MODE Production Guard: Sandbox bypass is refused in production without explicit override
+ if(path.startsWith('/api/auth/demo')) {
+   if(process.env.NODE_ENV === 'production' && !process.env.ALLOW_PRODUCTION_DEMO) {
+     fail('Demo sandbox access is disabled in production environments without explicit authorization.', 403);
+   }
+ }
  if(path==='/api/auth/demo' && method==='POST') {
    await body(req);
    const existingToken = cookies(req).ct_session || req.headers['x-session-token'];
@@ -535,6 +548,43 @@ async function handle(req,res) {
    res.setHeader('x-new-session-token', token);
    return json(res, 200, { token, user: { id: uid, name: 'Dr. Ananya Roy (Chief Forensic Director)', email: 'director.roy@cbi.gov.in', role: 'admin' }, mode: 'EXECUTIVE INTELLIGENCE ADMIN', expiresAt: session.expires_at });
  }
+ if(path==='/api/auth/send-verification-code' && method==='POST') {
+   const data = await body(req);
+   const email = String(data.email || '').trim().toLowerCase();
+   if(!email || !email.includes('@')) fail('Please enter a valid email address.', 400);
+   const result = await sendEmailVerificationCode(email);
+   return json(res, 200, result);
+ }
+ if(path==='/api/auth/verify-code' && method==='POST') {
+   const data = await body(req);
+   const email = String(data.email || '').trim().toLowerCase();
+   const code = String(data.code || '').trim();
+   if(!email || !code) fail('Email and verification code are required.', 400);
+   const result = verifyEmailCode(email, code);
+   return json(res, 200, result);
+ }
+ if(path==='/api/auth/verify-invite' && method==='GET') {
+   const invToken = url.searchParams.get('token');
+   if(!invToken) fail('Invitation token is required.', 400);
+   const invitation = verifyInvitationToken(store, invToken);
+   return json(res, 200, invitation);
+ }
+ if(path==='/api/auth/accept-invite' && method==='POST') {
+   const data = await body(req);
+   const result = await acceptOfficerInvitation(store, data);
+   return json(res, 201, result);
+ }
+ if(path==='/api/auth/refresh' && method==='POST') {
+   const data = await body(req);
+   const rToken = data.refreshToken || cookies(req).ct_refresh;
+   if(!rToken) fail('Refresh token is required.', 400);
+   try {
+     const pair = rotateRefreshToken(rToken);
+     return json(res, 200, pair);
+   } catch(e) {
+     fail(e.message || 'Invalid or reused refresh token. Please sign in again.', 401);
+   }
+ }
  if(path==='/api/demo/reset' && method==='POST') {
    await body(req);
    const result = store.resetDemoData();
@@ -558,17 +608,28 @@ async function handle(req,res) {
  }
  if(path==='/api/auth/register' && method==='POST') {
    const data = await body(req);
-   if(data.role === 'officer') {
+   if(data.role === 'officer' || data.role === 'investigating_officer') {
      const expectedCode = process.env.OFFICER_SIGNUP_CODE || 'dsaproject';
      if(!data.officerCode || String(data.officerCode).trim() !== expectedCode) {
-       fail('Invalid Officer Registration Secret Code. Please enter the authorized department code.', 403);
+       fail('Officer self-registration is restricted. Officer accounts must be provisioned via admin invitation.', 403);
      }
+   }
+   const policy = validatePasswordPolicy(data.password);
+   if(!policy.valid) {
+     fail(policy.message, 400);
    }
    const user = store.registerUser(data);
    const { token, session } = store.createSession(user.name, user.role, user.id);
+   const pair = issueTokenPair(user.id, session.id);
    res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
    res.setHeader('x-new-session-token', token);
-   return json(res, 201, { token, user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone }, mode: user.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   return json(res, 201, {
+     token,
+     refreshToken: pair.refreshToken,
+     user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone },
+     mode: user.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL',
+     expiresAt: session.expires_at
+   });
  }
  if(path==='/api/auth/login' && method==='POST') {
    const data = await body(req);
@@ -577,17 +638,54 @@ async function handle(req,res) {
    if(!email || !email.includes('@')) fail('Please enter a valid email address.', 400);
    if(!password || password.length < 4) fail('Password must be at least 4 characters.', 400);
 
-   const authUser = store.authenticateUser(email, password);
-   if(authUser) {
-     const { token, session } = store.createSession(authUser.name, authUser.role, authUser.id);
-     res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-     res.setHeader('x-new-session-token', token);
-     return json(res, 200, { token, user: authUser, mode: authUser.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+   const lockStatus = isAccountLocked(email);
+   if(lockStatus.locked) {
+     fail(`Account temporarily locked due to consecutive failed login attempts. Please try again in ${lockStatus.remainingMinutes} minute(s).`, 429);
    }
 
+   let authUser;
+   try {
+     authUser = store.authenticateUser(email, password);
+   } catch(err) {
+     if(err.status) fail(err.message, err.status);
+     throw err;
+   }
+
+   if(authUser) {
+     resetFailedLogin(email);
+
+     if(authUser.totpRequired) {
+       const totpCode = String(data.totpCode || '').trim();
+       if(!totpCode) {
+         return json(res, 200, {
+           requiresTotp: true,
+           email: authUser.email,
+           message: 'Two-factor TOTP authentication required.'
+         });
+       }
+       const totpValid = verifyTotp(authUser.totpSecret, totpCode);
+       if(!totpValid) {
+         fail('Invalid 6-digit TOTP verification code.', 401);
+       }
+     }
+
+     const { token, session } = store.createSession(authUser.name, authUser.role, authUser.id);
+     const pair = issueTokenPair(authUser.id, session.id);
+     res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
+     res.setHeader('x-new-session-token', token);
+     return json(res, 200, {
+       token,
+       refreshToken: pair.refreshToken,
+       user: authUser,
+       mode: authUser.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL',
+       expiresAt: session.expires_at
+     });
+   }
+
+   recordFailedLogin(email);
    const existingUser = store.getUserByEmail(email);
    if(existingUser) {
-     fail('Invalid password for this registered account. Please check your credentials and try again.', 401);
+     fail('Invalid email or password. Please verify your credentials.', 401);
    }
 
    // Provision new permanent account for first-time signins so complaints are never lost
@@ -603,20 +701,27 @@ async function handle(req,res) {
        phone: data.phone || ''
      });
      const { token, session } = store.createSession(newUser.name, newUser.role, newUser.id);
+     const pair = issueTokenPair(newUser.id, session.id);
      res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
      res.setHeader('x-new-session-token', token);
-     return json(res, 200, { token, user: newUser, mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+     return json(res, 200, {
+       token,
+       refreshToken: pair.refreshToken,
+       user: newUser,
+       mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL',
+       expiresAt: session.expires_at
+     });
    } catch {
-     const { token, session } = store.createSession(displayName, role);
-     res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-     res.setHeader('x-new-session-token', token);
-     return json(res, 200, { token, user: { id: session.user_id, name: session.display_name, email, role }, mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL', expiresAt: session.expires_at });
+     fail('Invalid email or password. Please verify your credentials.', 401);
    }
  }
  const authHeader = req.headers.authorization || '';
  const tokenFromHeader = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
  const token = tokenFromHeader || req.headers['x-session-token'] || cookies(req).ct_session || '';
  let session = token ? store.session(token) : null;
+ if(session && session.suspended) {
+   fail('This account has been suspended by administration. All active sessions revoked.', 403);
+ }
 
  if (!session && token) {
    // A token was provided by the client, but it was not found in this container's SQLite DB
@@ -652,6 +757,23 @@ async function handle(req,res) {
  }
  if(path==='/api/auth/me' && method==='GET') return json(res,200,{user:{id:session.user_id,name:session.display_name,role:session.role || 'investigator',email:session.email||null,agency:session.agency||null,badgeNumber:session.badge_number||null},mode:session.role==='reporter'?'REPORTER PORTAL':(session.role==='officer'||session.role==='official-investigator')?'CBI OFFICER PORTAL':'DEMO ENVIRONMENT',expiresAt:session.expires_at});
  if(path==='/api/auth/logout' && method==='POST') {store.audit(sid,'Session Signed Out','workspace');store.db.prepare('UPDATE sessions SET expires_at=? WHERE id=?').run(now(),sid);res.setHeader('Set-Cookie',sessionCookie(req,'',0));return json(res,200,{ok:true});}
+ if(path==='/api/auth/invite-officer' && method==='POST') {
+   if(session.role !== 'admin' && session.role !== 'supervisor') {
+     fail('Unauthorized: Only administrators and supervisors can issue officer invitations.', 403);
+   }
+   const data = await body(req);
+   const invitation = createOfficerInvitation(store, data, session.display_name);
+   store.audit(sid, 'Officer Invitation Created', invitation.email, { designation: invitation.designation, unit: invitation.unit });
+   return json(res, 201, invitation);
+ }
+ if(path==='/api/auth/sessions' && method==='GET') {
+   return json(res, 200, getActiveSessions(store, session.user_id));
+ }
+ if(path==='/api/auth/sessions/revoke' && method==='POST') {
+   const data = await body(req);
+   revokeSession(store, data.sessionId);
+   return json(res, 200, { ok: true, message: 'Session revoked.' });
+ }
  if(group==='officers' && method==='GET') {
    return json(res, 200, store.listOfficers());
  }
@@ -1170,6 +1292,36 @@ async function handle(req,res) {
      if(!result) fail(`Case ${id} not found.`, 404);
      return json(res, 200, result);
    }
+   if(id && sub==='freeze-requests') {
+     const reqId = segments[4];
+     if(!reqId && method==='GET') {
+       return json(res, 200, store.listFreezeRequests(id));
+     }
+     if(!reqId && method==='POST') {
+       if(!hasPermission(session.role, 'freeze_request:prepare')) {
+         fail('Unauthorized: Only an investigating officer can prepare statutory freeze requisitions.', 403);
+       }
+       const data = await body(req);
+       const freezeReq = store.createFreezeRequest({
+         caseId: id,
+         institutionId: data.institutionId || 'VASP-CUSTODIAN',
+         accountIdentifier: data.accountIdentifier || data.wallet || 'TARGET',
+         requestedAmount: Number(data.requestedAmount || 0),
+         legalBasis: data.legalBasis || 'Section 102 Cr.P.C. / Section 106 BNSS',
+         preparedById: session.user_id
+       });
+       store.audit(sid, 'Freeze Requisition Drafted', id, { freezeRequestId: freezeReq.id, amount: freezeReq.requested_amount });
+       return json(res, 201, freezeReq);
+     }
+     if(reqId && segments[5]==='approve' && method==='POST') {
+       if(!hasPermission(session.role, 'freeze_request:approve')) {
+         fail('Maker-Checker Violation: Only supervisory authorities can approve statutory freeze requisitions.', 403);
+       }
+       const approved = store.approveFreezeRequest(reqId, session.user_id, session.role);
+       store.audit(sid, 'Freeze Requisition Approved', id, { freezeRequestId: reqId, supervisorId: session.user_id });
+       return json(res, 200, approved);
+     }
+   }
    if(id && !sub && method==='GET') return json(res,200,requireValue(store.getCase(sid,id),'Case'));
    if(id && !sub && method==='PATCH') {const data=await body(req);const status=enumField(data.status,STATUSES,'Status');return json(res,200,requireValue(store.setStatus(sid,id,status),'Case'));}
  }
@@ -1218,7 +1370,10 @@ async function handle(req,res) {
    if(method==='GET') return json(res,200,store.settings(session));
    if(method==='PUT') return json(res,200,store.updateSettings(session,validateWeights(await body(req))));
  }
- if(group==='audit' && method==='GET') return json(res,200,store.audits(sid));
+ if(group==='audit') {
+   if(id==='verify' && method==='GET') return json(res, 200, store.verifyAuditTrail(sid));
+   if(!id && method==='GET') return json(res, 200, store.audits(sid));
+ }
  if(group==='sources' && method==='GET') return json(res,200,sources());
  if(group==='reports') {
    if(!id && method==='GET') return json(res,200,store.reports(sid));

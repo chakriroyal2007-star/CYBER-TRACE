@@ -15,7 +15,7 @@ async function freePort() {
   return port;
 }
 
-export async function launchServer() {
+export async function launchServer(customEnv = {}) {
   const directory = await mkdtemp(join(root, 'tests', '.tmp-'));
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -30,6 +30,7 @@ export async function launchServer() {
     SESSION_SECRET: 'isolated-test-session-secret-never-use-for-deployment',
     ALLOWED_ORIGINS: baseUrl,
     CORS_ORIGIN: baseUrl,
+    ...customEnv,
   };
   let child;
   let output = '';

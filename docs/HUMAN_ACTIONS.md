@@ -33,3 +33,4 @@ In strict alignment with the **Honesty Principle**, CYBER-TRACE never fabricates
 | **Blockchain RPC Node Operations** | Connects to public providers (Alchemy, mempool.space, TronGrid) with rate limits. | Enterprise dedicated archival node provisioning (e.g., self-hosted Erigon / Geth nodes) for unlimited throughput and forensic finality. |
 | **Model Re-Training & Drift Monitoring** | Random Forest model trained on Elliptic Benchmark dataset. | Periodic model retraining with verified operational ground-truth cases under human analyst supervision. |
 | **API Key & Secret Rotation** | Configurable via `.env` without hardcoded secrets. | Periodic rotation of provider keys per `docs/SECURITY.md`. |
+

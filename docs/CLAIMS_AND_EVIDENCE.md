@@ -32,6 +32,7 @@ In compliance with the **Honesty Principle**, every quantitative claim made acro
 
 ## Verifiability Protocol
 To independently verify all quantitative claims on any workstation:
-1. Run `npm test` to verify all 102 test cases pass.
+1. Run `npm test` to verify all 112 test cases pass.
 2. Query `curl -s http://localhost:8000/api/dataset/stats` to verify node, edge, and label counts.
 3. Query `curl -s http://localhost:8000/api/analytics/model-eval` to inspect the exact confusion matrix and evaluation metrics.
+

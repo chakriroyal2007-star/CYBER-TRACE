@@ -46,3 +46,4 @@ The CI workflow (`.github/workflows/ci.yml`) enforces the following gates on eve
 1. **Dependency Audit (`npm audit`):** Fails builds on high/critical security vulnerabilities in package dependencies.
 2. **Secret Leak Detection:** Scans the codebase for exposed token formats and API keys.
 3. **Doc-Consistency Check (`scripts/check-doc-consistency.mjs`):** Fails builds if test counts, badges, or documented file trees drift from actual code.
+

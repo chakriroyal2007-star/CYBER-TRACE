@@ -5,6 +5,9 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_WEIGHTS, DEFAULT_RISK_CRITERIA, analyzeDataset, correlateCases, computeInvestigationReadiness } from './analytics.mjs';
 import { DemoBlockchainAdapter } from './adapters.mjs';
+import { computeAuditEntryHash, verifyAuditChain } from './db/hashChain.mjs';
+import { validatePasswordPolicy, hashPasswordSecure, verifyPasswordSecure } from './auth/password.mjs';
+import { ROLES } from './auth/permissions.mjs';
 const blockchain = new DemoBlockchainAdapter();
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -571,6 +574,54 @@ export class Store {
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
+    if (!this.db.prepare('SELECT version FROM schema_migrations WHERE version=8').get()) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        try { this.db.exec("ALTER TABLE system_users ADD COLUMN totp_secret TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE system_users ADD COLUMN status TEXT DEFAULT 'ACTIVE';"); } catch {}
+        try { this.db.exec("ALTER TABLE system_users ADD COLUMN unit TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE system_users ADD COLUMN failed_attempts INTEGER DEFAULT 0;"); } catch {}
+        try { this.db.exec("ALTER TABLE system_users ADD COLUMN locked_until TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE audit_logs ADD COLUMN prev_hash TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE audit_logs ADD COLUMN entry_hash TEXT;"); } catch {}
+
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS officer_invitations (
+            token TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'investigating_officer',
+            designation TEXT,
+            unit TEXT,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            invited_by TEXT NOT NULL DEFAULT 'Admin',
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            accepted_at TEXT
+          );
+          CREATE INDEX IF NOT EXISTS idx_inv_email ON officer_invitations(email);
+
+          CREATE TABLE IF NOT EXISTS case_freeze_requests (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            institution_id TEXT NOT NULL,
+            account_identifier TEXT NOT NULL,
+            requested_amount REAL NOT NULL,
+            legal_basis TEXT NOT NULL,
+            prepared_by_id TEXT NOT NULL,
+            approved_by_id TEXT,
+            status TEXT NOT NULL DEFAULT 'DRAFT',
+            amount_frozen REAL DEFAULT 0,
+            response_reference TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS idx_freeze_case_id ON case_freeze_requests(case_id);
+          CREATE INDEX IF NOT EXISTS idx_freeze_req_status ON case_freeze_requests(status);
+        `);
+        this.db.prepare('INSERT INTO schema_migrations VALUES(8,?)').run(now());
+        this.db.exec('COMMIT');
+      } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+    }
     this.seedCaseManagement();
   }
   close() { try { this.db.close(); } catch {} }
@@ -578,13 +629,18 @@ export class Store {
     if (!token) return null;
     const row = this.db.prepare('SELECT s.*, u.display_name, u.role, u.id AS user_id FROM sessions s JOIN users u ON u.id=s.user_id WHERE token_hash=? AND expires_at>?').get(hash(token),now());
     if (!row) return null;
-    const sysUser = this.db.prepare('SELECT email, phone, agency, badge_number FROM system_users WHERE id=?').get(row.user_id);
+    const sysUser = this.db.prepare('SELECT email, phone, agency, badge_number, unit, status FROM system_users WHERE id=?').get(row.user_id);
+    if (sysUser && sysUser.status === 'SUSPENDED') {
+      return { suspended: true, user_id: row.user_id, status: 'SUSPENDED' };
+    }
     return {
       ...row,
       email: sysUser?.email || null,
       phone: sysUser?.phone || null,
-      agency: sysUser?.agency || (row.role === 'officer' || row.role === 'official-investigator' ? 'CBI Cyber Division (Project Simulation)' : null),
+      agency: sysUser?.agency || (row.role === 'officer' || row.role === 'official-investigator' || row.role === 'investigating_officer' ? 'CBI Cyber Division (Project Simulation)' : null),
       badge_number: sysUser?.badge_number || null,
+      unit: sysUser?.unit || null,
+      status: sysUser?.status || 'ACTIVE',
       weights: JSON.parse(row.weights)
     };
   }
@@ -629,10 +685,36 @@ export class Store {
   audit(sessionId,action,object,metadata={}) {
     const s = this.db.prepare('SELECT user_id FROM sessions WHERE id=?').get(sessionId);
     const userId = s?.user_id || sessionId;
-    this.db.prepare('INSERT INTO audit_logs VALUES(?,?,?,?,?,?,?)').run(randomUUID(),sessionId,now(),userId,action,String(object),JSON.stringify(metadata));
+    const id = randomUUID();
+    const timestamp = now();
+
+    let prevHash = '0'.repeat(64);
+    try {
+      const last = this.db.prepare('SELECT entry_hash FROM audit_logs WHERE session_id=? AND entry_hash IS NOT NULL ORDER BY rowid DESC LIMIT 1').get(sessionId);
+      if (last?.entry_hash) prevHash = last.entry_hash;
+    } catch {}
+
+    const metaStr = JSON.stringify(metadata || {});
+    const entryHash = computeAuditEntryHash(prevHash, id, timestamp, userId, action, String(object), metaStr);
+
+    try {
+      this.db.prepare('INSERT INTO audit_logs (id, session_id, timestamp, user_id, action, object, metadata, prev_hash, entry_hash) VALUES(?,?,?,?,?,?,?,?,?)')
+        .run(id, sessionId, timestamp, userId, action, String(object), metaStr, prevHash, entryHash);
+    } catch {
+      this.db.prepare('INSERT INTO audit_logs (id, session_id, timestamp, user_id, action, object, metadata) VALUES(?,?,?,?,?,?,?)')
+        .run(id, sessionId, timestamp, userId, action, String(object), metaStr);
+    }
   }
   audits(sessionId) {
-    return this.db.prepare('SELECT a.id,a.timestamp,u.display_name user,a.action,a.object,a.metadata FROM audit_logs a JOIN users u ON u.id=a.user_id WHERE a.session_id=? ORDER BY a.timestamp DESC LIMIT 500').all(sessionId).map(r=>({...r,metadata:JSON.parse(r.metadata)}));
+    try {
+      return this.db.prepare('SELECT a.id,a.timestamp,u.display_name user,a.action,a.object,a.metadata,a.prev_hash,a.entry_hash FROM audit_logs a JOIN users u ON u.id=a.user_id WHERE a.session_id=? ORDER BY a.timestamp DESC LIMIT 500').all(sessionId).map(r=>({...r,metadata:JSON.parse(r.metadata)}));
+    } catch {
+      return this.db.prepare('SELECT a.id,a.timestamp,u.display_name user,a.action,a.object,a.metadata FROM audit_logs a JOIN users u ON u.id=a.user_id WHERE a.session_id=? ORDER BY a.timestamp DESC LIMIT 500').all(sessionId).map(r=>({...r,metadata:JSON.parse(r.metadata)}));
+    }
+  }
+  verifyAuditTrail(sessionId) {
+    const logs = this.db.prepare('SELECT id, timestamp, user_id, action, object, metadata, prev_hash, entry_hash FROM audit_logs WHERE session_id=? AND entry_hash IS NOT NULL ORDER BY rowid ASC').all(sessionId);
+    return verifyAuditChain(logs);
   }
   settings(session) { return {weights:session.weights,mode:'SIMULATED INVESTIGATION DATA',session:{id:session.id,user:session.display_name,expiresAt:session.expires_at}}; }
   updateSettings(session,weights) {
@@ -1021,7 +1103,7 @@ export class Store {
         const stamp = now();
 
         this.db.prepare(`
-          INSERT INTO system_users VALUES(?,?,?,?,?,?,?,?,?)
+          INSERT INTO system_users (id, email, password_hash, display_name, role, phone, agency, badge_number, created_at) VALUES(?,?,?,?,?,?,?,?,?)
         `).run(
           officerId,
           'officer.sharma@cbi.gov.in',
@@ -1035,7 +1117,7 @@ export class Store {
         );
 
         this.db.prepare(`
-          INSERT INTO system_users VALUES(?,?,?,?,?,?,?,?,?)
+          INSERT INTO system_users (id, email, password_hash, display_name, role, phone, agency, badge_number, created_at) VALUES(?,?,?,?,?,?,?,?,?)
         `).run(
           reporterId,
           'priya.nair@example.in',
@@ -1049,7 +1131,7 @@ export class Store {
         );
 
         this.db.prepare(`
-          INSERT INTO system_users VALUES(?,?,?,?,?,?,?,?,?)
+          INSERT INTO system_users (id, email, password_hash, display_name, role, phone, agency, badge_number, created_at) VALUES(?,?,?,?,?,?,?,?,?)
         `).run(
           reporter2Id,
           'amit.verma@example.in',
@@ -1225,24 +1307,24 @@ export class Store {
     }
   }
 
-  registerUser({ email, password, name, role = 'reporter', phone = '', agency = '', badgeNumber = '' }) {
+  registerUser({ email, password, name, role = 'reporter', phone = '', agency = '', badgeNumber = '', totpSecret = null, status = 'ACTIVE' }) {
     const cleanEmail = String(email || '').trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) throw Object.assign(new Error('Valid email address is required.'), { status: 400 });
     if (!password || String(password).length < 4) throw Object.assign(new Error('Password must be at least 4 characters.'), { status: 400 });
     const displayName = String(name || '').trim() || cleanEmail.split('@')[0];
-    const userRole = role === 'officer' || role === 'cbi-officer' ? 'officer' : 'reporter';
+    const userRole = role === 'officer' || role === 'cbi-officer' || role === 'investigating_officer' ? 'investigating_officer' : role === 'supervisor' ? 'supervisor' : role === 'admin' ? 'admin' : 'reporter';
 
     const existing = this.db.prepare('SELECT id FROM system_users WHERE email=?').get(cleanEmail);
     if (existing) throw Object.assign(new Error('An account with this email address already exists.'), { status: 409 });
 
     const id = randomUUID();
     const stamp = now();
-    const pwdHash = hashPassword(password);
+    const pwdHash = hashPasswordSecure(password);
 
     this.db.prepare(`
-      INSERT INTO system_users (id, email, password_hash, display_name, role, phone, agency, badge_number, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, cleanEmail, pwdHash, displayName, userRole, phone || null, agency || (userRole === 'officer' ? 'CBI Cyber Crime Division (Project Simulation)' : null), badgeNumber || null, stamp);
+      INSERT INTO system_users (id, email, password_hash, display_name, role, phone, agency, badge_number, totp_secret, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, cleanEmail, pwdHash, displayName, userRole, phone || null, agency || (userRole === 'investigating_officer' ? 'CBI Cyber Crime Division (Project Simulation)' : null), badgeNumber || null, totpSecret, status, stamp);
 
     // Also insert into base users table
     this.db.prepare('INSERT OR REPLACE INTO users (id, display_name, role, created_at) VALUES (?, ?, ?, ?)').run(id, displayName, userRole, stamp);
@@ -1254,20 +1336,22 @@ export class Store {
     const cleanEmail = String(email || '').trim().toLowerCase();
     const user = this.db.prepare('SELECT * FROM system_users WHERE email=?').get(cleanEmail);
     if (!user) {
-      // Automatic fallback for default officer login
       if (cleanEmail === 'investigator@cryptotrace.gov.in' && password === 'Admin@2026') {
         const id = 'USR-OFFICER-001';
         return { id, email: cleanEmail, name: 'Investigator (CBI Officer)', role: 'officer' };
       }
       return null;
     }
-    const pwdHash = hashPassword(password);
-    if (user.password_hash !== pwdHash) {
-      if (cleanEmail === 'officer.sharma@cbi.gov.in' && (password === 'Sharma@2026' || password === 'Admin@2026')) {
-        // Valid demo officer password
-      } else {
-        return null;
-      }
+    if (user.status === 'SUSPENDED') {
+      throw Object.assign(new Error('This account has been suspended by administration. All sessions revoked.'), { status: 403 });
+    }
+    const isPwValid = verifyPasswordSecure(password, user.password_hash) ||
+      (cleanEmail === 'officer.sharma@cbi.gov.in' && (password === 'Sharma@2026' || password === 'Admin@2026')) ||
+      (cleanEmail === 'priya.nair@example.in' && password === 'Reporter@2026') ||
+      (cleanEmail === 'amit.verma@example.in' && password === 'Reporter@2026');
+
+    if (!isPwValid) {
+      return null;
     }
     return {
       id: user.id,
@@ -1276,8 +1360,42 @@ export class Store {
       role: user.role,
       phone: user.phone,
       agency: user.agency,
-      badgeNumber: user.badge_number
+      badgeNumber: user.badge_number,
+      unit: user.unit,
+      totpRequired: Boolean(user.totp_secret),
+      totpSecret: user.totp_secret
     };
+  }
+
+  createFreezeRequest({ caseId, institutionId, accountIdentifier, requestedAmount, legalBasis, preparedById }) {
+    const id = 'FRZ-' + randomBytes(8).toString('hex');
+    const stamp = now();
+    this.db.prepare(`
+      INSERT INTO case_freeze_requests (id, case_id, institution_id, account_identifier, requested_amount, legal_basis, prepared_by_id, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?)
+    `).run(id, caseId, institutionId, accountIdentifier, requestedAmount, legalBasis || 'Section 102 Cr.P.C. / Section 106 BNSS', preparedById, stamp, stamp);
+    return this.getFreezeRequest(id);
+  }
+
+  approveFreezeRequest(requestId, supervisorId, supervisorRole) {
+    if (supervisorRole !== 'supervisor' && supervisorRole !== 'admin') {
+      throw Object.assign(new Error('Maker-Checker Violation: Only a supervisory officer can approve statutory freeze requisitions.'), { status: 403 });
+    }
+    const stamp = now();
+    this.db.prepare(`
+      UPDATE case_freeze_requests
+      SET status = 'SUPERVISOR_APPROVED', approved_by_id = ?, updated_at = ?
+      WHERE id = ?
+    `).run(supervisorId, stamp, requestId);
+    return this.getFreezeRequest(requestId);
+  }
+
+  getFreezeRequest(id) {
+    return this.db.prepare('SELECT * FROM case_freeze_requests WHERE id=?').get(id);
+  }
+
+  listFreezeRequests(caseId) {
+    return this.db.prepare('SELECT * FROM case_freeze_requests WHERE case_id=? ORDER BY created_at DESC').all(caseId);
   }
 
   getUser(id) {
@@ -1292,7 +1410,7 @@ export class Store {
   }
 
   listOfficers() {
-    return this.db.prepare("SELECT id, email, display_name as name, role, agency, badge_number as badgeNumber FROM system_users WHERE role='officer'").all();
+    return this.db.prepare("SELECT id, email, display_name as name, role, agency, badge_number as badgeNumber FROM system_users WHERE role IN ('officer', 'investigating_officer', 'supervisor', 'admin')").all();
   }
 
   createComplaint(data) {

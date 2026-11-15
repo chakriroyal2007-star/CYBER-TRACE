@@ -8,12 +8,12 @@ This document records the exact results of the automated test suite execution fo
 - **Command:** `npm test` (`node --test tests/*.test.mjs`)
 - **Node.js Version:** `v22.23.3` (Engine requirement: `>=22.5.0` / Node 24 ready)
 - **OS Platform:** macOS (`darwin`, `arm64`)
-- **Total Test Suites:** 8
-- **Total Tests:** 102
-- **Passing:** 102
+- **Total Test Suites:** 9
+- **Total Tests:** 112
+- **Passing:** 112
 - **Failing:** 0
 - **Skipped / Cancelled / Todo:** 0
-- **Duration:** 10,232.79 ms (~10.2s)
+- **Duration:** 16,456.28 ms (~16.5s)
 
 ---
 
@@ -141,7 +141,20 @@ This document records the exact results of the automated test suite execution fo
 - `✔` Test Q: AI Investigation Orchestrator executes full 10-stage pipeline and handles follow-up Q&A
 *Suite Total: 17 tests passed.*
 
+### 9. Phase 1: Real Authentication, Roles, TOTP, Maker-Checker and Cryptographic Audit Chain (`tests/auth_phase1.test.mjs`)
+- `✔` 1. Citizen email verification: 6-digit code, attempt limit, and verification lifecycle
+- `✔` 2. Password policy: minimum 12 chars and complex character requirements
+- `✔` 3. Failed login lockout: 5 consecutive failures triggers 15-minute lockout
+- `✔` 4. Officer invitations: domain allowlist check and single-use token consumption
+- `✔` 5. Mandatory TOTP authentication challenge on enrolled officer account
+- `✔` 6. Maker-Checker enforcement: Officer prepares freeze request, Supervisor approves, Officer cannot approve
+- `✔` 7. Cryptographic hash-chained audit log and tamper detection
+- `✔` 8. Suspended account: immediate session invalidation and login prohibition
+- `✔` 9. Production DEMO_MODE safety: demo routes refused when NODE_ENV=production
+*Suite Total: 10 tests passed.*
+
 ---
 
-## Summary Total: 102/102 Passing Tests
+## Summary Total: 112/112 Passing Tests
 All tests are 100% deterministic, offline-capable, and run without requiring external cloud credentials or live network connections.
+
