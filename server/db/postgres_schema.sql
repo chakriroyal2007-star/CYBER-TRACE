@@ -122,6 +122,11 @@ CREATE TABLE IF NOT EXISTS case_freeze_requests (
   status TEXT NOT NULL DEFAULT 'DRAFT',
   amount_frozen NUMERIC DEFAULT 0,
   response_reference TEXT,
+  sent_at TIMESTAMPTZ,
+  approval_notes TEXT,
+  rejection_reason TEXT,
+  nodal_name TEXT,
+  compliance_notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

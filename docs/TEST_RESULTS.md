@@ -8,12 +8,12 @@ This document records the exact results of the automated test suite execution fo
 - **Command:** `npm test` (`node --test tests/*.test.mjs`)
 - **Node.js Version:** `v22.23.3` (Engine requirement: `>=22.5.0` / Node 24 ready)
 - **OS Platform:** macOS (`darwin`, `arm64`)
-- **Total Test Suites:** 10
-- **Total Tests:** 124
-- **Passing:** 124
+- **Total Test Suites:** 11
+- **Total Tests:** 127
+- **Passing:** 127
 - **Failing:** 0
 - **Skipped / Cancelled / Todo:** 0
-- **Duration:** 14,210.85 ms (~14.2s)
+- **Duration:** 8,903.70 ms (~8.9s)
 
 ---
 
@@ -161,8 +161,19 @@ This document records the exact results of the automated test suite execution fo
 - `✔` 2.6 Public wallet auto-trace: shallow on-chain trace with strict provenance tags
 *Suite Total: 6 tests passed.*
 
+### 11. Phase 3: Officer Investigation Chain, Case Scoping, State Machine & Maker-Checker (`tests/officer_chain_phase3.test.mjs`)
+- `✔` 3.0 Auth Setup: Register Reporter, Officer, Officer2, Supervisor, Auditor
+- `✔` 3.1 Officer queue: priority sorting (high-loss first), linkage badges, and 24h SLA timer
+- `✔` 3.2 Case scoping: Officer claims unassigned case, Supervisor reassigns, Auditor justification enforcement
+- `✔` 3.3 Full Case State Machine transitions with audit log validation
+- `✔` 3.6 Statutory freeze package generator: Section 106 BNSS & Section 94 BNSS requisitions
+- `✔` 3.7 Maker-Checker Freeze Workflow: Officer drafts, Officer cannot self-approve, Supervisor approves, Officer dispatches
+- `✔` 3.8 Nodal Portal Response: Record institutional action, transition case to Freeze Confirmed / Partially Frozen
+- `✔` 3.9 Court Package Compilation with Section 63 BSA Certificate
+*Suite Total: 9 tests passed.*
+
 ---
 
-## Summary Total: 124/124 Passing Tests
+## Summary Total: 127/127 Passing Tests
 All tests are 100% deterministic, offline-capable, and run without requiring external cloud credentials or live network connections.
 

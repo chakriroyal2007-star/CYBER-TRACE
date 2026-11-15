@@ -20,25 +20,41 @@ const evm = label => `0x${hash(label).slice(0,40)}`;
 export const VALID_STATUSES = Object.freeze([
   'Submitted',
   'Pending Review',
+  'Under Review',
   'Accepted',
+  'Assigned',
   'Under Investigation',
+  'Trace in Progress',
   'Evidence Requested',
   'Evidence Received',
+  'Freeze Requested',
+  'Freeze Confirmed',
+  'Partially Frozen',
+  'Expired',
+  'Court Package Generated',
   'Resolved',
   'Closed',
   'Rejected'
 ]);
 
 export const ALLOWED_TRANSITIONS = Object.freeze({
-  'Submitted': ['Pending Review', 'Accepted', 'Rejected'],
-  'Pending Review': ['Accepted', 'Rejected', 'Evidence Requested', 'Under Investigation'],
-  'Accepted': ['Under Investigation', 'Evidence Requested', 'Rejected'],
-  'Under Investigation': ['Evidence Requested', 'Resolved', 'Closed', 'Rejected'],
-  'Evidence Requested': ['Evidence Received', 'Under Investigation', 'Closed', 'Rejected'],
-  'Evidence Received': ['Under Investigation', 'Evidence Requested', 'Resolved', 'Rejected'],
+  'Submitted': ['Pending Review', 'Under Review', 'Accepted', 'Assigned', 'Rejected'],
+  'Pending Review': ['Under Review', 'Accepted', 'Assigned', 'Rejected', 'Evidence Requested', 'Under Investigation', 'Trace in Progress'],
+  'Under Review': ['Accepted', 'Assigned', 'Rejected', 'Evidence Requested', 'Under Investigation', 'Trace in Progress'],
+  'Accepted': ['Assigned', 'Under Investigation', 'Trace in Progress', 'Evidence Requested', 'Rejected'],
+  'Assigned': ['Under Investigation', 'Trace in Progress', 'Evidence Requested', 'Freeze Requested', 'Rejected'],
+  'Under Investigation': ['Trace in Progress', 'Evidence Requested', 'Freeze Requested', 'Court Package Generated', 'Resolved', 'Closed', 'Rejected'],
+  'Trace in Progress': ['Under Investigation', 'Evidence Requested', 'Freeze Requested', 'Court Package Generated', 'Resolved', 'Closed', 'Rejected'],
+  'Evidence Requested': ['Evidence Received', 'Under Investigation', 'Trace in Progress', 'Closed', 'Rejected'],
+  'Evidence Received': ['Under Investigation', 'Trace in Progress', 'Evidence Requested', 'Freeze Requested', 'Resolved', 'Rejected'],
+  'Freeze Requested': ['Freeze Confirmed', 'Partially Frozen', 'Expired', 'Trace in Progress', 'Under Investigation', 'Court Package Generated', 'Rejected'],
+  'Freeze Confirmed': ['Court Package Generated', 'Resolved', 'Closed', 'Under Investigation'],
+  'Partially Frozen': ['Court Package Generated', 'Resolved', 'Closed', 'Under Investigation'],
+  'Expired': ['Freeze Requested', 'Trace in Progress', 'Under Investigation', 'Closed'],
+  'Court Package Generated': ['Resolved', 'Closed', 'Under Investigation'],
   'Resolved': ['Closed', 'Under Investigation'],
-  'Closed': ['Under Investigation'],
-  'Rejected': ['Under Investigation', 'Pending Review']
+  'Closed': ['Under Investigation', 'Trace in Progress'],
+  'Rejected': ['Under Investigation', 'Pending Review', 'Under Review']
 });
 
 export function canTransitionStatus(fromStatus, toStatus) {
@@ -639,6 +655,20 @@ export class Store {
         try { this.db.exec("ALTER TABLE case_evidence ADD COLUMN storage_path TEXT;"); } catch {}
 
         this.db.prepare('INSERT INTO schema_migrations VALUES(9,?)').run(now());
+        this.db.exec('COMMIT');
+      } catch(error) { this.db.exec('ROLLBACK'); throw error; }
+    }
+    if (!this.db.prepare('SELECT version FROM schema_migrations WHERE version=10').get()) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        try { this.db.exec("ALTER TABLE case_freeze_requests ADD COLUMN sent_at TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE case_freeze_requests ADD COLUMN approval_notes TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE case_freeze_requests ADD COLUMN rejection_reason TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE case_freeze_requests ADD COLUMN nodal_name TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE case_freeze_requests ADD COLUMN compliance_notes TEXT;"); } catch {}
+        try { this.db.exec("ALTER TABLE complaints ADD COLUMN unit TEXT DEFAULT 'Cyber Crime Division';"); } catch {}
+
+        this.db.prepare('INSERT INTO schema_migrations VALUES(10,?)').run(now());
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
@@ -1397,16 +1427,154 @@ export class Store {
     return this.getFreezeRequest(id);
   }
 
-  approveFreezeRequest(requestId, supervisorId, supervisorRole) {
+  approveFreezeRequest(requestId, supervisorId, supervisorRole, notes = '') {
     if (supervisorRole !== 'supervisor' && supervisorRole !== 'admin') {
       throw Object.assign(new Error('Maker-Checker Violation: Only a supervisory officer can approve statutory freeze requisitions.'), { status: 403 });
     }
+    const req = this.getFreezeRequest(requestId);
+    if (!req) throw Object.assign(new Error(`Freeze request ${requestId} not found.`), { status: 404 });
+    if (req.prepared_by_id === supervisorId && supervisorRole !== 'admin') {
+      throw Object.assign(new Error('Maker-Checker Violation: An officer cannot approve their own freeze request.'), { status: 403 });
+    }
     const stamp = now();
-    this.db.prepare(`
-      UPDATE case_freeze_requests
-      SET status = 'SUPERVISOR_APPROVED', approved_by_id = ?, updated_at = ?
-      WHERE id = ?
-    `).run(supervisorId, stamp, requestId);
+    try {
+      this.db.prepare(`
+        UPDATE case_freeze_requests
+        SET status = 'SUPERVISOR_APPROVED', approved_by_id = ?, approval_notes = ?, updated_at = ?
+        WHERE id = ?
+      `).run(supervisorId, notes, stamp, requestId);
+    } catch {
+      this.db.prepare(`
+        UPDATE case_freeze_requests
+        SET status = 'SUPERVISOR_APPROVED', approved_by_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(supervisorId, stamp, requestId);
+    }
+    return this.getFreezeRequest(requestId);
+  }
+
+  rejectFreezeRequest(requestId, supervisorId, supervisorRole, reason = '') {
+    if (supervisorRole !== 'supervisor' && supervisorRole !== 'admin') {
+      throw Object.assign(new Error('Maker-Checker Violation: Only a supervisory officer can reject statutory freeze requisitions.'), { status: 403 });
+    }
+    const req = this.getFreezeRequest(requestId);
+    if (!req) throw Object.assign(new Error(`Freeze request ${requestId} not found.`), { status: 404 });
+    if (!reason) {
+      throw Object.assign(new Error('A formal supervisory rejection reason is required.'), { status: 400 });
+    }
+    const stamp = now();
+    try {
+      this.db.prepare(`
+        UPDATE case_freeze_requests
+        SET status = 'REJECTED', approved_by_id = ?, rejection_reason = ?, updated_at = ?
+        WHERE id = ?
+      `).run(supervisorId, reason, stamp, requestId);
+    } catch {
+      this.db.prepare(`
+        UPDATE case_freeze_requests
+        SET status = 'REJECTED', approved_by_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(supervisorId, stamp, requestId);
+    }
+    return this.getFreezeRequest(requestId);
+  }
+
+  sendFreezeRequestToNodal(requestId, officerId, officerRole) {
+    const req = this.getFreezeRequest(requestId);
+    if (!req) throw Object.assign(new Error(`Freeze request ${requestId} not found.`), { status: 404 });
+    if (req.status !== 'SUPERVISOR_APPROVED') {
+      throw Object.assign(new Error(`Only supervisor-approved freeze requests can be dispatched to the institutional nodal officer. Current status: ${req.status}`), { status: 400 });
+    }
+    const stamp = now();
+    try {
+      this.db.prepare(`
+        UPDATE case_freeze_requests
+        SET status = 'SENT_TO_NODAL', sent_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(stamp, stamp, requestId);
+    } catch {
+      this.db.prepare(`
+        UPDATE case_freeze_requests
+        SET status = 'SENT_TO_NODAL', updated_at = ?
+        WHERE id = ?
+      `).run(stamp, requestId);
+    }
+
+    try {
+      this.updateComplaintStatus({
+        caseId: req.case_id,
+        newStatus: 'Freeze Requested',
+        authorId: officerId,
+        authorName: 'Investigating Officer',
+        authorRole: officerRole || 'officer',
+        reason: `Freeze requisition ${requestId} dispatched to institutional nodal officer.`
+      });
+    } catch {}
+
+    return this.getFreezeRequest(requestId);
+  }
+
+  recordNodalResponse(requestId, { action, referenceNumber, amountFrozen = 0, nodalName = 'Bank/Exchange Nodal Desk', complianceNotes = '' }) {
+    const req = this.getFreezeRequest(requestId);
+    if (!req) throw Object.assign(new Error(`Freeze request ${requestId} not found.`), { status: 404 });
+    if (req.status !== 'SENT_TO_NODAL') {
+      throw Object.assign(new Error(`Cannot record nodal response on request with status '${req.status}'. Must be 'SENT_TO_NODAL'.`), { status: 400 });
+    }
+
+    const validActions = ['Account Frozen', 'Lien Marked', 'Insufficient Balance', 'Not Our Customer'];
+    if (!validActions.includes(action)) {
+      throw Object.assign(new Error(`Invalid nodal action '${action}'. Must be one of: ${validActions.join(', ')}`), { status: 400 });
+    }
+
+    const stamp = now();
+    let newReqStatus = 'FREEZE_CONFIRMED';
+    let newCaseStatus = 'Freeze Confirmed';
+
+    if (action === 'Account Frozen') {
+      newReqStatus = 'FREEZE_CONFIRMED';
+      newCaseStatus = 'Freeze Confirmed';
+    } else if (action === 'Lien Marked' || action === 'Insufficient Balance') {
+      newReqStatus = 'PARTIALLY_FROZEN';
+      newCaseStatus = 'Partially Frozen';
+    } else if (action === 'Not Our Customer') {
+      newReqStatus = 'UNRESOLVED_NOT_CUSTOMER';
+      newCaseStatus = null;
+    }
+
+    const refNum = referenceNumber || 'NODAL-REF-' + randomBytes(4).toString('hex').toUpperCase();
+
+    try {
+      this.db.prepare(`
+        UPDATE case_freeze_requests
+        SET status = ?, response_reference = ?, amount_frozen = ?, nodal_name = ?, compliance_notes = ?, updated_at = ?
+        WHERE id = ?
+      `).run(newReqStatus, refNum, Number(amountFrozen) || 0, nodalName, complianceNotes, stamp, requestId);
+    } catch {
+      this.db.prepare(`
+        UPDATE case_freeze_requests
+        SET status = ?, response_reference = ?, amount_frozen = ?, updated_at = ?
+        WHERE id = ?
+      `).run(newReqStatus, refNum, Number(amountFrozen) || 0, stamp, requestId);
+    }
+
+    if (newCaseStatus) {
+      try {
+        this.updateComplaintStatus({
+          caseId: req.case_id,
+          newStatus: newCaseStatus,
+          authorId: 'nodal-portal',
+          authorName: nodalName,
+          authorRole: 'bank_nodal',
+          reason: `Nodal officer recorded compliance action '${action}'. Amount secured: ₹${Number(amountFrozen).toLocaleString('en-IN')}. Ref: ${refNum}`
+        });
+      } catch {}
+    } else {
+      this.db.prepare(`
+        INSERT INTO case_updates (id, case_id, author_id, author_name, author_role, update_type, message, is_internal, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(randomUUID(), req.case_id, 'nodal-portal', nodalName, 'bank_nodal', 'INSTITUTION_RESPONSE', `Institutional response received from ${nodalName}: ${action}. ${complianceNotes}`, 0, stamp);
+    }
+
     return this.getFreezeRequest(requestId);
   }
 
@@ -1563,7 +1731,19 @@ export class Store {
     return complaintRecord;
   }
 
-  listComplaints({ reporterId = null, status = null, search = null, chain = null, priority = null, limit = 100 } = {}) {
+  listComplaints({
+    reporterId = null,
+    status = null,
+    search = null,
+    chain = null,
+    priority = null,
+    officerId = null,
+    officerUnit = null,
+    scopingRole = null,
+    myCasesOnly = false,
+    sortBy = 'recent',
+    limit = 100
+  } = {}) {
     let sql = 'SELECT * FROM complaints WHERE 1=1';
     const params = [];
 
@@ -1589,38 +1769,113 @@ export class Store {
       params.push(s, s, s, s, s);
     }
 
-    sql += ' ORDER BY created_at DESC LIMIT ?';
+    if (scopingRole === 'officer' && officerId) {
+      if (myCasesOnly) {
+        sql += ' AND assigned_officer_id=?';
+        params.push(officerId);
+      } else {
+        sql += ' AND (assigned_officer_id=? OR (assigned_officer_id IS NULL AND (unit IS NULL OR unit=?)))';
+        params.push(officerId, officerUnit || 'Cyber Crime Division');
+      }
+    }
+
+    if (sortBy === 'loss' || sortBy === 'priority') {
+      sql += ' ORDER BY reported_loss DESC, created_at DESC LIMIT ?';
+    } else {
+      sql += ' ORDER BY created_at DESC LIMIT ?';
+    }
     params.push(limit);
 
     const rows = this.db.prepare(sql).all(...params);
-    return rows.map(r => ({
-      id: r.case_id,
-      uuid: r.id,
-      caseId: r.case_id,
-      reporterId: r.reporter_id,
-      reporterName: r.reporter_name,
-      reporterEmail: r.reporter_email,
-      incidentType: r.incident_type,
-      incidentDate: r.incident_date,
-      description: r.description,
-      reportedLoss: r.reported_loss,
-      reportedAmount: r.reported_loss,
-      currency: r.currency,
-      chain: r.chain,
-      blockchainNetwork: r.chain,
-      reportedWallet: r.reported_wallet,
-      suspectWallet: r.reported_wallet,
-      transactionHash: r.transaction_hash,
-      status: r.status,
-      assignedOfficerId: r.assigned_officer_id,
-      assignedOfficerName: r.assigned_officer_name,
-      rejectionReason: r.rejection_reason,
-      priority: r.priority,
-      trackingCode: r.tracking_code || null,
-      duplicateAlert: Boolean(r.duplicate_alert),
-      createdAt: r.created_at,
-      updatedAt: r.updated_at
-    }));
+    return rows.map(r => {
+      const createdTime = Date.parse(r.created_at) || Date.now();
+      const elapsedMs = Math.max(0, Date.now() - createdTime);
+      const windowMs = 24 * 3600 * 1000;
+      const remainingMs = Math.max(0, windowMs - elapsedMs);
+      const remainingHours = Math.round((remainingMs / (3600 * 1000)) * 10) / 10;
+      const sla = {
+        windowHours: 24,
+        remainingMs,
+        remainingHours,
+        isBreached: remainingMs === 0,
+        urgency: remainingHours <= 4 ? 'CRITICAL' : remainingHours <= 12 ? 'HIGH' : 'STANDARD'
+      };
+
+      let linkedIds = [];
+      try {
+        linkedIds = r.linked_case_ids ? (typeof r.linked_case_ids === 'string' ? JSON.parse(r.linked_case_ids) : r.linked_case_ids) : [];
+      } catch {}
+      const linkageBadges = {
+        hasDuplicateAlert: Boolean(r.duplicate_alert),
+        linkedCount: linkedIds.length,
+        linkedCaseIds: linkedIds,
+        badge: r.duplicate_alert ? `${linkedIds.length} Linked Case${linkedIds.length === 1 ? '' : 's'}` : null
+      };
+
+      return {
+        id: r.case_id,
+        uuid: r.id,
+        caseId: r.case_id,
+        reporterId: r.reporter_id,
+        reporterName: r.reporter_name,
+        reporterEmail: r.reporter_email,
+        incidentType: r.incident_type,
+        incidentDate: r.incident_date,
+        description: r.description,
+        reportedLoss: r.reported_loss,
+        reportedAmount: r.reported_loss,
+        currency: r.currency,
+        chain: r.chain,
+        blockchainNetwork: r.chain,
+        reportedWallet: r.reported_wallet,
+        suspectWallet: r.reported_wallet,
+        transactionHash: r.transaction_hash,
+        status: r.status,
+        assignedOfficerId: r.assigned_officer_id,
+        assignedOfficerName: r.assigned_officer_name,
+        rejectionReason: r.rejection_reason,
+        priority: r.priority,
+        trackingCode: r.tracking_code || null,
+        duplicateAlert: Boolean(r.duplicate_alert),
+        linkedCaseIds: linkedIds,
+        sla,
+        linkageBadges,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at
+      };
+    });
+  }
+
+  claimComplaint({ caseId, officerId, officerName, officerUnit = 'Cyber Crime Division' }) {
+    const comp = this.db.prepare('SELECT * FROM complaints WHERE case_id=? OR id=?').get(caseId, caseId);
+    if (!comp) throw Object.assign(new Error(`Complaint ${caseId} was not found.`), { status: 404 });
+
+    if (comp.assigned_officer_id && comp.assigned_officer_id !== officerId) {
+      throw Object.assign(new Error(`Complaint ${caseId} is already assigned to officer ${comp.assigned_officer_name}.`), { status: 409 });
+    }
+
+    const actualCaseId = comp.case_id;
+    const stamp = now();
+    const newStatus = (comp.status === 'Submitted' || comp.status === 'Pending Review' || comp.status === 'Under Review')
+      ? 'Assigned'
+      : comp.status;
+
+    this.db.prepare(`
+      UPDATE complaints
+      SET assigned_officer_id=?, assigned_officer_name=?, status=?, updated_at=?
+      WHERE case_id=?
+    `).run(officerId, officerName, newStatus, stamp, actualCaseId);
+
+    this.db.prepare(`
+      INSERT INTO case_updates (id, case_id, author_id, author_name, author_role, update_type, message, is_internal, previous_status, new_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(), actualCaseId, officerId, officerName, 'officer',
+      'STATUS_CHANGE', `Case claimed by Officer ${officerName} (${officerUnit}). Assigned for investigation.`,
+      0, comp.status, newStatus, stamp
+    );
+
+    return this.getComplaint(actualCaseId, true);
   }
 
   getComplaint(caseIdOrId, includeInternal = false) {
