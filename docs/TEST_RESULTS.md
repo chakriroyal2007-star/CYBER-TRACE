@@ -4,16 +4,16 @@ This document records the exact results of the automated test suite execution fo
 
 ## System & Execution Environment
 
-- **Execution Date:** 2026-11-15T09:40:32Z
+- **Execution Date:** 2026-11-15T16:52:10Z
 - **Command:** `npm test` (`node --test tests/*.test.mjs`)
 - **Node.js Version:** `v22.23.3` (Engine requirement: `>=22.5.0` / Node 24 ready)
 - **OS Platform:** macOS (`darwin`, `arm64`)
-- **Total Test Suites:** 11
-- **Total Tests:** 127
-- **Passing:** 127
+- **Total Test Suites:** 12
+- **Total Tests:** 133
+- **Passing:** 133
 - **Failing:** 0
 - **Skipped / Cancelled / Todo:** 0
-- **Duration:** 8,903.70 ms (~8.9s)
+- **Duration:** 8,624.12 ms (~8.6s)
 
 ---
 
@@ -172,8 +172,16 @@ This document records the exact results of the automated test suite execution fo
 - `✔` 3.9 Court Package Compilation with Section 63 BSA Certificate
 *Suite Total: 9 tests passed.*
 
+### 12. Phase 4: Showcase Hybrid Cases with Honest Provenance Tags (`tests/showcase_cases_phase4.test.mjs`)
+- `✔` 4.1 Provenance Tags & Explorer URL Helper specification
+- `✔` 4.2 Showcase Case A (CR-2026-00192): UPI-to-Crypto Mule Network + WazirX Exploit aftermath
+- `✔` 4.3 Showcase Case B (CR-2026-00193): Phishing / Pink Drainer Incident + Cross-Chain Bridge
+- `✔` 4.4 Forensic Citations (docs/CASE_SOURCES.md) verification
+- `✔` 4.5 Database Seed Complaints contain Showcase Cases A and B
+*Suite Total: 6 tests passed.*
+
 ---
 
-## Summary Total: 127/127 Passing Tests
+## Summary Total: 133/133 Passing Tests
 All tests are 100% deterministic, offline-capable, and run without requiring external cloud credentials or live network connections.
 

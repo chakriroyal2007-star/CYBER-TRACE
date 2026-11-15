@@ -1196,6 +1196,55 @@ export class Store {
 
         const seedComplaints = [
           {
+            caseId: 'CR-2026-00192',
+            reporterId: reporterId,
+            reporterName: 'Priya Nair',
+            reporterEmail: 'priya.nair@example.in',
+            incidentType: 'Investment Scam / Mule Network',
+            incidentDate: '2026-09-23T14:20:00.000Z',
+            description: 'UPI-to-crypto mule network. Starts with victim payment (UTR 425189021432), traces through 2 Indian mule accounts, to domestic exchange P2P desk, to WazirX exploit on-chain withdrawal and consolidation.',
+            reportedLoss: 812450,
+            currency: 'INR',
+            chain: 'Ethereum',
+            reportedWallet: '0x28C6c06298d514Db089934071355E5743bf21d60',
+            transactionHash: '0x6e9f456860d5b1be2c24efca92837f485db56fbf30cf5634ca3b5c6e7368d447',
+            status: 'Trace in Progress',
+            priority: 'High',
+            assignedOfficerId: officerId,
+            assignedOfficerName: 'Insp. Rajesh Sharma (CBI Officer)',
+            unit: 'CBI_CYBER_CRIME_HQ',
+            provenanceTags: {
+              caseType: 'HYBRID',
+              seed: 'USER_UPLOADED',
+              fiat: 'SYNTHETIC_ILLUSTRATIVE',
+              onchain: 'REAL_PUBLIC_ONCHAIN'
+            }
+          },
+          {
+            caseId: 'CR-2026-00193',
+            reporterId: reporter2Id,
+            reporterName: 'Amit Verma',
+            reporterEmail: 'amit.verma@example.in',
+            incidentType: 'Phishing / Social Engineering Drain',
+            incidentDate: '2026-10-14T08:15:00.000Z',
+            description: 'Phishing scam leading directly to an on-chain drain (Pink Drainer segment) with cross-chain bridge to Polygon consolidation wallet.',
+            reportedLoss: 350000,
+            currency: 'INR',
+            chain: 'Ethereum',
+            reportedWallet: '0x32Be343B94f860124dC4fEe278FDCBD38C102D88',
+            transactionHash: '0x9480d196f7c5e317c80088523b0f5885c496a7d2f9b8c049d5a9c0268504812a',
+            status: 'Trace in Progress',
+            priority: 'High',
+            assignedOfficerId: officerId,
+            assignedOfficerName: 'Insp. Rajesh Sharma (CBI Officer)',
+            unit: 'CBI_CYBER_CRIME_HQ',
+            provenanceTags: {
+              caseType: 'HYBRID',
+              seed: 'USER_UPLOADED',
+              onchain: 'REAL_PUBLIC_ONCHAIN'
+            }
+          },
+          {
             caseId: 'CR-2026-90412',
             reporterId: reporterId,
             reporterName: 'Priya Nair',
@@ -1812,6 +1861,12 @@ export class Store {
         badge: r.duplicate_alert ? `${linkedIds.length} Linked Case${linkedIds.length === 1 ? '' : 's'}` : null
       };
 
+      let parsedPayload = {};
+      try {
+        parsedPayload = r.payload ? (typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload) : {};
+      } catch {}
+      const provenanceTags = parsedPayload.provenanceTags || (r.provenance_tags ? JSON.parse(r.provenance_tags) : { seed: 'USER_UPLOADED' });
+
       return {
         id: r.case_id,
         uuid: r.id,
@@ -1840,6 +1895,8 @@ export class Store {
         linkedCaseIds: linkedIds,
         sla,
         linkageBadges,
+        provenanceTags,
+        payload: parsedPayload,
         createdAt: r.created_at,
         updatedAt: r.updated_at
       };
@@ -1886,6 +1943,12 @@ export class Store {
     const evidence = this.listEvidence(caseId);
     const updates = this.listCaseUpdates(caseId, includeInternal);
 
+    let parsedPayload = {};
+    try {
+      parsedPayload = row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : {};
+    } catch {}
+    const provenanceTags = parsedPayload.provenanceTags || (row.provenance_tags ? (typeof row.provenance_tags === 'string' ? JSON.parse(row.provenance_tags) : row.provenance_tags) : { seed: 'USER_UPLOADED', fiat: 'USER_UPLOADED' });
+
     return {
       id: row.case_id,
       uuid: row.id,
@@ -1914,7 +1977,8 @@ export class Store {
       suspectPhone: row.suspect_phone || null,
       duplicateAlert: Boolean(row.duplicate_alert),
       linkedCaseIds: row.linked_case_ids ? (typeof row.linked_case_ids === 'string' ? JSON.parse(row.linked_case_ids) : row.linked_case_ids) : [],
-      provenanceTags: row.provenance_tags ? (typeof row.provenance_tags === 'string' ? JSON.parse(row.provenance_tags) : row.provenance_tags) : { seed: 'USER_UPLOADED', fiat: 'USER_UPLOADED' },
+      provenanceTags,
+      payload: parsedPayload,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       evidence,

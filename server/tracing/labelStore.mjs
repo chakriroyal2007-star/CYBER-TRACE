@@ -151,6 +151,10 @@ export class LabelStore {
     return this.labels.get(key) || null;
   }
 
+  get(address) {
+    return this.lookup(address);
+  }
+
   getAll() {
     return Array.from(this.labels.values());
   }

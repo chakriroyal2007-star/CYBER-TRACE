@@ -2,16 +2,22 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Expand, Minus, Plus, RotateCcw, Layers, Route, ChevronDown, Network } from 'lucide-react';
 import '../workspace.css';
 
+export type ProvenanceTag = 'REAL_PUBLIC_ONCHAIN' | 'USER_UPLOADED' | 'INSTITUTION_RESPONSE' | 'SYNTHETIC_ILLUSTRATIVE' | 'ML_INFERRED';
+
 export interface GraphNode {
   id: string; address: string; label: string;
   type: 'victim'|'suspect'|'intermediary'|'bridge'|'dex'|'mixer'|'vasp'|'unknown';
   chain: string; balance: number; riskScore: number; entity: string; cluster: string;
   firstSeen: string; lastSeen: string; incomingCount: number; outgoingCount: number;
   behavior: string[]; evidenceIds: string[]; x: number; y: number;
+  provenance?: ProvenanceTag;
+  explorerUrl?: string | null;
 }
 export interface GraphEdge {
   id: string; source: string; target: string; amount: number; timestamp: string;
   hash: string; chain: string; asset: string; highlighted: boolean;
+  provenance?: ProvenanceTag;
+  explorerUrl?: string | null;
 }
 interface GraphProps { nodes: GraphNode[]; edges: GraphEdge[]; onNodeSelect?: (node: GraphNode)=>void; onEdgeSelect?: (edge: GraphEdge)=>void; selectedId?: string; compact?: boolean; }
 const colorFor = (type: string) => ({victim:'#9bb4d6',suspect:'#fa9c72',intermediary:'#6e8aaa',bridge:'#a99bed',dex:'#70a5db',mixer:'#d080a5',vasp:'#4fd7c1',unknown:'#677b93'}[type]||'#8397b1');
@@ -80,15 +86,34 @@ export default function GraphPanel({nodes,edges,onNodeSelect,onEdgeSelect,select
           <circle r="23" fill="#102031" stroke={color} strokeWidth={isSelected?2:1.2}/><circle r="18" fill={color} fillOpacity=".055"/><NodeGlyph type={node.type} color={color}/>
           {node.riskScore>=70&&<circle cx="17" cy="-17" r="4" fill="#f09a69" stroke="#0d1725" strokeWidth="2"/>}
           {clusterSizes[node.id]>1&&<g transform="translate(20 18)"><rect x="-10" y="-8" width="23" height="16" rx="8" fill="#2b4156"/><text textAnchor="middle" x="1" y="3" fontSize="9" fill="#dceafa">{clusterSizes[node.id]}</text></g>}
+          {/* Provenance Badge */}
+          {(() => {
+            const prov = node.provenance || 'SYNTHETIC_ILLUSTRATIVE';
+            const meta = prov === 'REAL_PUBLIC_ONCHAIN'
+              ? { text: 'REAL ON-CHAIN', color: '#10b981', bg: '#064e3b' }
+              : prov === 'USER_UPLOADED'
+              ? { text: 'USER PROOF', color: '#38bdf8', bg: '#0c4a6e' }
+              : prov === 'INSTITUTION_RESPONSE'
+              ? { text: 'BANK NODAL', color: '#818cf8', bg: '#312e81' }
+              : prov === 'ML_INFERRED'
+              ? { text: 'ML INFERRED', color: '#c084fc', bg: '#581c87' }
+              : { text: 'SYNTHETIC', color: '#f59e0b', bg: '#451a03' };
+            return (
+              <g transform="translate(0, -32)">
+                <rect x="-35" y="-5" width="70" height="11" rx="3" fill={meta.bg} stroke={meta.color} strokeWidth="0.7" opacity="0.9"/>
+                <text y="3" textAnchor="middle" fill={meta.color} fontSize="6.5" fontWeight="700" letterSpacing="0.5">{meta.text}</text>
+              </g>
+            );
+          })()}
           <rect x="-67" y="29" width="134" height="18" rx="3" fill="#0b1522" fillOpacity=".93"/>
           <text y="41" textAnchor="middle" fill={isSelected?'#ffffff':'#b5c7dd'} fontSize="10.5" fontWeight={node.type==='vasp'?'600':'400'}>{node.label.length>22?`${node.label.slice(0,21)}…`:node.label}</text>
           <text y="56" textAnchor="middle" fill={color} fontSize="8" letterSpacing="1">{node.chain?.toUpperCase()||'ENTITY'} {node.type==='vasp'?'· CANDIDATE':''}</text>
         </g>})}
-        {hovered&&<g transform={`translate(${Math.max(110,Math.min(940,hovered.x))} ${hovered.y-61})`} pointerEvents="none"><rect x="-104" y="-22" width="208" height="40" rx="5" fill="#1a2a3e" stroke="#3b536e"/><text y="-6" textAnchor="middle" fill="#e4effc" fontSize="10" fontFamily="monospace">{short(hovered.address||hovered.id)}</text><text y="9" textAnchor="middle" fill="#95aac4" fontSize="9">Risk {hovered.riskScore||0}/100 · Click to inspect evidence</text></g>}
+        {hovered&&<g transform={`translate(${Math.max(110,Math.min(940,hovered.x))} ${hovered.y-61})`} pointerEvents="none"><rect x="-104" y="-22" width="208" height="40" rx="5" fill="#1a2a3e" stroke="#3b536e"/><text y="-6" textAnchor="middle" fill="#e4effc" fontSize="10" fontFamily="monospace">{short(hovered.address||hovered.id)}</text><text y="9" textAnchor="middle" fill="#95aac4" fontSize="9">{hovered.provenance === 'REAL_PUBLIC_ONCHAIN' ? '✓ Verified Real On-Chain' : hovered.provenance === 'USER_UPLOADED' ? 'Citizen Reported Proof' : 'Synthetic Illustrative'} · Risk {hovered.riskScore||0}/100</text></g>}
       </g>
       {!nodes.length&&<text x="525" y="220" textAnchor="middle" fill="#879bb5" fontSize="14">No graph evidence available for this case.</text>}
     </svg>
-    <div className="graph-footer"><div className="graph-legend"><span><i style={{background:colorFor('victim')}}/>Reported</span><span><i style={{background:colorFor('suspect')}}/>Suspect</span><span><i style={{background:colorFor('intermediary')}}/>Intermediary</span><span><i style={{background:colorFor('bridge')}}/>Bridge</span><span><i style={{background:colorFor('vasp')}}/>VASP candidate</span></div><div className="graph-controls"><button onClick={()=>zoomBy(.8)} title="Zoom out" aria-label="Zoom out"><Minus size={14}/></button><span>{Math.round(zoom*100)}%</span><button onClick={()=>zoomBy(1.25)} title="Zoom in" aria-label="Zoom in"><Plus size={14}/></button><button onClick={()=>{setZoom(1);setPan({x:0,y:0})}} title="Fit network" aria-label="Fit network"><RotateCcw size={13}/></button><button onClick={fullscreen} title="Expand graph" aria-label="Expand graph"><Expand size={14}/></button></div></div>
+    <div className="graph-footer"><div className="graph-legend"><span><i style={{background:colorFor('victim')}}/>Reported</span><span><i style={{background:colorFor('suspect')}}/>Suspect</span><span><i style={{background:colorFor('intermediary')}}/>Intermediary</span><span><i style={{background:colorFor('bridge')}}/>Bridge</span><span><i style={{background:colorFor('vasp')}}/>VASP candidate</span><span style={{marginLeft:10,borderLeft:'1px solid #23374d',paddingLeft:10,color:'#10b981'}}><i style={{background:'#10b981'}}/>Real On-Chain</span><span style={{color:'#f59e0b'}}><i style={{background:'#f59e0b'}}/>Synthetic Mule</span></div><div className="graph-controls"><button onClick={()=>zoomBy(.8)} title="Zoom out" aria-label="Zoom out"><Minus size={14}/></button><span>{Math.round(zoom*100)}%</span><button onClick={()=>zoomBy(1.25)} title="Zoom in" aria-label="Zoom in"><Plus size={14}/></button><button onClick={()=>{setZoom(1);setPan({x:0,y:0})}} title="Fit network" aria-label="Fit network"><RotateCcw size={13}/></button><button onClick={fullscreen} title="Expand graph" aria-label="Expand graph"><Expand size={14}/></button></div></div>
     <div className="graph-context-hint"><Network size={11}/> Scroll to zoom · Drag to pan · Select a wallet or transfer {selected&&canExpand&&<button onClick={expandSelected}>Expand {selected.label}</button>}</div>
   </div>;
 }

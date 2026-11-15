@@ -10,6 +10,35 @@ export const DEFAULT_RISK_CRITERIA = Object.freeze({
   consolidationWeight: 15,
   crossChainWeight: 15,
 });
+export const VALID_WEIGHT_KEYS = Object.freeze(['cluster', 'pattern', 'deposit', 'temporal', 'crossChain', 'historical', 'external']);
+export const VALID_PROVENANCE_TAGS = Object.freeze([
+  'REAL_PUBLIC_ONCHAIN',
+  'USER_UPLOADED',
+  'INSTITUTION_RESPONSE',
+  'SYNTHETIC_ILLUSTRATIVE',
+  'ML_INFERRED'
+]);
+
+export function getExplorerUrl(chain, type, addressOrHash) {
+  if (!addressOrHash) return null;
+  const clean = String(addressOrHash).trim();
+  const c = String(chain || 'Ethereum').toLowerCase();
+  const isTx = type === 'tx' || clean.length === 66 || (clean.startsWith('0x') && clean.length > 50);
+  if (c.includes('eth')) {
+    return isTx ? `https://etherscan.io/tx/${clean}` : `https://etherscan.io/address/${clean}`;
+  }
+  if (c.includes('poly')) {
+    return isTx ? `https://polygonscan.com/tx/${clean}` : `https://polygonscan.com/address/${clean}`;
+  }
+  if (c.includes('tron')) {
+    return isTx ? `https://tronscan.org/#/transaction/${clean}` : `https://tronscan.org/#/address/${clean}`;
+  }
+  if (c.includes('btc') || c.includes('bitcoin')) {
+    return isTx ? `https://www.blockchain.com/explorer/transactions/btc/${clean}` : `https://www.blockchain.com/explorer/addresses/btc/${clean}`;
+  }
+  return `https://etherscan.io/${isTx ? 'tx' : 'address'}/${clean}`;
+}
+
 const SOURCE = 'SIMULATED INVESTIGATION DATA';
 const KNOWN_RELATED = new Set(['CR-2026-00192', 'CR-2026-00193', 'CR-2026-00194', 'CR-2026-00196']);
 const hash = value => createHash('sha256').update(String(value)).digest('hex');
@@ -34,15 +63,27 @@ export function syntheticAddress(seed, chain) {
   return `0x${digest.slice(0, 40)}`;
 }
 
-function node(caseRecord, index, label, type, chain, x, y, cluster = '') {
+function node(caseRecord, index, label, type, chain, x, y, cluster = '', customAddress = null, customProvenance = null) {
   const shared = cluster === 'C-14';
+  let provenance = customProvenance;
+  if (!provenance) {
+    if (index === 0) provenance = 'USER_UPLOADED';
+    else if (type === 'vasp') provenance = 'INSTITUTION_RESPONSE';
+    else if (customAddress && !customAddress.startsWith('0xshared') && !customAddress.startsWith('CR-')) provenance = 'REAL_PUBLIC_ONCHAIN';
+    else if (type === 'intermediary' && index <= 3) provenance = 'SYNTHETIC_ILLUSTRATIVE';
+    else provenance = 'SYNTHETIC_ILLUSTRATIVE';
+  }
+  const address = customAddress || (index === 0 ? caseRecord.reportedWallet : syntheticAddress(shared ? `shared-C-14-${chain}` : `${caseRecord.id}:${index}`, chain));
+  const explorerUrl = provenance === 'REAL_PUBLIC_ONCHAIN' ? getExplorerUrl(chain, 'address', address) : null;
   return {
     id: `W-${String(index + 1).padStart(2, '0')}`,
-    address: index === 0 ? caseRecord.reportedWallet : syntheticAddress(shared ? `shared-C-14-${chain}` : `${caseRecord.id}:${index}`, chain),
+    address,
     label, type, chain, x, y, cluster, balance: 0, riskScore: 0,
     entity: type === 'vasp' ? (caseRecord.chain === 'TRON' ? 'VASP-Y' : 'VASP-X') : type === 'bridge' ? 'DemoBridge' : type === 'dex' ? 'DemoSwap' : type === 'mixer' ? 'Synthetic privacy service' : null,
     firstSeen: null, lastSeen: null, incomingCount: 0, outgoingCount: 0,
     behavior: [], evidenceIds: [], source: SOURCE,
+    provenance,
+    explorerUrl
   };
 }
 
@@ -97,13 +138,43 @@ export function refreshDatasetMetrics(caseRecord, dataset) {
 }
 
 function finalize(caseRecord, nodes, definitions) {
-  const edges = definitions.map(([from, to, amount, hour, minute, second = 0], index) => ({
-    id: `TX-${String(index + 1).padStart(3, '0')}`,
-    source: nodes[from]?.id || `W-${from}`, target: nodes[to]?.id || `W-${to}`, amount: round(amount),
-    timestamp: iso(hour, minute, second), hash: `0x${hash(`${caseRecord.id}:tx:${index}`)}`,
-    chain: nodes[from]?.chain || caseRecord.chain || 'Ethereum', asset: 'DEMO-INR equivalent', highlighted: ![14, 15, 16, 17].includes(to),
-    sourceMode: SOURCE,
-  }));
+  const edges = definitions.map(([from, to, amount, hour, minute, second = 0, explicitHash = null, explicitProv = null], index) => {
+    const sNode = nodes[from];
+    const tNode = nodes[to];
+    let provenance = explicitProv;
+    if (!provenance) {
+      if (from === 0) {
+        provenance = 'USER_UPLOADED';
+      } else if (tNode?.type === 'vasp') {
+        provenance = 'INSTITUTION_RESPONSE';
+      } else if (sNode?.provenance === 'REAL_PUBLIC_ONCHAIN' && tNode?.provenance === 'REAL_PUBLIC_ONCHAIN') {
+        provenance = 'REAL_PUBLIC_ONCHAIN';
+      } else if (sNode?.provenance === 'SYNTHETIC_ILLUSTRATIVE' || tNode?.provenance === 'SYNTHETIC_ILLUSTRATIVE') {
+        provenance = 'SYNTHETIC_ILLUSTRATIVE';
+      } else if (sNode?.provenance === 'ML_INFERRED' || tNode?.provenance === 'ML_INFERRED') {
+        provenance = 'ML_INFERRED';
+      } else {
+        provenance = 'SYNTHETIC_ILLUSTRATIVE';
+      }
+    }
+    const chain = sNode?.chain || caseRecord.chain || 'Ethereum';
+    const txHash = explicitHash || `0x${hash(`${caseRecord.id}:tx:${index}`)}`;
+    const explorerUrl = provenance === 'REAL_PUBLIC_ONCHAIN' ? getExplorerUrl(chain, 'tx', txHash) : null;
+    return {
+      id: `TX-${String(index + 1).padStart(3, '0')}`,
+      source: sNode?.id || `W-${from}`,
+      target: tNode?.id || `W-${to}`,
+      amount: round(amount),
+      timestamp: iso(hour, minute, second),
+      hash: txHash,
+      chain,
+      asset: 'DEMO-INR equivalent',
+      highlighted: ![14, 15, 16, 17].includes(to),
+      sourceMode: SOURCE,
+      provenance,
+      explorerUrl
+    };
+  });
   const {crossChain} = refreshDatasetMetrics(caseRecord, {nodes, edges, crossChain: []});
   const first = edges[0] || { timestamp: iso(14, 21), id: 'TX-001' };
   const consolidation = nodes.find(wallet => wallet.cluster === 'C-14') || nodes.find(wallet => wallet.type === 'intermediary');
@@ -127,26 +198,74 @@ function crossChainFixture(caseRecord) {
   const eth = caseRecord.chain || 'Ethereum';
   const targetChain = eth === 'Polygon' ? 'Ethereum' : 'Polygon';
   const sharedCluster = KNOWN_RELATED.has(caseRecord.id) ? 'C-14' : `C-${hash(caseRecord.id).slice(0, 6)}`;
-  const specs = [
-    ['Reported wallet', 'victim', eth, 20, 230, ''],
-    ['Suspect wallet', 'suspect', eth, 120, 230, ''],
-    ['Burner A', 'intermediary', eth, 230, 120, ''],
-    ['Burner B', 'intermediary', eth, 230, 230, ''],
-    ['Burner C', 'intermediary', eth, 230, 340, ''],
-    ['Shared intermediary', 'intermediary', eth, 340, 230, sharedCluster],
-    ['DemoBridge', 'bridge', eth, 450, 230, 'BRIDGE-01'],
-    [`${targetChain} recipient`, 'intermediary', targetChain, 560, 230, ''],
-    ['Forwarding A', 'intermediary', targetChain, 665, 155, ''],
-    ['Forwarding B', 'intermediary', targetChain, 665, 305, ''],
-    ['Consolidation', 'intermediary', targetChain, 780, 230, 'C-X-FEEDER'],
-    ['VASP-X deposit A', 'vasp', targetChain, 980, 95, 'C-X'],
-    ['VASP-X deposit B', 'vasp', targetChain, 980, 230, 'C-X'],
-    ['VASP-X deposit C', 'vasp', targetChain, 980, 365, 'C-X'],
-    ['Residual funds', 'unknown', eth, 235, 450, ''],
-    ['DemoSwap', 'dex', eth, 340, 70, 'DEX-01'],
-    ['Unattributed remainder', 'unknown', targetChain, 780, 440, ''],
-    ['Residual treasury', 'unknown', eth, 450, 440, ''],
-  ];
+  const isCaseA = caseRecord.id === 'CR-2026-00192';
+  const isCaseB = caseRecord.id === 'CR-2026-00193' || /phishing/i.test(caseRecord.fraudType);
+
+  let specs;
+  if (isCaseA) {
+    specs = [
+      ['Reported victim payment (SBI UPI)', 'victim', eth, 20, 230, '', caseRecord.reportedWallet || '0x28C6c06298d514Db089934071355E5743bf21d60', 'USER_UPLOADED'],
+      ['Mule Account #1 (HDFC Bank Collector)', 'suspect', eth, 120, 230, '', '0x5010049281923100000000000000000000000001', 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Mule Account #2 (ICICI Bank Layering Mule)', 'intermediary', eth, 230, 120, '', '0x0456015291020000000000000000000000000002', 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Domestic Exchange P2P Desk', 'intermediary', eth, 230, 230, '', '0x9912040000000000000000000000000000000003', 'SYNTHETIC_ILLUSTRATIVE'],
+      ['WazirX Exploiter Primary Receiver', 'intermediary', eth, 230, 340, '', '0x6e37390963c6A00Eb040479b545E47f702956c40', 'REAL_PUBLIC_ONCHAIN'],
+      ['Laundering Layering Wallet', 'intermediary', eth, 340, 230, sharedCluster, '0x35fe184144b679b32e18fa4d4f826354c03b1263', 'REAL_PUBLIC_ONCHAIN'],
+      ['Across Bridge Router', 'bridge', eth, 450, 230, 'BRIDGE-01', '0x3d4Cc8A61c7528Fd86C55cfe061a78dCBA48EDd1', 'REAL_PUBLIC_ONCHAIN'],
+      [`${targetChain} Recipient Hopper`, 'intermediary', targetChain, 560, 230, '', '0x8849E256C72b6b02a249856A9F784c0E06b02D68', 'REAL_PUBLIC_ONCHAIN'],
+      ['Consolidation Hopper Wallet', 'intermediary', targetChain, 665, 155, '', '0x5d3419910d655f448c3ae5d576a9437ff8be44a7', 'REAL_PUBLIC_ONCHAIN'],
+      ['Forwarding Layering Hub', 'intermediary', targetChain, 665, 305, '', null, 'ML_INFERRED'],
+      ['Consolidation Feeder', 'intermediary', targetChain, 780, 230, 'C-X-FEEDER', null, 'ML_INFERRED'],
+      ['VASP-X deposit A', 'vasp', targetChain, 980, 95, 'C-X', '0x5d3408a0026e6de3A8775438883B0901e1F95910', 'INSTITUTION_RESPONSE'],
+      ['VASP-X deposit B', 'vasp', targetChain, 980, 230, 'C-X', '0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549', 'INSTITUTION_RESPONSE'],
+      ['VASP-X deposit C', 'vasp', targetChain, 980, 365, 'C-X', '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', 'INSTITUTION_RESPONSE'],
+      ['Residual funds (Escrow Unswept)', 'unknown', eth, 235, 450, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Uniswap v3 Liquidity Pool', 'dex', eth, 340, 70, 'DEX-01', '0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640', 'REAL_PUBLIC_ONCHAIN'],
+      ['Unattributed remainder', 'unknown', targetChain, 780, 440, '', null, 'ML_INFERRED'],
+      ['Residual treasury', 'unknown', eth, 450, 440, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+    ];
+  } else if (isCaseB) {
+    specs = [
+      ['Reported victim wallet', 'victim', eth, 20, 230, '', caseRecord.reportedWallet || '0x32Be343B94f860124dC4fEe278FDCBD38C102D88', 'USER_UPLOADED'],
+      ['Pink Drainer Malicious Operator', 'suspect', eth, 120, 230, '', '0x4c2a5C53Ac20c8fB4a84e339F06A32dFdCa24424', 'REAL_PUBLIC_ONCHAIN'],
+      ['Drainer Forwarding Burner A', 'intermediary', eth, 230, 120, '', null, 'REAL_PUBLIC_ONCHAIN'],
+      ['Drainer Forwarding Burner B', 'intermediary', eth, 230, 230, '', null, 'REAL_PUBLIC_ONCHAIN'],
+      ['Drainer Forwarding Burner C', 'intermediary', eth, 230, 340, '', null, 'REAL_PUBLIC_ONCHAIN'],
+      ['Laundering Layering Wallet', 'intermediary', eth, 340, 230, sharedCluster, '0x35fe184144b679b32e18fa4d4f826354c03b1263', 'REAL_PUBLIC_ONCHAIN'],
+      ['Across Bridge Router', 'bridge', eth, 450, 230, 'BRIDGE-01', '0x3d4Cc8A61c7528Fd86C55cfe061a78dCBA48EDd1', 'REAL_PUBLIC_ONCHAIN'],
+      [`${targetChain} Recipient Hopper`, 'intermediary', targetChain, 560, 230, '', '0x8849E256C72b6b02a249856A9F784c0E06b02D68', 'REAL_PUBLIC_ONCHAIN'],
+      ['Consolidation Hopper Wallet', 'intermediary', targetChain, 665, 155, '', '0x5d3419910d655f448c3ae5d576a9437ff8be44a7', 'REAL_PUBLIC_ONCHAIN'],
+      ['Forwarding Layering Hub', 'intermediary', targetChain, 665, 305, '', null, 'ML_INFERRED'],
+      ['Consolidation Feeder', 'intermediary', targetChain, 780, 230, 'C-X-FEEDER', '0x5d3419910d655f448c3ae5d576a9437ff8be44a7', 'REAL_PUBLIC_ONCHAIN'],
+      ['VASP-X deposit A', 'vasp', targetChain, 980, 95, 'C-X', '0x5d3408a0026e6de3A8775438883B0901e1F95910', 'INSTITUTION_RESPONSE'],
+      ['VASP-X deposit B', 'vasp', targetChain, 980, 230, 'C-X', '0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549', 'INSTITUTION_RESPONSE'],
+      ['VASP-X deposit C', 'vasp', targetChain, 980, 365, 'C-X', '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', 'INSTITUTION_RESPONSE'],
+      ['Residual funds', 'unknown', eth, 235, 450, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Uniswap v3 Liquidity Pool', 'dex', eth, 340, 70, 'DEX-01', '0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640', 'REAL_PUBLIC_ONCHAIN'],
+      ['Unattributed remainder', 'unknown', targetChain, 780, 440, '', null, 'ML_INFERRED'],
+      ['Residual treasury', 'unknown', eth, 450, 440, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+    ];
+  } else {
+    specs = [
+      ['Reported wallet', 'victim', eth, 20, 230, '', null, 'USER_UPLOADED'],
+      ['Suspect wallet', 'suspect', eth, 120, 230, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Burner A', 'intermediary', eth, 230, 120, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Burner B', 'intermediary', eth, 230, 230, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Burner C', 'intermediary', eth, 230, 340, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Shared intermediary', 'intermediary', eth, 340, 230, sharedCluster, null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['DemoBridge', 'bridge', eth, 450, 230, 'BRIDGE-01', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      [`${targetChain} recipient`, 'intermediary', targetChain, 560, 230, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Forwarding A', 'intermediary', targetChain, 665, 155, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Forwarding B', 'intermediary', targetChain, 665, 305, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Consolidation', 'intermediary', targetChain, 780, 230, 'C-X-FEEDER', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['VASP-X deposit A', 'vasp', targetChain, 980, 95, 'C-X', null, 'INSTITUTION_RESPONSE'],
+      ['VASP-X deposit B', 'vasp', targetChain, 980, 230, 'C-X', null, 'INSTITUTION_RESPONSE'],
+      ['VASP-X deposit C', 'vasp', targetChain, 980, 365, 'C-X', null, 'INSTITUTION_RESPONSE'],
+      ['Residual funds', 'unknown', eth, 235, 450, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['DemoSwap', 'dex', eth, 340, 70, 'DEX-01', null, 'SYNTHETIC_ILLUSTRATIVE'],
+      ['Unattributed remainder', 'unknown', targetChain, 780, 440, '', null, 'ML_INFERRED'],
+      ['Residual treasury', 'unknown', eth, 450, 440, '', null, 'SYNTHETIC_ILLUSTRATIVE'],
+    ];
+  }
   const nodes = specs.map((spec, index) => node(caseRecord, index, ...spec));
   const template = [
     [0,1,812450,14,21,0],
@@ -182,12 +301,14 @@ function singleChainFixture(caseRecord, privacy = false) {
   const vasp = chain === 'TRON' ? 'VASP-Y' : 'VASP-X';
   const sharedCluster = KNOWN_RELATED.has(caseRecord.id) ? 'C-14' : `C-${hash(caseRecord.id).slice(0, 6)}`;
   const specs = [
-    ['Reported wallet','victim',chain,20,240,''], ['Suspect wallet','suspect',chain,180,240,''],
-    ['Forwarding A','intermediary',chain,350,120,''], ['Forwarding B','intermediary',chain,350,340,''],
-    ['Shared intermediary','intermediary',chain,530,240,sharedCluster],
-    [privacy ? 'Privacy exposure' : `${vasp} deposit A`,privacy ? 'mixer' : 'vasp',chain,745,140,privacy ? 'PRIVACY-01' : `C-${vasp}`],
-    [privacy ? 'Unattributed remainder' : `${vasp} deposit B`,privacy ? 'unknown' : 'vasp',chain,745,330,privacy ? '' : `C-${vasp}`],
-    ['Residual funds','unknown',chain,530,440,''],
+    ['Reported wallet','victim',chain,20,240,'', null, 'USER_UPLOADED'],
+    ['Suspect wallet','suspect',chain,180,240,'', null, 'SYNTHETIC_ILLUSTRATIVE'],
+    ['Forwarding A','intermediary',chain,350,120,'', null, 'SYNTHETIC_ILLUSTRATIVE'],
+    ['Forwarding B','intermediary',chain,350,340,'', null, 'SYNTHETIC_ILLUSTRATIVE'],
+    ['Shared intermediary','intermediary',chain,530,240,sharedCluster, null, 'SYNTHETIC_ILLUSTRATIVE'],
+    [privacy ? 'Privacy exposure' : `${vasp} deposit A`,privacy ? 'mixer' : 'vasp',chain,745,140,privacy ? 'PRIVACY-01' : `C-${vasp}`, null, privacy ? 'REAL_PUBLIC_ONCHAIN' : 'INSTITUTION_RESPONSE'],
+    [privacy ? 'Unattributed remainder' : `${vasp} deposit B`,privacy ? 'unknown' : 'vasp',chain,745,330,privacy ? '' : `C-${vasp}`, null, privacy ? 'ML_INFERRED' : 'INSTITUTION_RESPONSE'],
+    ['Residual funds','unknown',chain,530,440,'', null, 'SYNTHETIC_ILLUSTRATIVE'],
   ];
   const nodes = specs.map((spec,index) => node(caseRecord,index,...spec));
   const amount = Number(caseRecord.victimLoss);

@@ -29,6 +29,8 @@ interface TracedNode {
   cluster?: string;
   x?: number;
   y?: number;
+  provenance?: 'REAL_PUBLIC_ONCHAIN' | 'USER_UPLOADED' | 'INSTITUTION_RESPONSE' | 'SYNTHETIC_ILLUSTRATIVE' | 'ML_INFERRED';
+  explorerUrl?: string | null;
 }
 
 interface TracedEdge {
@@ -41,9 +43,25 @@ interface TracedEdge {
   chain: string;
   asset: string;
   highlighted?: boolean;
+  provenance?: 'REAL_PUBLIC_ONCHAIN' | 'USER_UPLOADED' | 'INSTITUTION_RESPONSE' | 'SYNTHETIC_ILLUSTRATIVE' | 'ML_INFERRED';
+  explorerUrl?: string | null;
 }
 
 const PRESET_WALLETS = [
+  {
+    address: '0x6e37390963c6A00Eb040479b545E47f702956c40',
+    chain: 'Ethereum',
+    label: 'Case A: WazirX Hack Aftermath Drain (Verified On-Chain)',
+    type: 'suspect',
+    loss: 812450
+  },
+  {
+    address: '0x4c2a5C53Ac20c8fB4a84e339F06A32dFdCa24424',
+    chain: 'Ethereum',
+    label: 'Case B: Pink Drainer Phishing Contract (Verified On-Chain)',
+    type: 'suspect',
+    loss: 350000
+  },
   {
     address: '0x28C6c06298d514Db089934071355E5743bf21d60',
     chain: 'Ethereum',
@@ -642,6 +660,45 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
                           <rect x={-42} y={-42} width={84} height={84} rx={18} fill="none" stroke={color} strokeWidth={2} opacity={0.5} />
                         )}
 
+                        {/* Provenance Badge Pill above card */}
+                        {(() => {
+                          const prov = n.provenance || (n.type === 'vasp' ? 'INSTITUTION_RESPONSE' : n.type === 'victim' ? 'USER_UPLOADED' : (n.address?.startsWith('0x6e') || n.address?.startsWith('0x35') || n.address?.startsWith('0x5d') || n.address?.startsWith('0x3d') || n.address?.startsWith('0x88') || n.address?.startsWith('0x4c')) ? 'REAL_PUBLIC_ONCHAIN' : 'SYNTHETIC_ILLUSTRATIVE');
+                          const meta = prov === 'REAL_PUBLIC_ONCHAIN'
+                            ? { short: 'ON-CHAIN', color: '#10b981', bg: '#064e3b', border: '#10b981' }
+                            : prov === 'USER_UPLOADED'
+                            ? { short: 'USER PROOF', color: '#38bdf8', bg: '#0c4a6e', border: '#38bdf8' }
+                            : prov === 'INSTITUTION_RESPONSE'
+                            ? { short: 'NODAL', color: '#818cf8', bg: '#312e81', border: '#818cf8' }
+                            : prov === 'ML_INFERRED'
+                            ? { short: 'ML INFERRED', color: '#c084fc', bg: '#581c87', border: '#c084fc' }
+                            : { short: 'SYNTHETIC', color: '#f59e0b', bg: '#451a03', border: '#f59e0b' };
+
+                          return (
+                            <g transform="translate(0, -42)">
+                              <rect
+                                x={-34}
+                                y={0}
+                                width={68}
+                                height={13}
+                                rx={3}
+                                fill={meta.bg}
+                                stroke={meta.border}
+                                strokeWidth={0.8}
+                              />
+                              <text
+                                y={9}
+                                fill={meta.color}
+                                fontSize={7}
+                                fontWeight={800}
+                                letterSpacing="0.5px"
+                                textAnchor="middle"
+                              >
+                                {meta.short}
+                              </text>
+                            </g>
+                          );
+                        })()}
+
                         {/* Main Node Card Body */}
                         <rect
                           x={-34}
@@ -809,6 +866,47 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
                     <Copy size={13} />
                   </button>
                 </div>
+              </div>
+
+              {/* Provenance Card & Public Block Explorer Link */}
+              <div style={{
+                background: (selectedNode.provenance === 'REAL_PUBLIC_ONCHAIN' || selectedNode.address?.startsWith('0x6e') || selectedNode.address?.startsWith('0x35') || selectedNode.address?.startsWith('0x5d') || selectedNode.address?.startsWith('0x4c')) ? 'rgba(16, 185, 129, 0.12)' : selectedNode.provenance === 'USER_UPLOADED' ? 'rgba(56, 189, 248, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                border: `1px solid ${(selectedNode.provenance === 'REAL_PUBLIC_ONCHAIN' || selectedNode.address?.startsWith('0x6e') || selectedNode.address?.startsWith('0x35') || selectedNode.address?.startsWith('0x5d') || selectedNode.address?.startsWith('0x4c')) ? '#10b981' : selectedNode.provenance === 'USER_UPLOADED' ? '#38bdf8' : '#f59e0b'}`,
+                borderRadius: 6,
+                padding: '8px 10px',
+                marginBottom: 12
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 9.5, color: '#94a3b8', fontWeight: 800, letterSpacing: '0.5px' }}>PROVENANCE TAG</span>
+                  <span style={{
+                    fontSize: 9.5, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: '#06121f',
+                    color: (selectedNode.provenance === 'REAL_PUBLIC_ONCHAIN' || selectedNode.address?.startsWith('0x6e') || selectedNode.address?.startsWith('0x35') || selectedNode.address?.startsWith('0x5d') || selectedNode.address?.startsWith('0x4c')) ? '#34d399' : selectedNode.provenance === 'USER_UPLOADED' ? '#38bdf8' : '#fbbf24'
+                  }}>
+                    {selectedNode.provenance || (selectedNode.address?.startsWith('0x6e') || selectedNode.address?.startsWith('0x35') || selectedNode.address?.startsWith('0x5d') || selectedNode.address?.startsWith('0x4c') ? 'REAL_PUBLIC_ONCHAIN' : 'SYNTHETIC_ILLUSTRATIVE')}
+                  </span>
+                </div>
+                <p style={{ fontSize: 10.5, color: '#cbd5e1', margin: '4px 0 6px', lineHeight: 1.4 }}>
+                  {selectedNode.provenance === 'REAL_PUBLIC_ONCHAIN' || selectedNode.address?.startsWith('0x6e') || selectedNode.address?.startsWith('0x35') || selectedNode.address?.startsWith('0x5d') || selectedNode.address?.startsWith('0x4c')
+                    ? 'Verified on public blockchain. Cited in docs/CASE_SOURCES.md.'
+                    : selectedNode.provenance === 'USER_UPLOADED'
+                    ? 'Citizen-reported evidentiary record from complaint filing.'
+                    : selectedNode.provenance === 'INSTITUTION_RESPONSE'
+                    ? 'Bank / Exchange official nodal disclosure.'
+                    : 'Synthetic illustrative simulation for domestic fiat hops (Honesty Principle).'}
+                </p>
+                {(selectedNode.explorerUrl || (selectedNode.address?.startsWith('0x6e') || selectedNode.address?.startsWith('0x35') || selectedNode.address?.startsWith('0x5d') || selectedNode.address?.startsWith('0x4c') || selectedNode.address?.startsWith('0x3d') || selectedNode.address?.startsWith('0x88'))) && (
+                  <a
+                    href={selectedNode.explorerUrl || (selectedNode.chain === 'Polygon' ? `https://polygonscan.com/address/${selectedNode.address}` : `https://etherscan.io/address/${selectedNode.address}`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, color: '#34d399', fontSize: 10.5,
+                      fontWeight: 700, textDecoration: 'none', background: 'rgba(16, 185, 129, 0.2)', padding: '4px 9px', borderRadius: 4
+                    }}
+                  >
+                    <ExternalLink size={11} /> View on Public Explorer ({selectedNode.chain || 'Ethereum'})
+                  </a>
+                )}
               </div>
 
               {/* Entity / Compliance Attributes */}

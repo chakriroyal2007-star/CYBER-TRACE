@@ -2,6 +2,26 @@ import { createHash } from 'node:crypto';
 import { labelStore } from './labelStore.mjs';
 import { chainAdapter } from './chainAdapter.mjs';
 
+export function getExplorerUrl(chain, type, addressOrHash) {
+  if (!addressOrHash) return null;
+  const clean = String(addressOrHash).trim();
+  const c = String(chain || 'Ethereum').toLowerCase();
+  const isTx = type === 'tx' || clean.length === 66 || (clean.startsWith('0x') && clean.length > 50);
+  if (c.includes('eth')) {
+    return isTx ? `https://etherscan.io/tx/${clean}` : `https://etherscan.io/address/${clean}`;
+  }
+  if (c.includes('poly')) {
+    return isTx ? `https://polygonscan.com/tx/${clean}` : `https://polygonscan.com/address/${clean}`;
+  }
+  if (c.includes('tron')) {
+    return isTx ? `https://tronscan.org/#/transaction/${clean}` : `https://tronscan.org/#/address/${clean}`;
+  }
+  if (c.includes('btc') || c.includes('bitcoin')) {
+    return isTx ? `https://www.blockchain.com/explorer/transactions/btc/${clean}` : `https://www.blockchain.com/explorer/addresses/btc/${clean}`;
+  }
+  return `https://etherscan.io/${isTx ? 'tx' : 'address'}/${clean}`;
+}
+
 /**
  * 1. Address Interning: Maps addresses to compact 32-bit uint integers.
  * Enables O(1) integer-based graph indexing instead of repetitive string hashing.
@@ -297,21 +317,46 @@ export class ForensicTracer {
       }
     }
 
-    // Assign cluster labels
-    const nodes = Array.from(nodeMetadata.values()).map(n => {
+    // Assign cluster labels and provenance
+    const nodes = Array.from(nodeMetadata.values()).map((n, idx) => {
       const addrId = interner.intern(n.address);
       const clusterRoot = uf.find(addrId);
       const cluster = `Cluster-${clusterRoot}`;
-      return { ...n, cluster };
+      let provenance = 'SYNTHETIC_ILLUSTRATIVE';
+      if (idx === 0) {
+        provenance = 'USER_UPLOADED';
+      } else if (labelStore.get(n.address)) {
+        provenance = 'REAL_PUBLIC_ONCHAIN';
+      } else if (n.type === 'vasp') {
+        provenance = 'INSTITUTION_RESPONSE';
+      } else if (n.behavior && n.behavior.some(b => b.includes('Pass-through'))) {
+        provenance = 'SYNTHETIC_ILLUSTRATIVE';
+      } else {
+        provenance = 'ML_INFERRED';
+      }
+      const explorerUrl = provenance === 'REAL_PUBLIC_ONCHAIN' ? getExplorerUrl(n.chain || chain, 'address', n.address) : null;
+      return { ...n, cluster, provenance, explorerUrl };
     });
 
     // 6. Sliding Window Pass-Through / Mule Detection
     this._detectPassThroughMules(nodes, observedTransfers);
 
-    // Format Edges
+    // Format Edges with provenance
     const edges = observedTransfers.map((tx, idx) => {
-      const sourceNode = nodes.find(n => n.address.toLowerCase() === tx.from.toLowerCase()) || { id: 'W-01' };
-      const targetNode = nodes.find(n => n.address.toLowerCase() === tx.to.toLowerCase()) || { id: `W-${String(idx + 2).padStart(2, '0')}` };
+      const sourceNode = nodes.find(n => n.address.toLowerCase() === tx.from.toLowerCase()) || { id: 'W-01', provenance: 'USER_UPLOADED' };
+      const targetNode = nodes.find(n => n.address.toLowerCase() === tx.to.toLowerCase()) || { id: `W-${String(idx + 2).padStart(2, '0')}`, provenance: 'ML_INFERRED' };
+      let provenance = 'SYNTHETIC_ILLUSTRATIVE';
+      if (idx === 0) {
+        provenance = 'USER_UPLOADED';
+      } else if (sourceNode.provenance === 'REAL_PUBLIC_ONCHAIN' && targetNode.provenance === 'REAL_PUBLIC_ONCHAIN') {
+        provenance = 'REAL_PUBLIC_ONCHAIN';
+      } else if (targetNode.type === 'vasp') {
+        provenance = 'INSTITUTION_RESPONSE';
+      } else {
+        provenance = 'ML_INFERRED';
+      }
+      const txChain = tx.chain || chain;
+      const explorerUrl = provenance === 'REAL_PUBLIC_ONCHAIN' ? getExplorerUrl(txChain, 'tx', tx.hash) : null;
       return {
         id: `TX-${String(idx + 1).padStart(3, '0')}`,
         source: sourceNode.id,
@@ -319,9 +364,11 @@ export class ForensicTracer {
         amount: Math.round(tx.amount),
         timestamp: tx.timestamp,
         hash: tx.hash,
-        chain: tx.chain || chain,
+        chain: txChain,
         asset: `${chain} Native / USDT`,
-        highlighted: true
+        highlighted: true,
+        provenance,
+        explorerUrl
       };
     });
 

@@ -8,7 +8,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-127%2F127%20Passing-brightgreen?logo=checkmarx&logoColor=white)](./docs/TEST_RESULTS.md)
+[![Tests](https://img.shields.io/badge/Tests-133%2F133%20Passing-brightgreen?logo=checkmarx&logoColor=white)](./docs/TEST_RESULTS.md)
 
 **CYBER-TRACE** is a full-stack, enterprise-grade cryptocurrency forensics and intelligence analysis platform tailored for Law Enforcement Agencies (LEAs), cybercrime investigators, and compliance units. Designed around the investigative framework **TRACE · ATTRIBUTE · CORRELATE · ACT**, it combines an end-to-end investigative UI with a **dataset-driven graph analytics engine** powered by the **Elliptic Bitcoin Transaction Dataset (203,769 nodes, 234,355 directed edges)**, supervised machine learning (Random Forest & Logistic Regression), rigorous Data Structures & Algorithms (Dijkstra, BFS, DFS, Union-Find, Priority Queue, Sliding Window), and explainable risk scoring.
 
@@ -190,7 +190,7 @@ Validates the Elliptic dataset ingestion, Priority Queue, BFS, DFS, Dijkstra wit
 ```bash
 npm test
 ```
-*Expected: 102 passed tests across 8 test suites (100% passing). Complete execution breakdown and empirical proofs are documented in [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) and [docs/CLAIMS_AND_EVIDENCE.md](docs/CLAIMS_AND_EVIDENCE.md).*
+*Expected: 133 passed tests across 12 test suites (100% passing). Complete execution breakdown and empirical proofs are documented in [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) and [docs/CLAIMS_AND_EVIDENCE.md](docs/CLAIMS_AND_EVIDENCE.md).*
 
 ### 2. Production Build Verification
 Verifies TypeScript compilation and production bundle tree-shaking:
@@ -328,6 +328,7 @@ CYBER-TRACE/
 ├── data/                      # Dataset files & database storage
 ├── docs/                      # Architectural & demonstration documentation
 │   ├── ARCHITECTURE.md        # Data models, graph algorithms & boundaries
+│   ├── CASE_SOURCES.md        # Forensic citations, block heights & public explorer references
 │   ├── CLAIMS_AND_EVIDENCE.md # Mapping every quantitative claim to proof
 │   ├── CONTRACT.md            # Frontend-backend interface specifications
 │   ├── DEMO.md                # 5-minute investigator walkthrough
