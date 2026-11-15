@@ -603,7 +603,15 @@ export class Store {
     this.db.prepare('INSERT INTO sessions VALUES(?,?,?,?,?,?)').run(id, hash(token), uid, createdAt, expiresAt, JSON.stringify(DEFAULT_WEIGHTS));
     const session = this.session(token);
     if (role !== 'reporter') {
-      for(const [caseId,fraudType,victimLoss,chain,status,priority] of seedDefinitions) {
+      this.seedCases(id, session.weights);
+    }
+    this.audit(id,role==='officer'||role==='official-investigator'?'CBI Officer Signed In':role==='reporter'?'Reporter Signed In':'Demo Session Created','workspace',{datasetVersion:'2026.09.24-v1'});
+    return {token,session};
+  }
+  seedCases(sessionId, weights = DEFAULT_WEIGHTS) {
+    for(const [caseId,fraudType,victimLoss,chain,status,priority] of seedDefinitions) {
+      const existing = this.getCase(sessionId, caseId);
+      if (!existing) {
         const record = {
           id:caseId, complaintId:`DEMO-NCRP-${caseId.slice(-5)}`, fraudType,victimLoss,currency:'INR',
           reportedWallet:fixtureAddress(chain,caseId),chain,transactionHash:'',priority,
@@ -612,13 +620,11 @@ export class Store {
           status:'New',riskScore:0,tracedAmount:0,confidence:0,vaspCandidate:'Unknown',transactionCount:0,walletCount:0,chains:[chain],
           updatedAt:'2026-09-24T15:06:00.000Z',createdAt:'2026-09-24T14:20:00.000Z',source:'demo',
         };
-        this.insertCase(id,record);
-        this.trace(id,caseId,session.weights,{seed:true,status});
+        this.insertCase(sessionId,record);
+        this.trace(sessionId,caseId,weights,{seed:true,status});
       }
-      this.refreshRelationships(id);
     }
-    this.audit(id,role==='officer'||role==='official-investigator'?'CBI Officer Signed In':role==='reporter'?'Reporter Signed In':'Demo Session Created','workspace',{datasetVersion:'2026.09.24-v1'});
-    return {token,session};
+    this.refreshRelationships(sessionId);
   }
   audit(sessionId,action,object,metadata={}) {
     const s = this.db.prepare('SELECT user_id FROM sessions WHERE id=?').get(sessionId);

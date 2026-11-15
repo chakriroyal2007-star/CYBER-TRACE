@@ -117,20 +117,63 @@ function walletResult(sessionId,address) {
   return {wallet:first.node,cases:[...new Map(results.map(r=>[r.inv.case.id,r.inv.case])).values()],transactions,behavior:first.inv.fingerprint?.features || {},fingerprint:first.inv.fingerprint || {features:{},patterns:[]},source:'SIMULATED INVESTIGATION DATA'};
 }
 function dashboard(sessionId) {
-  const cases=store.listCases(sessionId),investigations=cases.map(c=>store.getInvestigation(sessionId,c.id)).filter(Boolean),alerts=store.alerts(sessionId);
-  const group=(values)=>Object.entries(values.reduce((a,v)=>(a[v]=(a[v] || 0)+1,a),{})).map(([name,value])=>({name,value}));
-  const terminalByChain={};
-  for(const inv of investigations) for(const edge of (inv.edges || [])) {
-    const targetNode = (inv.nodes || []).find(n=>n.id===edge.target);
-    if(targetNode && targetNode.type==='vasp') terminalByChain[targetNode.chain]=(terminalByChain[targetNode.chain]||0)+edge.amount;
+  let cases = store.listCases(sessionId);
+  if (!cases || cases.length === 0) {
+    try {
+      const s = store.db.prepare('SELECT weights FROM sessions WHERE id=?').get(sessionId);
+      const w = s ? JSON.parse(s.weights) : DEFAULT_WEIGHTS;
+      store.seedCases(sessionId, w);
+      cases = store.listCases(sessionId);
+    } catch {}
   }
-  const activity=investigations.flatMap(inv=>(inv.timeline || []).map(e=>({...e,caseId:inv.case?.id}))).sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,12);
-  const days={};
-  for(const inv of investigations) {
-    if (!inv.timeline) continue;
-    for(const day of new Set(inv.timeline.map(e=>e.timestamp.slice(0,10)))) { days[day] ||= [];days[day].push(inv.case.riskScore); }
+  const investigations = (cases || []).map(c => store.getInvestigation(sessionId, c.id)).filter(Boolean);
+  const alerts = store.alerts(sessionId) || [];
+  const group = (values) => Object.entries((values || []).reduce((a, v) => (a[v] = (a[v] || 0) + 1, a), {})).map(([name, value]) => ({ name, value }));
+  const terminalByChain = {};
+  for (const inv of investigations) {
+    for (const edge of (inv?.edges || [])) {
+      const targetNode = (inv?.nodes || []).find(n => n?.id === edge?.target);
+      if (targetNode && targetNode.type === 'vasp') {
+        const c = targetNode.chain || 'Ethereum';
+        terminalByChain[c] = (terminalByChain[c] || 0) + (edge?.amount || 0);
+      }
+    }
   }
-  return {cases,metrics:{activeCases:cases.filter(c=>c.status!=='Closed').length,highRiskWallets:new Set(investigations.flatMap(i=>(i.nodes || []).filter(n=>n.riskScore>=70).map(n=>`${n.chain}/${n.address}`))).size,vaspLeads:investigations.reduce((a,i)=>a+(i.attributions?.length || 0),0),fundsTraced:cases.reduce((a,c)=>a+(c.tracedAmount || 0),0),crossChainMovements:investigations.reduce((a,i)=>a+(i.crossChain?.length || 0),0),relatedCases:new Set(investigations.flatMap(i=>(i.relatedCases || []).map(r=>[i.case?.id,r.caseId].sort().join('/')))).size,activeAlerts:alerts.filter(a=>a.status==='Open').length},fraudTypes:group(cases.map(c=>c.fraudType)),chainFlows:Object.entries(terminalByChain).map(([name,value])=>({name,value})),attributionDistribution:group(cases.map(c=>c.vaspCandidate)),riskTrend:Object.entries(days).sort().map(([date,scores])=>({date,value:Math.round(scores.reduce((a,v)=>a+v,0)/scores.length)})),activity,source:'SIMULATED INVESTIGATION DATA',riskTrendMethod:'Average current case risk scores by observed event date; not historical re-scoring.'};
+  const activity = investigations
+    .flatMap(inv => (inv?.timeline || []).map(e => ({ ...e, caseId: inv?.case?.id })))
+    .filter(Boolean)
+    .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+    .slice(0, 12);
+  const days = {};
+  for (const inv of investigations) {
+    if (!inv?.timeline) continue;
+    for (const day of new Set(inv.timeline.map(e => (e?.timestamp ? e.timestamp.slice(0, 10) : '')))) {
+      if (!day) continue;
+      days[day] ||= [];
+      if (inv?.case && typeof inv.case.riskScore === 'number') {
+        days[day].push(inv.case.riskScore);
+      }
+    }
+  }
+  return {
+    cases: cases || [],
+    metrics: {
+      activeCases: (cases || []).filter(c => c && c.status !== 'Closed').length,
+      highRiskWallets: new Set(investigations.flatMap(i => (i?.nodes || []).filter(n => n && n.riskScore >= 70).map(n => `${n.chain}/${n.address}`))).size,
+      vaspLeads: investigations.reduce((a, i) => a + (i?.attributions?.length || 0), 0),
+      fundsTraced: (cases || []).reduce((a, c) => a + (c?.tracedAmount || 0), 0),
+      crossChainMovements: investigations.reduce((a, i) => a + (i?.crossChain?.length || 0), 0),
+      relatedCases: new Set(investigations.flatMap(i => (i?.relatedCases || []).map(r => [i?.case?.id, r?.caseId].sort().join('/')))).size,
+      activeAlerts: (alerts || []).filter(a => a && a.status === 'Open').length
+    },
+    fraudTypes: group((cases || []).map(c => c?.fraudType).filter(Boolean)),
+    chainFlows: Object.entries(terminalByChain).map(([name, value]) => ({ name, value })),
+    attributionDistribution: group((cases || []).map(c => c?.vaspCandidate).filter(Boolean)),
+    riskTrend: Object.entries(days).sort().map(([date, scores]) => ({ date, value: scores.length ? Math.round(scores.reduce((a, v) => a + v, 0) / scores.length) : 0 })),
+    activity,
+    source: 'SIMULATED INVESTIGATION DATA',
+    riskTrendMethod: 'Average current case risk scores by observed event date; not historical re-scoring.'
+  };
 }
 function search(sessionId,q) {
   if(!q || q.length<2) return [];
