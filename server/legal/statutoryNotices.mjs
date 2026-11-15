@@ -300,3 +300,46 @@ ${officerDesignation}
   };
 }
 
+function canonicalize(obj) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(canonicalize);
+  const sorted = {};
+  for (const key of Object.keys(obj).sort()) {
+    if (key === 'masterPackageSha256' || key === 'sealStatus') continue;
+    sorted[key] = canonicalize(obj[key]);
+  }
+  return sorted;
+}
+
+/**
+ * Phase 8: Cryptographic Master Hash Seal for Complete Judicial Court Package
+ */
+export function computeMasterCourtPackageSeal(courtPackageData) {
+  const canonicalObj = canonicalize(courtPackageData);
+  const canonicalJson = JSON.stringify(canonicalObj);
+  return createHash('sha256').update(canonicalJson).digest('hex');
+}
+
+/**
+ * Phase 8: Verify authenticity and tamper-evidence of a Judicial Court Package
+ */
+export function verifyCourtPackage(courtPackage) {
+  if (!courtPackage || !courtPackage.masterPackageSha256) {
+    return {
+      verified: false,
+      error: 'Missing masterPackageSha256 seal in package.'
+    };
+  }
+  const expectedHash = computeMasterCourtPackageSeal(courtPackage);
+  const isValid = expectedHash === courtPackage.masterPackageSha256;
+  return {
+    verified: isValid,
+    packageReference: courtPackage.packageReference,
+    caseId: courtPackage.caseId,
+    sealAlgorithm: 'SHA-256',
+    expectedHash,
+    actualHash: courtPackage.masterPackageSha256,
+    tampered: !isValid
+  };
+}
+

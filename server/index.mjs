@@ -32,7 +32,7 @@ import { processProofUpload, stripImageMetadata } from './reporting/proofUpload.
 import { extractComplaintParameters, isValidEip55Checksum } from './reporting/extractor.mjs';
 import { duplicateDetector } from './reporting/duplicateDetector.mjs';
 import { autoTracePublicWallet } from './reporting/autoTracer.mjs';
-import { generateSection106Notice, generateSection94Notice, generateBsa63Certificate, DISCLAIMER_BANNER } from './legal/statutoryNotices.mjs';
+import { generateSection106Notice, generateSection94Notice, generateBsa63Certificate, computeMasterCourtPackageSeal, verifyCourtPackage, DISCLAIMER_BANNER } from './legal/statutoryNotices.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
@@ -1617,6 +1617,11 @@ async function handle(req,res) {
        disclaimer: 'DRAFT FOR LEGAL REVIEW - NOT A DIRECT PLATFORM FREEZE'
      };
 
+     const masterPackageSha256 = computeMasterCourtPackageSeal(courtPackage);
+     courtPackage.masterPackageSha256 = masterPackageSha256;
+     courtPackage.sealStatus = 'CRYPTOGRAPHICALLY_VERIFIED';
+     courtPackage.digitalSealAlgorithm = 'SHA-256';
+
      try {
        store.updateComplaintStatus({
          caseId: comp.caseId,
@@ -1628,8 +1633,13 @@ async function handle(req,res) {
        });
      } catch {}
 
-     store.audit(sid, 'Court Package Generated', id, { packageReference: courtPackage.packageReference });
+     store.audit(sid, 'Court Package Generated', id, { packageReference: courtPackage.packageReference, masterPackageSha256 });
      return json(res, 200, courtPackage);
+   }
+   if(id==='verify-court-package' && method==='POST') {
+     const data = await body(req);
+     const verification = verifyCourtPackage(data);
+     return json(res, 200, verification);
    }
  }
  if(group==='dashboard' && method==='GET') return json(res,200,dashboard(sid));

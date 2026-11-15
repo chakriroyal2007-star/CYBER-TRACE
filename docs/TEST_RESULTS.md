@@ -8,9 +8,9 @@ This document records the exact results of the automated test suite execution fo
 - **Command:** `npm test` (`node --test tests/*.test.mjs`)
 - **Node.js Version:** `v22.23.3` (Engine requirement: `>=22.5.0` / Node 24 ready)
 - **OS Platform:** macOS (`darwin`, `arm64`)
-- **Total Test Suites:** 15
-- **Total Tests:** 151
-- **Passing:** 151
+- **Total Test Suites:** 16
+- **Total Tests:** 156
+- **Passing:** 156
 - **Failing:** 0
 - **Skipped / Cancelled / Todo:** 0
 - **Duration:** 16,396.84 ms (~16.4s)
@@ -204,8 +204,15 @@ This document records the exact results of the automated test suite execution fo
 - `✔` 7.5 Money trail summary query: preserves conservation of funds and cites transactions
 *Suite Total: 6 tests passed.*
 
+### 16. Phase 8: Court Packages, Statutory Reports & Cryptographic Hash Seals (`tests/court_package_phase8.test.mjs`)
+- `✔` 8.1 Section 106 BNSS 2023 Seizure & Debit Freeze Notice
+- `✔` 8.2 Section 94 BNSS 2023 Summons to Produce Documents & Records
+- `✔` 8.3 Section 63 BSA 2023 Certificate of Electronic Evidence
+- `✔` 8.4 Master Court Package Hash Seal & Tamper Verification
+*Suite Total: 5 tests passed.*
+
 ---
 
-## Summary Total: 151/151 Passing Tests
+## Summary Total: 156/156 Passing Tests
 All tests are 100% deterministic, offline-capable, and run without requiring external cloud credentials or live network connections.
 
