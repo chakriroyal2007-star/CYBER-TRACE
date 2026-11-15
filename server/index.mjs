@@ -642,6 +642,41 @@ async function handle(req,res) {
    if(id==='catalog' && method==='GET') return json(res, 200, DSA_CATALOG);
    if(id==='simulate' && method==='POST') {
      const data = await body(req);
+     if (data.caseId) {
+       let fg = store.getFinancialGraph(data.caseId);
+       if (!fg || !fg.nodes || fg.nodes.length === 0) {
+         try {
+           await investigationTools.buildFinancialGraph(store, data.caseId);
+           fg = store.getFinancialGraph(data.caseId);
+         } catch {}
+       }
+
+       if (fg && fg.nodes && fg.nodes.length > 0) {
+         const mappedNodes = fg.nodes.map(n => ({
+           id: n.label || n.key,
+           label: n.label || n.entity || n.key,
+           role: n.type === 'VICTIM_REPORTER' ? 'victim' : (n.type === 'EXIT_VASP' || n.type === 'VASP_EXCHANGE') ? 'vasp' : 'intermediary',
+           risk: n.riskScore || 50,
+           type: n.type
+         }));
+
+         const mappedEdges = fg.edges.map(e => {
+           const sNode = fg.nodes.find(n => n.key === e.source) || { label: e.source };
+           const tNode = fg.nodes.find(n => n.key === e.target) || { label: e.target };
+           return {
+             from: sNode.label || sNode.key,
+             to: tNode.label || tNode.key,
+             amount: e.amount || 50000,
+             weight: 1.0,
+             currency: e.currency || 'INR'
+           };
+         });
+
+         data.customGraph = { nodes: mappedNodes, edges: mappedEdges };
+         data.startNode = mappedNodes[0]?.id || 'Victim';
+         data.targetNode = mappedNodes[mappedNodes.length - 1]?.id || 'Target';
+       }
+     }
      return json(res, 200, runDsaSimulation(data));
    }
  }

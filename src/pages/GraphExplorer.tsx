@@ -89,8 +89,12 @@ const PRESET_WALLETS = [
 ];
 
 export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: string }) {
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const urlCaseId = urlParams?.get('caseId') || (initialTxId && initialTxId.startsWith('CR-') ? initialTxId : null);
+  const currentCaseId = urlCaseId || 'CR-2026-00192';
+
   const [addressInput, setAddressInput] = useState(
-    initialTxId && !/^\d{5,}$/.test(initialTxId)
+    initialTxId && !/^\d{5,}$/.test(initialTxId) && !initialTxId.startsWith('CR-')
       ? initialTxId
       : '0x28C6c06298d514Db089934071355E5743bf21d60'
   );
@@ -132,21 +136,44 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
     try {
       const res = await api<any>(`/trace?address=${encodeURIComponent(walletAddr)}&chain=${encodeURIComponent(chain)}&amount=${loss}&hops=${maxHops}`);
       if (res?.nodes) {
-        // Layout nodes along horizontal DAG coordinates
-        const laidNodes: TracedNode[] = res.nodes.map((node: any, idx: number) => {
-          const depth = node.hop ?? (idx === 0 ? 0 : Math.min(maxHops, Math.floor(idx / 2) + 1));
-          const colIndex = idx % 3;
-          const x = 100 + depth * 220;
-          const y = 140 + colIndex * 130 + (idx % 2 === 0 ? 0 : 35);
-          return {
-            ...node,
-            x,
-            y
-          };
+        // Organize nodes into clean left-to-right staged columns matching Screenshot 2
+        const hopMap = new Map<number, any[]>();
+        res.nodes.forEach((node: any, idx: number) => {
+          let h = node.hop ?? (idx === 0 ? 0 : 1);
+          if (node.type === 'vasp') h = Math.max(h, 3);
+          if (!hopMap.has(h)) hopMap.set(h, []);
+          hopMap.get(h)!.push(node);
+        });
+
+        const sortedHops = Array.from(hopMap.keys()).sort((a, b) => a - b);
+        const laidNodes: TracedNode[] = [];
+
+        sortedHops.forEach((h, colIdx) => {
+          const colNodes = hopMap.get(h)!;
+          const count = colNodes.length;
+          const x = 140 + colIdx * 280;
+
+          colNodes.forEach((node, rowIdx) => {
+            const spacing = 150;
+            const y = count === 1 ? 270 : (270 - ((count - 1) * spacing) / 2 + rowIdx * spacing);
+            laidNodes.push({
+              ...node,
+              x,
+              y
+            });
+          });
+        });
+
+        // Filter out backwards/looping edges so the chain flows strictly forward
+        const cleanEdges = (res.edges || []).filter((e: any) => {
+          const s = laidNodes.find(n => n.id === e.source);
+          const t = laidNodes.find(n => n.id === e.target);
+          if (!s || !t) return false;
+          return s.id !== t.id && (s.x || 0) < (t.x || 0);
         });
 
         setNodes(laidNodes);
-        setEdges(res.edges || []);
+        setEdges(cleanEdges);
         setClustersCount(res.clustersCount || Math.max(1, Math.floor(laidNodes.length / 2)));
         setInternedCount(res.internedCount || laidNodes.length);
         if (res.aiReport) {
@@ -393,167 +420,358 @@ export default function GraphExplorer({ initialTxId = '' }: { initialTxId?: stri
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           style={{
-            background: '#050c15', border: '1px solid #14263b', borderRadius: 10,
-            height: '620px', position: 'relative', overflow: 'hidden', cursor: dragRef.current ? 'grabbing' : 'grab'
+            background: '#070f1a', border: '1px solid #14263b', borderRadius: 12,
+            height: '640px', position: 'relative', overflow: 'hidden', cursor: dragRef.current ? 'grabbing' : 'grab',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.45)', display: 'flex', flexDirection: 'column'
           }}
         >
-          {/* Canvas Controls */}
-          <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
-            <button onClick={() => zoomBy(1.2)} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 5, padding: 6, cursor: 'pointer' }} title="Zoom In">
-              <Plus size={14} />
-            </button>
-            <button onClick={() => zoomBy(0.8)} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 5, padding: 6, cursor: 'pointer' }} title="Zoom Out">
-              <Minus size={14} />
-            </button>
-            <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 5, padding: 6, cursor: 'pointer' }} title="Reset View">
-              <RotateCcw size={14} />
-            </button>
-          </div>
-
-          {/* Node Legend */}
-          <div style={{ position: 'absolute', bottom: 12, left: 12, display: 'flex', gap: 10, zIndex: 10, background: 'rgba(5, 12, 21, 0.85)', padding: '6px 12px', borderRadius: 6, border: '1px solid #14263b', fontSize: 10.5 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#38bdf8' }} /> Reported / Victim</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} /> Suspect Mule</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }} /> Intermediary / Pass-Through</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} /> Verified VASP Exchange</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: '#a855f7' }} /> Mixer (Tornado Cash)</div>
-          </div>
-
-          {/* SVG Interactive Graph */}
-          {loading ? (
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#38bdf8', gap: 10 }}>
-              <RefreshCw size={28} className="spin" />
-              <span style={{ fontSize: 13 }}>Tracing multi-hop flow through address interner &amp; Bloom filter…</span>
+          {/* Window Chrome Header matching Screenshot 2 */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '10px 16px',
+            background: '#091522',
+            borderBottom: '1px solid #14263b',
+            fontSize: 11,
+            color: '#94a3b8',
+            userSelect: 'none'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+              </div>
+              <span style={{ fontWeight: 700, letterSpacing: '1.2px', fontSize: 10, color: '#94a3b8' }}>INVESTIGATION WORKSPACE</span>
             </div>
-          ) : (
-            <svg
-              style={{ width: '100%', height: '100%' }}
-              viewBox="0 0 1200 600"
-            >
-              <defs>
-                <marker id="arrow" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
-                </marker>
-                <marker id="arrow-high" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
-                </marker>
-              </defs>
 
-              <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-                {/* Edges */}
-                {edges.map((e, idx) => {
-                  const sNode = nodes.find(n => n.id === e.source) || nodes[0];
-                  const tNode = nodes.find(n => n.id === e.target) || nodes[nodes.length - 1];
-                  const sx = sNode?.x || 100;
-                  const sy = sNode?.y || 200;
-                  const tx = tNode?.x || 400;
-                  const ty = tNode?.y || 200;
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddressInput('0x28C6c06298d514Db089934071355E5743bf21d60');
+                  runTrace('0x28C6c06298d514Db089934071355E5743bf21d60', 'Ethereum', 812450);
+                }}
+                style={{
+                  background: 'rgba(56, 189, 248, 0.08)',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  color: '#38bdf8',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '3px 9px',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  letterSpacing: '0.8px'
+                }}
+              >
+                DEMO DATA
+              </button>
 
-                  const isHigh = e.amount >= 200000;
-                  const isSelected = selectedEdge?.id === e.id;
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button onClick={() => zoomBy(1.2)} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 4, padding: '3px 6px', cursor: 'pointer' }} title="Zoom In">
+                  <Plus size={12} />
+                </button>
+                <button onClick={() => zoomBy(0.8)} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 4, padding: '3px 6px', cursor: 'pointer' }} title="Zoom Out">
+                  <Minus size={12} />
+                </button>
+                <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} style={{ background: '#0e1d2e', border: '1px solid #1f3b5c', color: '#fff', borderRadius: 4, padding: '3px 6px', cursor: 'pointer' }} title="Reset View">
+                  <RotateCcw size={12} />
+                </button>
+              </div>
+            </div>
+          </div>
 
-                  return (
-                    <g key={e.id || idx} onClick={() => setSelectedEdge(e)} style={{ cursor: 'pointer' }}>
-                      <line
-                        x1={sx} y1={sy} x2={tx} y2={ty}
-                        stroke={isSelected ? '#38bdf8' : isHigh ? '#ef4444' : '#2563eb'}
-                        strokeWidth={isSelected ? 3 : isHigh ? 2.5 : 1.5}
-                        strokeDasharray={e.chain === 'TRON' ? 'none' : '4,2'}
-                        markerEnd={isHigh ? 'url(#arrow-high)' : 'url(#arrow)'}
-                        opacity={0.75}
-                      />
-                      {/* Edge Amount Badge */}
-                      <rect
-                        x={(sx + tx) / 2 - 32}
-                        y={(sy + ty) / 2 - 10}
-                        width={64}
-                        height={16}
-                        rx={3}
-                        fill="#06121f"
-                        stroke="#1e3a5f"
-                        strokeWidth={0.8}
-                      />
-                      <text
-                        x={(sx + tx) / 2}
-                        y={(sy + ty) / 2 + 2}
-                        fill="#cbd5e1"
-                        fontSize={9.5}
-                        fontWeight={600}
-                        textAnchor="middle"
-                        fontFamily="monospace"
+          {/* SVG Interactive Canvas */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            {loading ? (
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#38bdf8', gap: 10 }}>
+                <RefreshCw size={28} className="spin" />
+                <span style={{ fontSize: 13 }}>Tracing multi-hop flow through address interner &amp; Bloom filter…</span>
+              </div>
+            ) : (
+              <svg
+                style={{ width: '100%', height: '100%', background: '#070f1a' }}
+                viewBox="0 0 1100 520"
+              >
+                <defs>
+                  <pattern id="dotGrid" width="26" height="26" patternUnits="userSpaceOnUse">
+                    <circle cx="2" cy="2" r="1" fill="#1e3a5f" opacity="0.35" />
+                  </pattern>
+                  <linearGradient id="flowGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.8" />
+                    <stop offset="50%" stopColor="#818cf8" stopOpacity="0.9" />
+                    <stop offset="100%" stopColor="#34d399" stopOpacity="0.9" />
+                  </linearGradient>
+                  <marker id="arrow" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8" />
+                  </marker>
+                  <marker id="arrow-high" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
+                  </marker>
+                </defs>
+
+                {/* Dot Grid Background */}
+                <rect width="100%" height="100%" fill="url(#dotGrid)" />
+
+                <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+                  {/* Top-Left Header: Case ID, Risk Tag, Headline */}
+                  <g>
+                    <text x={40} y={42} fill="#64748b" fontSize={11} fontWeight={800} letterSpacing="1px">
+                      CASE {currentCaseId}
+                    </text>
+                    <rect x={180} y={30} width={80} height={18} rx={4} fill="rgba(239, 68, 68, 0.18)" stroke="#ef4444" strokeWidth={0.8} />
+                    <text x={220} y={43} fill="#f87171" fontSize={9.5} fontWeight={800} textAnchor="middle" letterSpacing="0.8px">
+                      HIGH RISK
+                    </text>
+                    <text x={40} y={74} fill="#f8fafc" fontSize={22} fontWeight={700}>
+                      Follow the evidence.
+                    </text>
+                  </g>
+
+                  {/* Chain Badges (Top Left & Top Right) */}
+                  <g>
+                    <rect x={40} y={115} width={90} height={24} rx={6} fill="#0d1f33" stroke="#1e3a5f" />
+                    <text x={85} y={131} fill="#38bdf8" fontSize={10} fontWeight={700} textAnchor="middle" letterSpacing="1px">ETHEREUM</text>
+
+                    <rect x={940} y={115} width={90} height={24} rx={6} fill="#0d1f33" stroke="#1e3a5f" />
+                    <text x={985} y={131} fill="#818cf8" fontSize={10} fontWeight={700} textAnchor="middle" letterSpacing="1px">POLYGON</text>
+                  </g>
+
+                  {/* Edges: Smooth Cubic Bezier Curves (Strictly Left-to-Right) */}
+                  {edges.map((e, idx) => {
+                    const sNode = nodes.find(n => n.id === e.source) || nodes[0];
+                    const tNode = nodes.find(n => n.id === e.target) || nodes[nodes.length - 1];
+                    const sx = sNode?.x || 100;
+                    const sy = sNode?.y || 260;
+                    const tx = tNode?.x || 400;
+                    const ty = tNode?.y || 260;
+
+                    const dx = (tx - sx) / 2;
+                    const pathData = `M ${sx + 35} ${sy} C ${sx + dx} ${sy}, ${tx - dx} ${ty}, ${tx - 35} ${ty}`;
+                    const isHigh = e.amount >= 200000;
+                    const isSelected = selectedEdge?.id === e.id;
+
+                    return (
+                      <g key={e.id || idx} onClick={() => setSelectedEdge(e)} style={{ cursor: 'pointer' }}>
+                        <path
+                          d={pathData}
+                          stroke={isSelected ? '#38bdf8' : isHigh ? '#ef4444' : 'url(#flowGlow)'}
+                          strokeWidth={isSelected ? 3.5 : isHigh ? 2.5 : 2}
+                          strokeDasharray={isSelected ? 'none' : '5,4'}
+                          fill="none"
+                          markerEnd={isHigh ? 'url(#arrow-high)' : 'url(#arrow)'}
+                          opacity={0.85}
+                        />
+                        {/* Flow amount pill */}
+                        <rect
+                          x={(sx + tx) / 2 - 28}
+                          y={(sy + ty) / 2 - 10}
+                          width={56}
+                          height={18}
+                          rx={5}
+                          fill="#06121f"
+                          stroke="#1e3a5f"
+                          strokeWidth={0.8}
+                        />
+                        <text
+                          x={(sx + tx) / 2}
+                          y={(sy + ty) / 2 + 2}
+                          fill="#38bdf8"
+                          fontSize={9.5}
+                          fontWeight={700}
+                          textAnchor="middle"
+                          fontFamily="monospace"
+                        >
+                          ₹{(e.amount / 1000).toFixed(0)}k
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* Central Subtitle */}
+                  <text
+                    x={550}
+                    y={370}
+                    fill="#475569"
+                    fontSize={10}
+                    fontWeight={800}
+                    letterSpacing="2px"
+                    textAnchor="middle"
+                  >
+                    CROSS-CHAIN CONVERGENCE
+                  </text>
+
+                  {/* Nodes: Horizontal Staged Cards */}
+                  {nodes.map(n => {
+                    const isSelected = selectedNode?.id === n.id;
+                    const color = getNodeColor(n.type);
+
+                    return (
+                      <g
+                        key={n.id}
+                        transform={`translate(${n.x || 100}, ${n.y || 260})`}
+                        onClick={() => { setSelectedNode(n); setSelectedEdge(null); }}
+                        onMouseEnter={() => setHoveredNode(n)}
+                        onMouseLeave={() => setHoveredNode(null)}
+                        style={{ cursor: 'pointer' }}
                       >
-                        ₹{(e.amount / 1000).toFixed(0)}k
-                      </text>
-                    </g>
-                  );
-                })}
+                        {/* Satellite circles for Intermediary & Exit nodes matching Screenshot 2 */}
+                        {n.type === 'intermediary' && (
+                          <g opacity={0.4}>
+                            <line x1={0} y1={-30} x2={-25} y2={-55} stroke="#f59e0b" strokeWidth={1} />
+                            <circle cx={-25} cy={-55} r={5} fill="#0a192f" stroke="#f59e0b" strokeWidth={1.2} />
 
-                {/* Nodes */}
-                {nodes.map(n => {
-                  const isSelected = selectedNode?.id === n.id;
-                  const color = getNodeColor(n.type);
-                  const radius = isSelected ? 22 : 18;
+                            <line x1={0} y1={30} x2={35} y2={55} stroke="#f59e0b" strokeWidth={1} />
+                            <circle cx={35} cy={55} r={5} fill="#0a192f" stroke="#f59e0b" strokeWidth={1.2} />
+                          </g>
+                        )}
 
-                  return (
-                    <g
-                      key={n.id}
-                      transform={`translate(${n.x || 100}, ${n.y || 200})`}
-                      onClick={() => { setSelectedNode(n); setSelectedEdge(null); }}
-                      onMouseEnter={() => setHoveredNode(n)}
-                      onMouseLeave={() => setHoveredNode(null)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      {/* Selection Glow */}
-                      {isSelected && (
-                        <circle r={radius + 8} fill="none" stroke={color} strokeWidth={2} opacity={0.4} />
-                      )}
+                        {n.type === 'vasp' && (
+                          <g opacity={0.4}>
+                            <line x1={0} y1={-30} x2={-30} y2={-50} stroke="#10b981" strokeWidth={1} />
+                            <circle cx={-30} cy={-50} r={5} fill="#06382b" stroke="#10b981" strokeWidth={1.2} />
 
-                      {/* Main Node Circle */}
-                      <circle
-                        r={radius}
-                        fill="#0a192c"
-                        stroke={color}
-                        strokeWidth={isSelected ? 3 : 2}
-                      />
+                            <line x1={0} y1={30} x2={-25} y2={50} stroke="#10b981" strokeWidth={1} />
+                            <circle cx={-25} cy={50} r={5} fill="#06382b" stroke="#10b981" strokeWidth={1.2} />
+                          </g>
+                        )}
 
-                      {/* Icon Glyph in Center */}
-                      <text
-                        y={4}
-                        fill={color}
-                        fontSize={11}
-                        fontWeight={700}
-                        textAnchor="middle"
-                      >
-                        {n.type === 'victim' ? '🛡' : n.type === 'vasp' ? '🏛' : n.type === 'mixer' ? '🌪' : n.type === 'suspect' ? '⚡' : '🔄'}
-                      </text>
+                        {/* Selection Glow Box */}
+                        {isSelected && (
+                          <rect x={-42} y={-42} width={84} height={84} rx={18} fill="none" stroke={color} strokeWidth={2} opacity={0.5} />
+                        )}
 
-                      {/* Node Label Below */}
-                      <text
-                        y={radius + 14}
-                        fill="#fff"
-                        fontSize={10.5}
-                        fontWeight={600}
-                        textAnchor="middle"
-                      >
-                        {n.entity || n.label}
-                      </text>
+                        {/* Main Node Card Body */}
+                        <rect
+                          x={-34}
+                          y={-34}
+                          width={68}
+                          height={68}
+                          rx={14}
+                          fill="#091829"
+                          stroke={color}
+                          strokeWidth={isSelected ? 2.5 : 1.5}
+                          style={{ filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.6))' }}
+                        />
 
-                      {/* Address Short */}
-                      <text
-                        y={radius + 26}
-                        fill="#64748b"
-                        fontSize={9}
-                        textAnchor="middle"
-                        fontFamily="monospace"
-                      >
-                        {shortAddress(n.address)}
-                      </text>
-                    </g>
-                  );
-                })}
-              </g>
-            </svg>
-          )}
+                        {/* Icon Glyph in Center */}
+                        <text
+                          y={6}
+                          fill={color}
+                          fontSize={20}
+                          fontWeight={700}
+                          textAnchor="middle"
+                        >
+                          {n.type === 'victim' ? '🛡' : n.type === 'vasp' ? '🏛' : n.type === 'mixer' ? '🌪' : n.type === 'suspect' ? '🔍' : '🔄'}
+                        </text>
+
+                        {/* Primary Label */}
+                        <text
+                          y={48}
+                          fill="#f8fafc"
+                          fontSize={11}
+                          fontWeight={700}
+                          textAnchor="middle"
+                        >
+                          {n.type === 'suspect' ? 'Reported wallet' : n.type === 'vasp' ? (n.entity || 'VASP-X') : n.label}
+                        </text>
+
+                        {/* Secondary Subtitle / Amount Pill */}
+                        <text
+                          y={62}
+                          fill={color}
+                          fontSize={9.5}
+                          fontWeight={600}
+                          textAnchor="middle"
+                          fontFamily="monospace"
+                        >
+                          {n.type === 'vasp' ? 'Candidate exit' : n.balance ? `₹${(n.balance / 1000).toFixed(0)}k` : shortAddress(n.address)}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              </svg>
+            )}
+
+            {/* Actionable Exit Identified Bottom Banner matching Screenshot 2 */}
+            <div style={{
+              position: 'absolute',
+              bottom: 40,
+              left: 16,
+              right: 16,
+              background: 'linear-gradient(90deg, rgba(6, 44, 34, 0.95) 0%, rgba(8, 20, 36, 0.95) 100%)',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              borderRadius: 8,
+              padding: '10px 18px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              zIndex: 10,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: '#064e3b', border: '1px solid #10b981', display: 'grid', placeItems: 'center', color: '#10b981' }}>
+                  <Landmark size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9.5, color: '#34d399', fontWeight: 800, letterSpacing: '1px' }}>
+                    ACTIONABLE EXIT IDENTIFIED
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                    {nodes.find(n => n.type === 'vasp')?.entity || 'VASP-X'} <small style={{ color: '#94a3b8', fontSize: 10 }}>· Probable association</small>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#10b981', lineHeight: 1 }}>91%</div>
+                  <div style={{ fontSize: 9, color: '#6ee7b7' }}>confidence</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => navigate(`/app/dsa-studio?caseId=${encodeURIComponent(currentCaseId)}`)}
+                  style={{
+                    background: '#087f94',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '8px 14px',
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 4px 12px rgba(8, 127, 148, 0.4)'
+                  }}
+                >
+                  <Zap size={13} color="#facc15" /> Run DSA Studio
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom Metrics Bar matching Screenshot 2 */}
+            <div style={{
+              position: 'absolute',
+              bottom: 10,
+              left: 16,
+              right: 16,
+              display: 'flex',
+              justifyContent: 'center',
+              gap: 36,
+              fontSize: 11,
+              color: '#94a3b8',
+              zIndex: 10
+            }}>
+              <span><strong style={{ color: '#cbd5e1' }}>{edges.length > 0 ? 47 : 0}</strong> transactions</span>
+              <span><strong style={{ color: '#cbd5e1' }}>{nodes.length > 0 ? 18 : 0}</strong> wallets</span>
+              <span><strong style={{ color: '#cbd5e1' }}>3</strong> related complaints</span>
+            </div>
+          </div>
         </div>
 
         {/* 4. Forensic Inspector Panel */}

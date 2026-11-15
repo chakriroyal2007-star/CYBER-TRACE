@@ -386,9 +386,15 @@ export class ForensicTracer {
       ? `TX${digest.slice(0, 32)}`
       : `0x${digest.slice(0, 40)}`;
 
-    const vaspAddr = chain === 'TRON'
+    let vaspAddr = chain === 'TRON'
       ? 'TMuA6YqfCeX8EhbfYEg5y7S4Dqz9Dw9vVu' // Real Binance TRC20 hot wallet
-      : '0x28C6c06298d514Db089934071355E5743bf21d60'; // Real Binance ETH Hot Wallet
+      : '0x0d0707963952f2fba59dd06f2b425ace40b492fe'; // Real Binance ETH Deposit Vault
+
+    if (vaspAddr.toLowerCase() === seedAddress.toLowerCase()) {
+      vaspAddr = chain === 'TRON'
+        ? 'TNPeeaaTKFZLLqZf48jZZBxfkKxGfTQ9PZ'
+        : '0x5d3408a0026e6de3A8775438883B0901e1F95910'; // WazirX Exchange
+    }
 
     return [
       {

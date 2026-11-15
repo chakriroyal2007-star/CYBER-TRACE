@@ -48,6 +48,23 @@ export default function DsaStudyStudio() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Real Investigation Case Integration
+  const urlCaseId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('caseId') : null;
+  const [sourceMode, setSourceMode] = useState<'case' | 'preset'>(urlCaseId ? 'case' : 'case');
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(urlCaseId || 'CR-2026-90413');
+  const [casesList, setCasesList] = useState<any[]>([]);
+
+  useEffect(() => {
+    api('/complaints').then(r => {
+      if (Array.isArray(r) && r.length > 0) {
+        setCasesList(r);
+        if (!urlCaseId) {
+          setSelectedCaseId(r[0].caseId || r[0].id);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   // Playback state
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -79,11 +96,12 @@ export default function DsaStudyStudio() {
     setIsPlaying(false);
 
     let payload: any = {
-      algorithm: selectedAlgo,
-      preset: selectedPreset
+      algorithm: selectedAlgo
     };
 
-    if (isCustomMode) {
+    if (sourceMode === 'case' && selectedCaseId) {
+      payload.caseId = selectedCaseId;
+    } else if (isCustomMode) {
       try {
         const rawNodes = customNodesInput.split(',').map(s => s.trim()).filter(Boolean);
         const parsedNodes = rawNodes.map(id => ({ id, label: id, role: 'intermediary', risk: 65 }));
@@ -103,6 +121,8 @@ export default function DsaStudyStudio() {
         setLoading(false);
         return;
       }
+    } else {
+      payload.preset = selectedPreset;
     }
 
     api('/dsa/simulate', { method: 'POST', body: JSON.stringify(payload) })
@@ -119,7 +139,7 @@ export default function DsaStudyStudio() {
 
   useEffect(() => {
     runSimulation();
-  }, [selectedAlgo, selectedPreset, isCustomMode]);
+  }, [selectedAlgo, selectedPreset, isCustomMode, sourceMode, selectedCaseId]);
 
   // Autoplay handler
   useEffect(() => {
@@ -363,33 +383,52 @@ export default function DsaStudyStudio() {
 
           <div style={{ height: 20, width: 1, background: '#334155' }} />
 
-          {/* Preset Selector */}
+          {/* Data Source / Real Case Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8' }}>
-            <span>Preset:</span>
+            <span style={{ fontWeight: 600 }}>Graph Source:</span>
             <select
-              value={isCustomMode ? 'custom' : selectedPreset}
+              value={isCustomMode ? 'custom' : sourceMode === 'case' ? `case:${selectedCaseId}` : selectedPreset}
               onChange={e => {
-                if (e.target.value === 'custom') {
+                const val = e.target.value;
+                if (val === 'custom') {
                   setIsCustomMode(true);
+                  setSourceMode('preset');
+                } else if (val.startsWith('case:')) {
+                  setIsCustomMode(false);
+                  setSourceMode('case');
+                  setSelectedCaseId(val.replace('case:', ''));
                 } else {
                   setIsCustomMode(false);
-                  setSelectedPreset(e.target.value);
+                  setSourceMode('preset');
+                  setSelectedPreset(val);
                 }
               }}
               style={{
-                background: '#0f172a',
-                border: '1px solid #334155',
-                color: '#f8fafc',
-                padding: '5px 10px',
+                background: '#071220',
+                border: sourceMode === 'case' ? '1px solid #38bdf8' : '1px solid #334155',
+                color: sourceMode === 'case' ? '#38bdf8' : '#f8fafc',
+                padding: '6px 10px',
                 borderRadius: 6,
                 fontSize: 12,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                fontWeight: 600
               }}
             >
-              <option value="mule-ring">Money Mule Ring</option>
-              <option value="wash-trading-cycle">Wash Trading Cycle</option>
-              <option value="deposit-sweep">Multi-Victim Deposit Sweep</option>
-              <option value="custom">Custom Input Graph</option>
+              <optgroup label="Real Investigation Case Reports">
+                <option value="case:CR-2026-90413">Case CR-2026-90413 (Rahul Sharma - PhonePe ₹1,00,000)</option>
+                <option value="case:CR-2026-00192">Case CR-2026-00192 (Flagship Cross-Chain Investigation)</option>
+                {casesList.filter(c => c.caseId !== 'CR-2026-90413' && c.caseId !== 'CR-2026-00192').map(c => (
+                  <option key={c.caseId} value={`case:${c.caseId}`}>
+                    Case {c.caseId} ({c.reporterName || 'Citizen'} - ₹{(c.reportedLoss || 0).toLocaleString('en-IN')})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Educational Benchmark Presets">
+                <option value="mule-ring">Money Mule Ring (Layering)</option>
+                <option value="wash-trading-cycle">Wash Trading Cycle (Cycles)</option>
+                <option value="deposit-sweep">Multi-Victim Deposit Sweep (Union-Find)</option>
+                <option value="custom">Custom Input Graph</option>
+              </optgroup>
             </select>
           </div>
         </div>
