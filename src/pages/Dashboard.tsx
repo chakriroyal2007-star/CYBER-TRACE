@@ -14,7 +14,7 @@ export default function Dashboard(){
     try {
       const d = await api('/dashboard');
       let featuredRelated = 0;
-      try {
+      if(!d.evidenceRuntime) try {
         const related = await api('/cases/CR-2026-00192/related');
         featuredRelated = Array.isArray(related) ? related.length : 0;
       } catch {
