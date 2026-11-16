@@ -673,7 +673,16 @@ export class Store {
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
-    if(process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true') this.seedCaseManagement();
+    if(process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true' || process.env.VERCEL) {
+      try {
+        const hasUsers = this.db.prepare('SELECT COUNT(*) count FROM system_users').get().count;
+        if (hasUsers === 0) {
+          this.seedCaseManagement();
+        }
+      } catch {
+        this.seedCaseManagement();
+      }
+    }
   }
   close() { try { this.db.close(); } catch {} }
   session(token) {
@@ -1300,13 +1309,14 @@ export class Store {
         for (const comp of seedComplaints) {
           const id = randomUUID();
           const payload = JSON.stringify(comp);
+          const trackingCode = comp.trackingCode || ('TRK-' + comp.caseId);
           this.db.prepare(`
-            INSERT INTO complaints (id, case_id, reporter_id, reporter_name, reporter_email, incident_type, incident_date, description, reported_loss, currency, chain, reported_wallet, transaction_hash, status, assigned_officer_id, assigned_officer_name, priority, created_at, updated_at, payload)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO complaints (id, case_id, reporter_id, reporter_name, reporter_email, incident_type, incident_date, description, reported_loss, currency, chain, reported_wallet, transaction_hash, status, assigned_officer_id, assigned_officer_name, priority, tracking_code, created_at, updated_at, payload)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             id, comp.caseId, comp.reporterId, comp.reporterName, comp.reporterEmail, comp.incidentType, comp.incidentDate, comp.description,
             comp.reportedLoss, comp.currency, comp.chain, comp.reportedWallet, comp.transactionHash || '', comp.status,
-            comp.assignedOfficerId || null, comp.assignedOfficerName || null, comp.priority, stamp, stamp, payload
+            comp.assignedOfficerId || null, comp.assignedOfficerName || null, comp.priority, trackingCode, stamp, stamp, payload
           );
 
           this.db.prepare(`
@@ -2004,9 +2014,18 @@ export class Store {
     if (!trackingCode) return null;
     let row;
     try {
-      row = this.db.prepare('SELECT * FROM complaints WHERE tracking_code=?').get(trackingCode);
+      row = this.db.prepare('SELECT * FROM complaints WHERE tracking_code=? OR case_id=?').get(trackingCode, trackingCode);
     } catch {
       return null;
+    }
+    if (!row && (process.env.VERCEL || process.env.DEMO_MODE === 'true')) {
+      try {
+        const count = this.db.prepare('SELECT COUNT(*) count FROM complaints').get().count;
+        if (count === 0) {
+          this.seedCaseManagement();
+          row = this.db.prepare('SELECT * FROM complaints WHERE tracking_code=? OR case_id=?').get(trackingCode, trackingCode);
+        }
+      } catch {}
     }
     if (!row) return null;
 

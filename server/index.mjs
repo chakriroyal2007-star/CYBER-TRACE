@@ -38,7 +38,10 @@ import { initializeEvidenceAnalysis, validateTransfers, saveAnalysis, connectedC
 import PDFDocument from 'pdfkit';
 import { readFileSync } from 'node:fs';
 
-if(process.env.VERCEL && !process.env.DB_PATH) console.warn('[STORAGE] Running on Vercel without custom DB_PATH; defaulting to /tmp/cryptotrace.sqlite.');
+if(process.env.VERCEL) {
+  if(!process.env.DB_PATH) console.warn('[STORAGE] Running on Vercel without custom DB_PATH; defaulting to /tmp/cryptotrace.sqlite.');
+  if(!process.env.DEMO_MODE) process.env.DEMO_MODE = 'true';
+}
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
 initializeEvidenceAnalysis(store.db);
