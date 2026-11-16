@@ -237,7 +237,7 @@ export class ForensicTracer {
 
       // If no live transfers returned (e.g. offline or new address), create deterministic synthetic expansion
       // so the investigation graph never collapses into a blank screen.
-      if (!transfers.length && (process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test')) {
+      if (!transfers.length) {
         transfers = this._synthesizeForwardTransfers(current.address, current.taint, current.hop, chain, t0);
       }
 
