@@ -237,7 +237,7 @@ export class ForensicTracer {
 
       // If no live transfers returned (e.g. offline or new address), create deterministic synthetic expansion
       // so the investigation graph never collapses into a blank screen.
-      if (!transfers.length) {
+      if (!transfers.length && (process.env.DEMO_MODE === 'true' || process.env.NODE_ENV === 'test')) {
         transfers = this._synthesizeForwardTransfers(current.address, current.taint, current.hop, chain, t0);
       }
 
@@ -248,8 +248,8 @@ export class ForensicTracer {
 
         // Check if recipient is a known exchange or entity via Bloom Filter
         const labelInfo = this.labels.lookup(tx.to);
-        const nodeType = labelInfo?.type || (current.hop + 1 >= 3 ? 'vasp' : 'intermediary');
-        const entityName = labelInfo?.entity || (nodeType === 'vasp' ? (chain === 'TRON' ? 'Binance TRC20 Hot Wallet' : 'WazirX Exchange') : null);
+        const nodeType = labelInfo?.type || 'intermediary';
+        const entityName = labelInfo?.entity || null;
 
         if (!nodeMetadata.has(toId)) {
           const nextHop = current.hop + 1;

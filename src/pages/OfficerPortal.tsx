@@ -1,3 +1,5 @@
+import EvidenceDownload from '../components/EvidenceDownload';
+import EvidenceAnalysis from '../components/EvidenceAnalysis';
 import React, { useState, useEffect } from 'react';
 import {
   BriefcaseBusiness, ShieldAlert, CheckCircle2, AlertTriangle, ArrowRight,
@@ -248,6 +250,8 @@ export function IncomingReportsPage() {
 
 // 2. Case Dossier Review & Forensic Investigation Page
 export function CaseReviewPage({ id }: { id: string }) {
+  const [demoEnabled,setDemoEnabled]=useState(false);
+  useEffect(()=>{api('/health').then(r=>setDemoEnabled(Boolean(r.demoEnabled))).catch(()=>{});},[]);
   const [complaint, setComplaint] = useState<any>(null);
   const [officers, setOfficers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -292,7 +296,7 @@ export function CaseReviewPage({ id }: { id: string }) {
 
       // Load on-chain intelligence if wallet address is present
       const wallet = comp.reportedWallet || comp.suspectWallet;
-      if (wallet) {
+      if (wallet && !comp.payload?.presentationScenario) {
         try {
           const chain = comp.chain || comp.blockchainNetwork || 'Bitcoin';
           const addrData = await api(`/blockchain/address?chain=${encodeURIComponent(chain)}&address=${encodeURIComponent(wallet)}`);
@@ -478,7 +482,7 @@ export function CaseReviewPage({ id }: { id: string }) {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 11, color: '#64748b' }}>Case Dossier: {displayCaseId}</span>
-          <button
+          {demoEnabled && <button
             onClick={async () => {
               try { await api('/auth/demo-reporter', { method: 'POST', body: '{}' }); } catch {}
               navigate(`/reporter/cases/${displayCaseId}`);
@@ -489,7 +493,7 @@ export function CaseReviewPage({ id }: { id: string }) {
             }}
           >
             View as Citizen Reporter
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -523,7 +527,7 @@ export function CaseReviewPage({ id }: { id: string }) {
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Button
+              {demoEnabled && <Button
                 onClick={() => navigate(`/app/ai-investigation/${complaint.caseId || id}`)}
                 style={{
                   background: 'linear-gradient(90deg, #0284c7 0%, #0369a1 100%)',
@@ -537,11 +541,11 @@ export function CaseReviewPage({ id }: { id: string }) {
                 }}
               >
                 <Bot size={15} /> LAUNCH AI INVESTIGATION
-              </Button>
+              </Button>}
 
-              <Button variant="secondary" onClick={() => setOverrideModal(true)}>
+              {demoEnabled && <Button variant="secondary" onClick={() => setOverrideModal(true)}>
                 <Scale size={14} /> Override ML Prediction
-              </Button>
+              </Button>}
 
               {/* Accept Flow */}
               {['Submitted', 'Pending Review'].includes(complaint.status) && (
@@ -802,7 +806,7 @@ export function CaseReviewPage({ id }: { id: string }) {
                 <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 700, letterSpacing: '1px' }}>EVIDENCE CHAIN OF CUSTODY</span>
                 <h3 style={{ fontSize: 15, color: '#fff', margin: '2px 0 0' }}>Submitted Evidence &amp; Artifacts</h3>
               </div>
-              <Badge variant="info">{(complaint.evidence || []).length} items sealed</Badge>
+              <Badge variant="info">{(complaint.evidence || []).length} evidence items</Badge>
             </div>
 
             {(!complaint.evidence || complaint.evidence.length === 0) ? (
@@ -816,18 +820,19 @@ export function CaseReviewPage({ id }: { id: string }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <File size={20} color="#38bdf8" />
                       <div>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#fff' }}>{item.fileName}</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#fff' }}>{item.filename || item.fileName}</div>
                         <div style={{ fontSize: 11, color: '#64748b' }}>
-                          {item.evidenceType} · {item.fileSize ? `${Math.round(item.fileSize / 1024)} KB` : 'Attached'} · Uploaded by {item.uploadedByName}
+                          {item.fileType || item.evidenceType} · {item.fileSize ? `${Math.round(item.fileSize / 1024)} KB` : 'Attached'} · Uploaded by {item.uploadedByName}
                         </div>
                         {item.description && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{item.description}</div>}
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#4fd7c1', background: 'rgba(79, 215, 193, 0.1)', padding: '2px 6px', borderRadius: 4 }}>
-                        SHA-256 SEALED
+                        {item.storagePath ? 'ORIGINAL STORED · NOT VIRUS SCANNED' : 'ORIGINAL UNAVAILABLE'}
                       </span>
                       <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 4 }}>{formatTime(item.createdAt)}</div>
+                      <EvidenceDownload caseId={id} evidence={item} />
                     </div>
                   </div>
                 ))}
@@ -850,144 +855,7 @@ export function CaseReviewPage({ id }: { id: string }) {
               </Button>
             </div>
 
-            {analyticsResult ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Risk Score Banner */}
-                <div style={{ padding: '12px 14px', background: '#091523', borderRadius: 6, border: '1px solid #1a324a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>Dynamic Event Risk Score</span>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: analyticsResult.riskScore >= 70 ? '#f87171' : analyticsResult.riskScore >= 40 ? '#fbbf24' : '#4fd7c1' }}>
-                      {analyticsResult.riskScore} <small style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>/ 100</small>
-                    </div>
-                  </div>
-                  <div>
-                    <RiskBadge score={analyticsResult.riskScore} />
-                  </div>
-                </div>
-
-                {/* 6-Parameter Investigation Readiness Score */}
-                {(analyticsResult.readinessScore || analyticsResult.readinessBreakdown) && (
-                  <div style={{ background: '#08121f', padding: 12, borderRadius: 6, border: '1px solid #14273b' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8' }}>INVESTIGATION READINESS CRITERIA</span>
-                      <strong style={{ fontSize: 13, color: '#fff' }}>
-                        {typeof analyticsResult.readinessScore === 'object'
-                          ? analyticsResult.readinessScore.overall
-                          : analyticsResult.readinessScore || 78}%
-                      </strong>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {Object.entries(
-                        analyticsResult.readinessBreakdown ||
-                        analyticsResult.readinessScore?.breakdown ||
-                        analyticsResult.parameters ||
-                        {}
-                      ).map(([param, val]: [string, any]) => (
-                        <div key={param}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
-                            <span style={{ color: '#94a3b8', textTransform: 'capitalize' }}>{param.replace(/([A-Z])/g, ' $1')}</span>
-                            <span style={{ color: Number(val) >= 70 ? '#4fd7c1' : Number(val) >= 40 ? '#fbbf24' : '#f87171' }}>{val}%</span>
-                          </div>
-                          <div style={{ height: 4, background: '#122336', borderRadius: 2, overflow: 'hidden' }}>
-                            <div style={{ width: `${val}%`, height: '100%', background: Number(val) >= 70 ? '#4fd7c1' : Number(val) >= 40 ? '#fbbf24' : '#f87171' }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Risk Indicators */}
-                {analyticsResult.indicators && analyticsResult.indicators.length > 0 && (
-                  <div>
-                    <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Detected Risk Indicators:</span>
-                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.5 }}>
-                      {analyticsResult.indicators.map((ind: any, i: number) => (
-                        <li key={i}>{ind.description || ind.name || ind}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* AI Forensic Intelligence & Rationale */}
-                {(analyticsResult.executiveSummary || analyticsResult.forensicRationale) && (
-                  <div style={{ background: '#0a1626', padding: '12px 14px', borderRadius: 6, border: '1px solid #1c3552' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <Zap size={13} color="#38bdf8" />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8', letterSpacing: '0.5px' }}>
-                        AI FORENSIC REASONING {analyticsResult.aiModel ? `(${analyticsResult.aiModel})` : ''}
-                      </span>
-                    </div>
-                    {analyticsResult.executiveSummary && (
-                      <p style={{ margin: '0 0 6px', fontSize: 12, color: '#e2e8f0', lineHeight: 1.4, fontWeight: 500 }}>
-                        {analyticsResult.executiveSummary}
-                      </p>
-                    )}
-                    {analyticsResult.forensicRationale && (
-                      <p style={{ margin: 0, fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
-                        {analyticsResult.forensicRationale}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* CBI Officer Action Plan */}
-                {analyticsResult.cbiOfficerFollowUps && analyticsResult.cbiOfficerFollowUps.length > 0 && (
-                  <div style={{ background: '#091421', padding: '12px 14px', borderRadius: 6, border: '1px solid #234e70' }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#4fd7c1', display: 'block', marginBottom: 8, letterSpacing: '0.5px' }}>
-                      CBI INVESTIGATOR ACTION PLAN (FOLLOW-UP)
-                    </span>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {analyticsResult.cbiOfficerFollowUps.map((step: any, idx: number) => (
-                        <div key={idx} style={{ display: 'flex', gap: 8, fontSize: 11.5, lineHeight: 1.4 }}>
-                          <span style={{
-                            padding: '1px 6px', borderRadius: 4, fontSize: 9.5, fontWeight: 700, height: 'fit-content',
-                            background: step.priority === 'IMMEDIATE' ? 'rgba(239, 68, 68, 0.2)' : step.priority === 'HIGH' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.2)',
-                            color: step.priority === 'IMMEDIATE' ? '#f87171' : step.priority === 'HIGH' ? '#fbbf24' : '#38bdf8',
-                            border: `1px solid ${step.priority === 'IMMEDIATE' ? '#b91c1c' : step.priority === 'HIGH' ? '#d97706' : '#0284c7'}`
-                          }}>
-                            {step.priority}
-                          </span>
-                          <div style={{ color: '#cbd5e1' }}>
-                            {step.action}
-                            {step.legalBasis && <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6 }}>[{step.legalBasis}]</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Quick Actions */}
-                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                  <Button
-                    variant="secondary"
-                    style={{ flex: 1, fontSize: 11 }}
-                    onClick={() => navigate(`/app/graph/${complaint.transactionHash || '232629023'}`)}
-                  >
-                    <Network size={12} /> Graph Explorer
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    style={{ flex: 1, fontSize: 11 }}
-                    onClick={() => navigate('/app/requests')}
-                  >
-                    <FileOutput size={12} /> Section 91 Package
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '24px 12px', color: '#64748b' }}>
-                <Zap size={28} color="#64748b" style={{ margin: '0 auto 8px' }} />
-                <p style={{ fontSize: 12, margin: '0 0 10px' }}>
-                  Click &ldquo;Run Cyber Trace Analytics&rdquo; to execute BFS graph traversal, risk scoring, and verify the 6 investigation readiness parameters for this complaint.
-                </p>
-                <Button onClick={handleRunAnalytics} disabled={analyzing} style={{ fontSize: 12 }}>
-                  <Zap size={14} color="#eab308" /> Run Analytics Now
-                </Button>
-              </div>
-            )}
+            <EvidenceAnalysis key={analyticsResult?.id || id} caseId={id} />
           </Card>
 
           {/* Internal Investigation Notes (Confidential) */}

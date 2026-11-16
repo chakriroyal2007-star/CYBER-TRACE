@@ -18,39 +18,6 @@ export async function api<T=any>(path:string,options:RequestInit={}):Promise<T>{
   }
 
   if (!response.ok) {
-    if (response.status === 401 && !path.includes('/auth/')) {
-      try {
-        const isReporter = typeof window !== 'undefined' && window.location.pathname.startsWith('/reporter');
-        const authEndpoint = isReporter ? '/api/auth/demo-reporter' : '/api/auth/demo-officer';
-        const refreshRes = await fetch(authEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-          credentials: 'include'
-        });
-        if (refreshRes.ok) {
-          const refreshData = await refreshRes.json();
-          const freshToken = refreshData?.token;
-          if (freshToken && typeof localStorage !== 'undefined') {
-            localStorage.setItem('ct_token', freshToken);
-            if (refreshData.user) {
-              localStorage.setItem('ct_user', JSON.stringify(refreshData.user));
-            }
-          }
-          headers['Authorization'] = `Bearer ${freshToken}`;
-          headers['x-session-token'] = freshToken;
-          const retryRes = await fetch(path.startsWith('/api') ? path : `/api${path}`, {
-            credentials: 'include',
-            ...options,
-            headers
-          });
-          if (retryRes.ok) {
-            return await retryRes.json();
-          }
-        }
-      } catch {}
-    }
-
     const body = await response.json().catch(() => ({ error: 'Request could not be completed' }));
     throw new Error(body.error || `Request failed (${response.status})`);
   }

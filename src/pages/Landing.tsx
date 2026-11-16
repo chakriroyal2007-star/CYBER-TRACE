@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import OfficerEnrollment from '../components/OfficerEnrollment';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowRight, ArrowUpRight, ShieldCheck, Network, GitBranch, Landmark, Fingerprint,
   FileCheck2, Search, Waypoints, ChevronRight, Scale, Layers3, LockKeyhole, Eye,
@@ -8,6 +9,9 @@ import { api, navigate } from '../api';
 import { Button, Badge } from '../components/ui';
 
 export default function Landing({ login = false }: { login?: boolean }) {
+  const [demoEnabled,setDemoEnabled]=useState(false);
+  const [totpCode,setTotpCode]=useState('');
+  useEffect(()=>{api('/health').then(r=>setDemoEnabled(Boolean(r.demoEnabled))).catch(()=>{});},[]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,12 +35,12 @@ export default function Landing({ login = false }: { login?: boolean }) {
   });
 
   // Form states
-  const [email, setEmail] = useState('officer.sharma@cbi.gov.in');
-  const [password, setPassword] = useState('Sharma@2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [officerCode, setOfficerCode] = useState('dsaproject');
-  const [badgeNumber, setBadgeNumber] = useState('CBI-CY-8821');
+  const [officerCode, setOfficerCode] = useState('');
+  const [badgeNumber, setBadgeNumber] = useState('');
   const [agency, setAgency] = useState('CBI Cyber Crime Division (Project Simulation)');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -46,8 +50,8 @@ export default function Landing({ login = false }: { login?: boolean }) {
     setError('');
     if (role === 'reporter') {
       if (authTab === 'signin') {
-        setEmail('priya.nair@example.in');
-        setPassword('Reporter@2026');
+        setEmail('');
+        setPassword('');
       } else {
         setEmail('');
         setPassword('');
@@ -56,8 +60,8 @@ export default function Landing({ login = false }: { login?: boolean }) {
       }
     } else {
       if (authTab === 'signin') {
-        setEmail('officer.sharma@cbi.gov.in');
-        setPassword('Sharma@2026');
+        setEmail('');
+        setPassword('');
       } else {
         setEmail('');
         setPassword('');
@@ -75,11 +79,11 @@ export default function Landing({ login = false }: { login?: boolean }) {
     setError('');
     if (tab === 'signin') {
       if (authRole === 'reporter') {
-        setEmail('priya.nair@example.in');
-        setPassword('Reporter@2026');
+        setEmail('');
+        setPassword('');
       } else {
-        setEmail('officer.sharma@cbi.gov.in');
-        setPassword('Sharma@2026');
+        setEmail('');
+        setPassword('');
       }
     } else {
       setEmail('');
@@ -164,8 +168,9 @@ export default function Landing({ login = false }: { login?: boolean }) {
     try {
       const res = await api('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password, role: authRole })
+        body: JSON.stringify({ email, password, totpCode, role: authRole })
       });
+      if(res?.requiresTotp){setError('Enter your current authenticator code.');setBusy(false);return;}
       if (res?.token && typeof localStorage !== 'undefined') {
         localStorage.setItem('ct_token', res.token);
       }
@@ -221,6 +226,8 @@ export default function Landing({ login = false }: { login?: boolean }) {
     }
   }
 
+  const invitationToken=new URLSearchParams(window.location.search).get('invite');
+  if(invitationToken)return <OfficerEnrollment token={invitationToken}/>;
   return (
     <div className="landing">
       {/* Navigation matching original screenshot */}
@@ -249,7 +256,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
           <Button variant="secondary" onClick={() => { switchRole('officer'); switchTab('signin'); navigate('/login?role=officer&mode=signin'); }}>
             <LockKeyhole size={14} color="#38bdf8" /> Officer Login
           </Button>
-          <Button onClick={enterDemoInvestigator} disabled={busy}>
+          <Button onClick={enterDemoInvestigator} disabled={busy || !demoEnabled}>
             Enter demo console <ArrowUpRight size={15} />
           </Button>
         </div>
@@ -324,7 +331,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
             </button>
             <button
               type="button"
-              onClick={() => switchTab('signup')}
+              onClick={() => authRole==='officer' ? setError('Officer accounts require an administrator invitation. Open the invitation link to enroll.') : switchTab('signup')}
               style={{
                 flex: 1, padding: '7px 8px', borderRadius: 5, fontSize: 11.5, fontWeight: 700,
                 border: 'none', cursor: 'pointer', transition: 'all 0.15s',
@@ -339,7 +346,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
           {/* Role label disclosure */}
           {authRole === 'officer' && (
             <div style={{ fontSize: 11, color: '#94a3b8', background: '#08121f', padding: '8px 12px', borderRadius: 6, border: '1px solid #14273b', marginBottom: 14, lineHeight: 1.45 }}>
-              <strong style={{ color: '#62cbb9' }}>Official Simulation Notice:</strong> &ldquo;CBI Officer&rdquo; is a simulation role label for cybersecurity and cryptocurrency fraud tracking. For registration, the department code is <code style={{ color: '#38bdf8', background: '#0d1f33', padding: '1px 4px', borderRadius: 3 }}>dsaproject</code>.
+              <strong style={{color:'#62cbb9'}}>Project workspace:</strong> Officer accounts require an administrator invitation. Classroom examples are fictional and do not imply government affiliation.
             </div>
           )}
 
@@ -443,7 +450,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
                     required
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder="Create secure password (min 4 chars)"
+                    minLength={12} placeholder="Create secure password (min 12 chars)"
                     style={{ paddingRight: 38 }}
                   />
                   <button
@@ -456,6 +463,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
                 </div>
               </div>
 
+              <label style={{fontSize:11,color:'#94a3b8'}}>Authenticator code (if enrolled)<input aria-label="Authenticator code" inputMode="numeric" value={totpCode} onChange={e=>setTotpCode(e.target.value)} placeholder="6-digit code"/></label>
               {error && <div className="error-text">{error}</div>}
 
               <Button type="submit" disabled={busy} style={{ width: '100%', padding: '12px', justifyContent: 'center', marginTop: 6 }}>
@@ -512,6 +520,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
                 </div>
               </div>
 
+              <label style={{fontSize:11,color:'#94a3b8'}}>Authenticator code (if enrolled)<input aria-label="Authenticator code" inputMode="numeric" value={totpCode} onChange={e=>setTotpCode(e.target.value)} placeholder="6-digit code"/></label>
               {error && <div className="error-text">{error}</div>}
 
               <Button type="submit" disabled={busy} style={{ width: '100%', padding: '12px', justifyContent: 'center', marginTop: 6 }}>
@@ -522,7 +531,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
               <div style={{ textAlign: 'center', marginTop: 6 }}>
                 <button
                   type="button"
-                  onClick={() => switchTab('signup')}
+                  onClick={() => authRole==='officer' ? setError('Officer accounts require an administrator invitation. Open the invitation link to enroll.') : switchTab('signup')}
                   style={{ background: 'none', border: 'none', color: '#62cbb9', fontSize: 11.5, cursor: 'pointer', textDecoration: 'underline' }}
                 >
                   {authRole === 'officer' ? "Don't have an officer account? Register here" : "Don't have a citizen account? Register here"}
@@ -534,19 +543,19 @@ export default function Landing({ login = false }: { login?: boolean }) {
           {/* Quick 1-Click Instant Demo Access */}
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #1a2d42' }}>
             <span style={{ fontSize: 10.5, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'block', marginBottom: 10, textAlign: 'center' }}>
-              One-Click Instant Demo Credentials
+              {demoEnabled?'Explicit demonstration access':'Demonstration access is disabled'}
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoInvestigator} style={{ padding: '8px 10px', justifyContent: 'center', fontSize: 11 }}>
+              <Button type="button" variant="secondary" disabled={busy || !demoEnabled} onClick={enterDemoInvestigator} style={{ padding: '8px 10px', justifyContent: 'center', fontSize: 11 }}>
                 <ShieldCheck size={13} color="#62cbb9" /> Insp. Sharma (Officer)
               </Button>
-              <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoReporter} style={{ padding: '8px 10px', justifyContent: 'center', fontSize: 11 }}>
+              <Button type="button" variant="secondary" disabled={busy || !demoEnabled} onClick={enterDemoReporter} style={{ padding: '8px 10px', justifyContent: 'center', fontSize: 11 }}>
                 <UserCheck size={13} color="#70c9b8" /> Priya Nair (Citizen)
               </Button>
-              <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoSupervisor} style={{ padding: '8px 10px', justifyContent: 'center', fontSize: 11 }}>
+              <Button type="button" variant="secondary" disabled={busy || !demoEnabled} onClick={enterDemoSupervisor} style={{ padding: '8px 10px', justifyContent: 'center', fontSize: 11 }}>
                 <ShieldCheck size={13} color="#38bdf8" /> SP Rathore (Supervisor)
               </Button>
-              <Button type="button" variant="secondary" disabled={busy} onClick={enterDemoAdmin} style={{ padding: '8px 10px', justifyContent: 'center', fontSize: 11 }}>
+              <Button type="button" variant="secondary" disabled={busy || !demoEnabled} onClick={enterDemoAdmin} style={{ padding: '8px 10px', justifyContent: 'center', fontSize: 11 }}>
                 <ShieldCheck size={13} color="#f59e0b" /> Dr. Roy (Director)
               </Button>
             </div>
@@ -570,7 +579,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
 
               {/* Action buttons including new requested entrypoints */}
               <div className="hero-buttons" style={{ flexWrap: 'wrap', gap: 10 }}>
-                <Button disabled={busy} onClick={enterDemoInvestigator} style={{ padding: '12px 18px' }}>
+                <Button disabled={busy || !demoEnabled} onClick={enterDemoInvestigator} style={{ padding: '12px 18px' }}>
                   Start investigation <ArrowRight size={16} />
                 </Button>
                 <Button variant="secondary" disabled={busy} onClick={() => navigate('/app/incoming')} style={{ padding: '12px 16px' }}>
@@ -745,7 +754,7 @@ export default function Landing({ login = false }: { login?: boolean }) {
               <Button variant="secondary" onClick={() => navigate('/login')}>
                 Officer Login <LockKeyhole size={15} />
               </Button>
-              <Button disabled={busy} onClick={enterDemoInvestigator}>
+              <Button disabled={busy || !demoEnabled} onClick={enterDemoInvestigator}>
                 Try live demo <ArrowUpRight size={16} />
               </Button>
             </div>

@@ -1,12 +1,15 @@
+import { PersistentAuthMap } from './persistentState.mjs';
 import { randomBytes, createHash } from 'node:crypto';
 
 // In-memory lockout tracker: identifier (email/ip) -> { failedAttempts, lockedUntil }
-const lockoutStore = new Map();
+let lockoutStore = new Map();
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
 // Refresh token store: tokenHash -> { userId, familyId, expiresAt, used: boolean }
-const refreshTokenStore = new Map();
+let refreshTokenStore = new Map();
+let authDatabase;
+export function configureSessionPersistence(db){authDatabase=db;lockoutStore=new PersistentAuthMap(db,'lockouts');refreshTokenStore=new PersistentAuthMap(db,'refresh');}
 
 /**
  * Record a failed login attempt and check for lockout
@@ -59,7 +62,7 @@ export function isLockedOut(identifier) {
 /**
  * Generates an access token and rotating refresh token pair
  */
-export function issueTokenPair(userId) {
+export function issueTokenPair(userId, sessionId = null) {
   const accessToken = randomBytes(32).toString('hex');
   const rawRefreshToken = randomBytes(40).toString('hex');
   const familyId = randomBytes(16).toString('hex');
@@ -69,6 +72,7 @@ export function issueTokenPair(userId) {
 
   refreshTokenStore.set(refreshHash, {
     userId,
+    sessionId,
     familyId,
     expiresAt,
     used: false
@@ -97,6 +101,7 @@ export function rotateRefreshToken(oldRawToken) {
     // Revoke all tokens in this family
     for (const [hash, item] of refreshTokenStore.entries()) {
       if (item.familyId === record.familyId) {
+        if(authDatabase && item.sessionId)authDatabase.prepare('UPDATE sessions SET expires_at=? WHERE id=?').run(new Date().toISOString(),item.sessionId);
         refreshTokenStore.delete(hash);
       }
     }
@@ -109,7 +114,12 @@ export function rotateRefreshToken(oldRawToken) {
   }
 
   // Mark old token as used
+  if(authDatabase && record.sessionId){
+    const active=authDatabase.prepare('SELECT id FROM sessions WHERE id=? AND expires_at>?').get(record.sessionId,new Date().toISOString());
+    if(!active)return {success:false,error:'Session expired or revoked. Sign in again.'};
+  }
   record.used = true;
+  refreshTokenStore.set(oldHash,record);
 
   // Issue new token in same family
   const newRawRefresh = randomBytes(40).toString('hex');
@@ -118,11 +128,13 @@ export function rotateRefreshToken(oldRawToken) {
 
   refreshTokenStore.set(newHash, {
     userId: record.userId,
+    sessionId: record.sessionId,
     familyId: record.familyId,
     expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
     used: false
   });
 
+  if(authDatabase && record.sessionId)authDatabase.prepare('UPDATE sessions SET token_hash=? WHERE id=?').run(createHash('sha256').update(newAccess).digest('hex'),record.sessionId);
   return {
     success: true,
     userId: record.userId,

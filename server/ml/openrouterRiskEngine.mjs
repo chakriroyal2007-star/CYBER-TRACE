@@ -18,7 +18,7 @@ export class OpenRouterRiskEngine {
   async evaluateCase(caseData, graphFindings = {}) {
     const prompt = this._buildPrompt(caseData, graphFindings);
 
-    for (const model of this.models) {
+    for (const model of this.apiKey ? this.models : []) {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 12000);
@@ -99,7 +99,8 @@ Return ONLY a valid JSON object strictly matching this schema:
       }
     }
 
-    // Deterministic mathematical fallback
+    if(process.env.DEMO_MODE !== 'true' && process.env.NODE_ENV !== 'test') return {riskScore:null,riskLevel:'UNAVAILABLE',aiEvaluated:false,readinessScore:null,executiveSummary:'No model evaluation available. Run submitted transaction evidence analysis.',detectedIndicators:[],cbiOfficerFollowUps:[]};
+    // Explicit demonstration fallback
     return this._deterministicFallback(caseData, graphFindings);
   }
 

@@ -1,3 +1,4 @@
+import { PersistentAuthMap } from './persistentState.mjs';
 import { randomBytes } from 'node:crypto';
 import { validatePasswordPolicy, hashPasswordSecure } from './password.mjs';
 import { verifyTotp } from './totp.mjs';
@@ -29,7 +30,8 @@ export function isAllowedOfficerDomain(email) {
 }
 
 // In-memory officer invitations store: token -> { id, email, role, designation, unit, expiresAt, status: 'PENDING'|'ACCEPTED'|'EXPIRED' }
-export const invitationStore = new Map();
+export let invitationStore = new Map();
+export function configureInvitationPersistence(db){invitationStore=new PersistentAuthMap(db,'invitations');}
 
 /**
  * Admin creates an email-bound single-use invitation for an officer
@@ -37,6 +39,7 @@ export const invitationStore = new Map();
 export function createOfficerInvitation(arg1, arg2, arg3) {
   const data = (arg1 && typeof arg1 === 'object' && arg1.email) ? arg1 : (arg2 && typeof arg2 === 'object' && arg2.email) ? arg2 : arg1 || {};
   const { designation, unit, role = 'investigating_officer' } = data;
+  if(!['investigating_officer','supervisor','auditor','bank_nodal'].includes(role))throw Object.assign(new Error('Unsupported invitation role.'),{status:400});
   const invitedBy = typeof arg2 === 'string' ? arg2 : typeof arg3 === 'string' ? arg3 : data.invitedBy || 'Admin';
   const cleanEmail = String(data.email || '').trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -153,10 +156,12 @@ export async function acceptOfficerInvitation(arg1, arg2) {
     status: 'ACTIVE'
   });
 
+  if(dbStore.db)dbStore.db.prepare('UPDATE system_users SET unit=? WHERE id=?').run(inv.unit,user.id);
   // 4. Mark invitation as consumed (single-use)
   inv.status = 'ACCEPTED';
   inv.acceptedAt = Date.now();
   inv.userId = user.id;
+  invitationStore.set(token,inv);
 
   return { success: true, ok: true, user };
 }

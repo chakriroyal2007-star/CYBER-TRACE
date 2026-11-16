@@ -13,6 +13,7 @@ export function validatePasswordPolicy(password) {
   if (!password || typeof password !== 'string') {
     return { valid: false, message: 'Password is required.' };
   }
+  if(password.length>256)return {valid:false,message:'Password must not exceed 256 characters.'};
   if (password.length < 12) {
     return { valid: false, message: 'Password must be at least 12 characters long.' };
   }

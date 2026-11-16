@@ -26,17 +26,24 @@ import { validatePasswordPolicy, hashPasswordSecure, verifyPasswordSecure } from
 import { sendEmailVerificationCode, verifyEmailCode, getEmailVerificationStatus } from './auth/emailVerification.mjs';
 import { generateTotpSecret, generateTotpUri, verifyTotp } from './auth/totp.mjs';
 import { ROLES, PERMISSIONS_MATRIX, hasPermission, canAccessCase } from './auth/permissions.mjs';
-import { recordFailedLogin, resetFailedLogin, isAccountLocked, issueTokenPair, rotateRefreshToken, revokeSession, getActiveSessions, createSecureCookie } from './auth/sessionManager.mjs';
-import { createOfficerInvitation, verifyInvitationToken, acceptOfficerInvitation } from './auth/officerInvitations.mjs';
+import { configureSessionPersistence, recordFailedLogin, resetFailedLogin, isAccountLocked, issueTokenPair, rotateRefreshToken, revokeSession, getActiveSessions, createSecureCookie } from './auth/sessionManager.mjs';
+import { configureInvitationPersistence, createOfficerInvitation, verifyInvitationToken, acceptOfficerInvitation } from './auth/officerInvitations.mjs';
 import { processProofUpload, stripImageMetadata } from './reporting/proofUpload.mjs';
 import { extractComplaintParameters, isValidEip55Checksum } from './reporting/extractor.mjs';
 import { duplicateDetector } from './reporting/duplicateDetector.mjs';
 import { autoTracePublicWallet } from './reporting/autoTracer.mjs';
 import { generateSection106Notice, generateSection94Notice, generateBsa63Certificate, computeMasterCourtPackageSeal, verifyCourtPackage, DISCLAIMER_BANNER } from './legal/statutoryNotices.mjs';
 import { buildDataset } from './analytics.mjs';
+import { initializeEvidenceAnalysis, validateTransfers, saveAnalysis, connectedComplaints } from './investigation/evidenceAnalysis.mjs';
+import PDFDocument from 'pdfkit';
+import { readFileSync } from 'node:fs';
 
+if(process.env.VERCEL && !process.env.DB_PATH) throw new Error('Persistent DB_PATH is required; ephemeral serverless storage cannot retain complaints.');
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
+initializeEvidenceAnalysis(store.db);
+configureSessionPersistence(store.db);
+configureInvitationPersistence(store.db);
 const entityIntelligence = new EntityIntelligenceService(store.db);
 const PORT=Number(process.env.PORT || 8000),HOST=process.env.HOST || '0.0.0.0';
 const dist=resolve(root,'dist');
@@ -73,7 +80,7 @@ function csrfAndCors(req,res) {
   res.setHeader('Access-Control-Expose-Headers','x-new-session-token');
 }
 function limited(req,path) {
-  const ip=req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  const ip=(process.env.TRUST_PROXY==='true' ? req.headers['x-forwarded-for']?.split(',')[0]?.trim() : null) || req.socket?.remoteAddress || 'unknown';
   const key=`${ip}:${path==='/api/auth/demo'?'session':'api'}`,time=Date.now();
   const limit=path==='/api/auth/demo'?Math.min(rateLimit,30):rateLimit;
   let bucket=rateBuckets.get(key);
@@ -91,7 +98,7 @@ async function body(req) {
   const type=(req.headers['content-type'] || '').split(';')[0];
   if(type && type!=='application/json') fail('Use Content-Type: application/json.',415);
   let raw='',bytes=0;
-  for await(const chunk of req) { bytes+=chunk.length; if(bytes>1048576) fail('Request body exceeds 1 MiB.',413); raw+=chunk.toString('utf8'); }
+  for await(const chunk of req) { bytes+=chunk.length; if(bytes>22*1024*1024) fail('Request body exceeds 22 MiB.',413); raw+=chunk.toString('utf8'); }
   if(!raw.trim()) return {};
   try { return object(JSON.parse(raw)); } catch(error) { if(error.status) throw error; fail('Request body is not valid JSON.'); }
 }
@@ -125,40 +132,25 @@ function walletResult(sessionId,address) {
     const matches=inv.nodes.filter(n=>n.address===address || (n.address?.startsWith('0x') && n.address.toLowerCase()===address.toLowerCase()));
     for(const node of matches) results.push({inv,node});
   }
-  if(!results.length) {
-    const isEth = address.startsWith('0x');
-    const node = {
-      id: 'W-' + (address.length > 8 ? address.slice(2, 8).toUpperCase() : 'TARGET'),
-      address,
-      label: 'Indexed Target Wallet',
-      type: 'suspect',
-      chain: isEth ? 'Ethereum' : 'Bitcoin',
-      balance: 0,
-      riskScore: 75,
-      entity: null,
-      firstSeen: new Date(Date.now() - 86400000 * 7).toISOString(),
-      lastSeen: new Date().toISOString(),
-      incomingCount: 2,
-      outgoingCount: 2,
-      behavior: ['layering', 'rapid_movement'],
-      evidenceIds: [],
-      source: 'ON-CHAIN FORENSIC INTELLIGENCE'
-    };
-    return {
-      wallet: node,
-      cases: [],
-      transactions: [],
-      behavior: { fanOutRatio: 2.2, velocityHopsPerDay: 3.8 },
-      fingerprint: { features: {}, patterns: ['Layered peel chain'] },
-      source: 'ON-CHAIN FORENSIC INTELLIGENCE'
-    };
-  }
+  if(!results.length) fail('No observed wallet evidence is indexed for this address.',404);
   const first=results[0],transactions=results.flatMap(({inv,node})=>inv.edges.filter(e=>e.source===node.id||e.target===node.id).map(e=>({...e,caseId:inv.case.id})));
   return {wallet:first.node,cases:[...new Map(results.map(r=>[r.inv.case.id,r.inv.case])).values()],transactions,behavior:first.inv.fingerprint?.features || {},fingerprint:first.inv.fingerprint || {features:{},patterns:[]},source:'SIMULATED INVESTIGATION DATA'};
 }
 function dashboard(sessionId) {
+  if(process.env.DEMO_MODE!=='true' && process.env.NODE_ENV!=='test') {
+    const user=store.db.prepare('SELECT u.*,s.user_id FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=?').get(sessionId);
+    const unit=store.db.prepare('SELECT unit FROM system_users WHERE id=?').get(user.user_id)?.unit;
+    const complaints=store.listComplaints(user.role==='reporter'?{reporterId:user.user_id}:['admin','supervisor'].includes(user.role)?{}:{officerId:user.user_id,officerUnit:unit || 'Cyber Crime Division',scopingRole:'officer'});
+    const cases=complaints.map(c=>{
+      const saved=store.db.prepare('SELECT payload FROM incident_analysis_runs WHERE case_id=? ORDER BY rowid DESC LIMIT 1').get(c.caseId);
+      const run=saved?JSON.parse(saved.payload):null;
+      return {...c,id:c.caseId,fraudType:c.incidentType,victimLoss:c.reportedLoss,riskScore:run?.riskScore ?? null};
+    });
+    return {evidenceRuntime:true,cases,metrics:{activeCases:cases.filter(c=>!['Closed','Resolved','Rejected'].includes(c.status)).length,submittedComplaints:cases.length,analyzedCases:cases.filter(c=>c.riskScore!==null).length,reportedLoss:cases.reduce((sum,c)=>sum+c.reportedLoss,0)}};
+  }
+
   let cases = store.listCases(sessionId);
-  if (!cases || cases.length === 0) {
+  if ((!cases || cases.length === 0) && process.env.DEMO_MODE === 'true') {
     try {
       const s = store.db.prepare('SELECT weights FROM sessions WHERE id=?').get(sessionId);
       const w = s ? JSON.parse(s.weights) : DEFAULT_WEIGHTS;
@@ -495,8 +487,9 @@ async function handle(req,res) {
      persistent:true,
      blockchainProviders:['Bitcoin (mempool.space)', 'Ethereum (EVM RPC)', 'Polygon', 'BNB Chain', 'TRON (TronGrid)'],
      researchDataset:'Elliptic Bitcoin Dataset (203,769 transactions)',
-     mode:'PRODUCTION INVESTIGATION PLATFORM',
-     liveBlockchain:true,
+     mode:process.env.DEMO_MODE==='true'?'EXPLICIT DEMONSTRATION':'EVIDENCE INVESTIGATION',
+     demoEnabled:process.env.DEMO_MODE==='true' || process.env.NODE_ENV==='test',
+     liveBlockchain:'Provider-dependent; availability is not a verification claim',
      timestamp:now()
    });
  }
@@ -505,7 +498,7 @@ async function handle(req,res) {
 
  // Phase 1 DEMO_MODE Production Guard: Sandbox bypass is refused in production without explicit override
  if(path.startsWith('/api/auth/demo')) {
-   if(process.env.NODE_ENV === 'production' && !process.env.ALLOW_PRODUCTION_DEMO) {
+   if(process.env.DEMO_MODE !== 'true' && process.env.NODE_ENV !== 'test') {
      fail('Demo sandbox access is disabled in production environments without explicit authorization.', 403);
    }
  }
@@ -587,12 +580,18 @@ async function handle(req,res) {
    if(!rToken) fail('Refresh token is required.', 400);
    try {
      const pair = rotateRefreshToken(rToken);
-     return json(res, 200, pair);
+     if(!pair.success) fail(pair.error || 'Invalid refresh token.',401);
+     const account=store.getUser(pair.userId);
+     if(!account || store.db.prepare('SELECT status FROM system_users WHERE id=?').get(pair.userId)?.status==='SUSPENDED') fail('Account unavailable.',401);
+     res.setHeader('Set-Cookie',sessionCookie(req,pair.accessToken,7*24*3600));
+     res.setHeader('x-new-session-token',pair.accessToken);
+     return json(res, 200, {...pair,token:pair.accessToken,user:account});
    } catch(e) {
      fail(e.message || 'Invalid or reused refresh token. Please sign in again.', 401);
    }
  }
  if(path==='/api/demo/reset' && method==='POST') {
+   if(process.env.DEMO_MODE !== 'true' && process.env.NODE_ENV !== 'test') fail('Demo mode is disabled.',403);
    await body(req);
    const result = store.resetDemoData();
    return json(res, 200, { ok: true, purgedCount: result.purgedCount, caseIds: result.caseIds });
@@ -615,12 +614,7 @@ async function handle(req,res) {
  }
  if(path==='/api/auth/register' && method==='POST') {
    const data = await body(req);
-   if(data.role === 'officer' || data.role === 'investigating_officer') {
-     const expectedCode = process.env.OFFICER_SIGNUP_CODE || 'dsaproject';
-     if(!data.officerCode || String(data.officerCode).trim() !== expectedCode) {
-       fail('Officer self-registration is restricted. Officer accounts must be provisioned via admin invitation.', 403);
-     }
-   }
+   if(data.role && data.role !== 'reporter') fail('Privileged accounts require an administrator invitation.',403);
    const policy = validatePasswordPolicy(data.password);
    if(!policy.valid) {
      fail(policy.message, 400);
@@ -641,9 +635,9 @@ async function handle(req,res) {
  if(path==='/api/auth/login' && method==='POST') {
    const data = await body(req);
    const email = String(data.email || '').trim().toLowerCase();
-   const password = String(data.password || '').trim();
+   const password = String(data.password || '');
    if(!email || !email.includes('@')) fail('Please enter a valid email address.', 400);
-   if(!password || password.length < 4) fail('Password must be at least 4 characters.', 400);
+   if(!password || password.length < 4 || password.length>256) fail('Password must be at least 4 characters.', 400);
 
    const lockStatus = isAccountLocked(email);
    if(lockStatus.locked) {
@@ -659,8 +653,6 @@ async function handle(req,res) {
    }
 
    if(authUser) {
-     resetFailedLogin(email);
-
      if(authUser.totpRequired) {
        const totpCode = String(data.totpCode || '').trim();
        if(!totpCode) {
@@ -672,10 +664,12 @@ async function handle(req,res) {
        }
        const totpValid = verifyTotp(authUser.totpSecret, totpCode);
        if(!totpValid) {
+         recordFailedLogin(email);
          fail('Invalid 6-digit TOTP verification code.', 401);
        }
      }
 
+     resetFailedLogin(email);
      const { token, session } = store.createSession(authUser.name, authUser.role, authUser.id);
      const pair = issueTokenPair(authUser.id, session.id);
      res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
@@ -683,7 +677,7 @@ async function handle(req,res) {
      return json(res, 200, {
        token,
        refreshToken: pair.refreshToken,
-       user: authUser,
+       user: Object.fromEntries(Object.entries(authUser).filter(([key]) => key !== 'totpSecret')),
        mode: authUser.role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL',
        expiresAt: session.expires_at
      });
@@ -695,32 +689,7 @@ async function handle(req,res) {
      fail('Invalid email or password. Please verify your credentials.', 401);
    }
 
-   // Provision new permanent account for first-time signins so complaints are never lost
-   const rawName = email.split('@')[0].replace(/[\._\-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-   const role = (data.role === 'reporter' || (!email.includes('cbi') && !email.includes('cryptotrace') && !email.includes('officer') && !email.includes('police'))) ? 'reporter' : 'officer';
-   const displayName = role === 'officer' ? `${rawName} (CBI Officer)` : rawName;
-   try {
-     const newUser = store.registerUser({
-       email,
-       password,
-       name: displayName,
-       role,
-       phone: data.phone || ''
-     });
-     const { token, session } = store.createSession(newUser.name, newUser.role, newUser.id);
-     const pair = issueTokenPair(newUser.id, session.id);
-     res.setHeader('Set-Cookie', sessionCookie(req, token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-     res.setHeader('x-new-session-token', token);
-     return json(res, 200, {
-       token,
-       refreshToken: pair.refreshToken,
-       user: newUser,
-       mode: role === 'reporter' ? 'REPORTER PORTAL' : 'CBI OFFICER PORTAL',
-       expiresAt: session.expires_at
-     });
-   } catch {
-     fail('Invalid email or password. Please verify your credentials.', 401);
-   }
+   fail('Invalid email or password.',401);
  }
 
  // Phase 2 Citizen Reporting & Proof Extraction Endpoints
@@ -735,6 +704,9 @@ async function handle(req,res) {
  }
 
  if(path==='/api/reporting/upload-proof' && method==='POST') {
+   const uploadToken = (req.headers.authorization || '').replace(/^Bearer /,'') || req.headers['x-session-token'] || cookies(req).ct_session;
+   const uploader = store.session(uploadToken);
+   if(!uploader || uploader.suspended) fail('Sign in to upload evidence.',401);
    const data = await body(req);
    let buf = null;
    if (data.fileBuffer) {
@@ -752,8 +724,8 @@ async function handle(req,res) {
      originalFilename: data.filename || 'evidence_proof.dat',
      mimeType: data.fileType || data.mimeType || 'application/octet-stream',
      caseId: data.caseId || null,
-     uploadedById: data.uploadedById || 'citizen-reporter',
-     uploadedByName: data.uploadedByName || 'Citizen Reporter',
+     uploadedById: uploader.user_id,
+     uploadedByName: uploader.display_name,
      uploaderRole: 'reporter',
      description: data.description || 'Uploaded proof documentation'
    });
@@ -800,40 +772,7 @@ async function handle(req,res) {
    }
    if(id==='simulate' && method==='POST') {
      const data = await body(req);
-     if (data.caseId) {
-       let comp = store.getComplaint ? store.getComplaint(data.caseId) : null;
-       let victimLoss = comp?.reportedLoss || comp?.victimLoss || 812450;
-       let chain = comp?.chain || 'Ethereum';
-       let fraudType = comp?.fraudType || 'Investment Scam';
-       try {
-         const ds = buildDataset({ id: data.caseId, victimLoss, chain, fraudType });
-         if (ds && ds.nodes && ds.nodes.length > 0) {
-           const mappedNodes = ds.nodes.map(n => ({
-             id: n.id,
-             label: n.label || n.id,
-             role: n.type || 'intermediary',
-             risk: n.riskScore || 50,
-             address: n.address,
-             entity: n.label || n.id,
-             amount: n.balance || victimLoss
-           }));
-
-           const mappedEdges = ds.edges.map(e => ({
-             from: e.source,
-             to: e.target,
-             amount: e.amount || 50000,
-             weight: Number((1.0 / Math.max(1, (e.amount || 100000) / 100000)).toFixed(2)) || 1.0,
-             label: '₹' + (e.amount || 0).toLocaleString('en-IN')
-           }));
-
-           data.customGraph = { nodes: mappedNodes, edges: mappedEdges };
-           data.startNode = mappedNodes[0]?.id || 'W-01';
-           data.targetNode = mappedNodes.find(n => n.role === 'vasp')?.id || mappedNodes[mappedNodes.length - 1]?.id || 'W-12';
-         }
-       } catch (e) {
-         // Fall back gracefully
-       }
-     }
+     if(data.caseId) fail('Use the authenticated complaint evidence analysis endpoint for case-specific algorithms.',400);
      return json(res, 200, runDsaSimulation(data));
    }
  }
@@ -846,22 +785,16 @@ async function handle(req,res) {
    fail('This account has been suspended by administration. All active sessions revoked.', 403);
  }
 
- if (!session && (token || process.env.ALLOW_PRODUCTION_DEMO === 'true' || process.env.DEMO_MODE === 'true' || process.env.VERCEL)) {
-   // A token was provided by the client, or serverless cold start / first-time visitor in demo mode.
-   // Auto-revive session with full seeded cases and officer access so the dashboard never breaks.
-   try {
-     const isReporter = path.startsWith('/api/reporter') || path.startsWith('/api/complaint');
-     const role = isReporter ? 'reporter' : 'officer';
-     const displayName = role === 'officer' ? 'Insp. Rajesh Sharma (CBI Officer)' : 'Demo Investigator';
-     const revived = store.createSession(displayName, role);
-     session = revived.session;
-     res.setHeader('Set-Cookie', sessionCookie(req, revived.token, Math.floor((Date.parse(session.expires_at) - Date.now()) / 1000)));
-     res.setHeader('x-new-session-token', revived.token);
-   } catch {}
- }
-
- if(!session) fail('Start a demo session to access this workspace.',401);
+ if(!session) fail('Sign in to access this workspace.',401);
  const sid=session.id;
+ const demoEnabled = process.env.DEMO_MODE==='true' || process.env.NODE_ENV==='test';
+ if(!demoEnabled && ['investigation'].includes(group)) fail('The legacy agent uses demonstration data. Use complaint evidence analysis for real investigations.',409);
+ if(!demoEnabled && ['cases','investigations','transactions'].includes(group) && ['POST','PUT','PATCH'].includes(method) && !(group==='transactions' && sub==='investigate')) fail('Use persistent complaint evidence analysis for case work; this legacy workspace is demonstration-only.',409);
+ if(((group==='ml' && id==='evaluation') || (['dataset','analytics'].includes(group) && id==='model-eval')) && method==='GET') {
+   const evaluationPath=resolve(root,'data/ml/evaluation.json');
+   if(!existsSync(evaluationPath)) fail('Train the research pipeline first; evaluation unavailable.',503);
+   return json(res,200,JSON.parse(readFileSync(evaluationPath,'utf8')));
+ }
  if(path==='/api/officer/override' && method==='POST') {
    const isOfficer = session.role === 'officer' || session.role === 'supervisor' || session.role === 'admin';
    if(!isOfficer) fail('Only authorized officers can override ML predictions.', 403);
@@ -893,6 +826,8 @@ async function handle(req,res) {
  }
  if(path==='/api/auth/sessions/revoke' && method==='POST') {
    const data = await body(req);
+   const owned = store.db.prepare('SELECT id FROM sessions WHERE id=? AND user_id=?').get(data.sessionId, session.user_id);
+   if(!owned) fail('Session not found.',404);
    revokeSession(store, data.sessionId);
    return json(res, 200, { ok: true, message: 'Session revoked.' });
  }
@@ -1092,12 +1027,17 @@ async function handle(req,res) {
  }
  // Cross-Case Correlation Intelligence
  if(group==='cross-case' && method==='GET') {
+   if(!['officer','investigating_officer','supervisor','admin','demo-investigator'].includes(session.role)) fail('Investigator access required.',403);
    const q = url.searchParams.get('q');
    return json(res, 200, store.getCrossCaseIntelligence(q));
  }
  if(group==='complaints') {
    const isOfficer = session.role === 'officer' || session.role === 'supervisor' || session.role === 'admin' || session.role === 'official-investigator' || session.role === 'demo-investigator' || session.role === 'investigating_officer';
    const isAuditor = session.role === 'auditor';
+   if(id) {
+     const row = store.db.prepare('SELECT * FROM complaints WHERE case_id=? OR id=?').get(id,id);
+     if(!row || !canAccessCase({ ...session, id: session.user_id },row)) fail('Complaint not found or access denied.',404);
+   }
 
    if(!id && method==='GET') {
      if (isAuditor) {
@@ -1128,8 +1068,8 @@ async function handle(req,res) {
    }
    if(!id && method==='POST') {
      const data = await body(req);
-     if (!data.incidentType) fail('Incident type is required.', 400);
-     if (!data.description || data.description.length < 5) fail('Incident description must be at least 5 characters.', 400);
+     if (typeof data.incidentType!=='string' || !data.incidentType.trim() || data.incidentType.length>200) fail('Incident type is required (max 200 characters).', 400);
+     if (typeof data.description!=='string' || data.description.length < 5 || data.description.length>20000) fail('Incident description must be at least 5 characters.', 400);
 
      // Phase 2.5: Duplicate and Linkage Detection
      const dupCheck = duplicateDetector.checkDuplicates(store, {
@@ -1139,10 +1079,19 @@ async function handle(req,res) {
        suspectPhone: data.suspectPhone
      });
 
-     const trackingCode = data.trackingCode || 'TRK-' + randomBytes(16).toString('hex').toUpperCase();
+     if(!Number.isFinite(Number(data.reportedLoss || 0)) || Number(data.reportedLoss || 0)<0) fail('Reported loss must be a non-negative number.',400);
+     if(data.attachments && (!Array.isArray(data.attachments) || data.attachments.length>10)) fail('At most ten attachments allowed.',400);
+     const preparedAttachments = [];
+     for(const att of data.attachments || []) {
+       if(!att.base64) fail('Evidence attachment requires file bytes; metadata alone cannot be sealed.',400);
+       preparedAttachments.push(await processProofUpload({fileBuffer:Buffer.from(att.base64,'base64'),originalFilename:att.name || att.filename,mimeType:att.type || att.fileType,uploadedById:session.user_id,uploadedByName:session.display_name}));
+     }
+     const trackingCode = 'TRK-' + randomBytes(16).toString('hex').toUpperCase();
 
      const complaint = store.createComplaint({
        ...data,
+       attachments: preparedAttachments,
+       caseId: undefined,
        trackingCode,
        suspectUpi: data.suspectUpi || data.suspectUpiId || data.receiverUpiId || null,
        suspectPhone: data.suspectPhone || null,
@@ -1158,6 +1107,8 @@ async function handle(req,res) {
        reporterName: session.display_name,
        reporterEmail: session.email || ''
      });
+
+
 
      // Index in Bloom Filter
      duplicateDetector.indexComplaint({
@@ -1178,26 +1129,17 @@ async function handle(req,res) {
      } else if (data.utrNumber || data.receiverUpiId || data.suspectUpi) {
        store.saveUpiTransaction({
          caseId: complaint.caseId,
-         utrNumber: data.utrNumber || data.transactionHash || '402819827364',
-         senderUpiId: data.senderUpiId || 'victim@bank',
-         receiverUpiId: data.suspectUpi || data.suspectUpiId || data.receiverUpiId || data.reportedWallet || 'scam@paytm',
+         utrNumber: data.utrNumber || '',
+         senderUpiId: data.senderUpiId || '',
+         receiverUpiId: data.suspectUpi || data.suspectUpiId || data.receiverUpiId || data.reportedWallet || '',
          beneficiaryName: data.beneficiaryName || 'Beneficiary Account',
          amount: Number(complaint.reportedLoss || 0),
-         bankName: data.bankName || 'HDFC / Partner Bank',
+         bankName: data.bankName || '',
          timestamp: complaint.incidentDate || now()
        });
      }
 
-     // Phase 2.6: Public wallet auto-trace if suspect crypto wallet provided
-     let initialTrace = null;
-     if (complaint.reportedWallet) {
-       initialTrace = await autoTracePublicWallet({
-         seedAddress: complaint.reportedWallet,
-         chain: complaint.chain || 'Ethereum',
-         amountINR: Number(complaint.reportedLoss || 100000)
-       });
-     }
-
+     const initialTrace = null; // Complaint intake never manufactures or blocks on external tracing.
      store.audit(sid, 'Complaint Filed', complaint.caseId, {
        incidentType: complaint.incidentType,
        reportedLoss: complaint.reportedLoss,
@@ -1297,6 +1239,7 @@ async function handle(req,res) {
        });
      }
 
+     if(!processed) fail('Evidence requires original file bytes.',400);
      const evidence = store.addEvidence({
        caseId: id,
        uploadedById: session.user_id,
@@ -1328,126 +1271,53 @@ async function handle(req,res) {
      store.audit(sid, 'Internal Investigation Note Added', id);
      return json(res, 201, note);
    }
+   if(id && sub==='connections' && method==='GET') {
+     if(!isOfficer) fail('Investigator access required.',403);
+     const rows=store.db.prepare('SELECT * FROM complaints').all().filter(row=>canAccessCase({...session,id:session.user_id},row));
+     return json(res,200,connectedComplaints(rows,id));
+   }
+   if(id && sub==='transfers' && method==='PUT') {
+     if(!isOfficer) fail('Only investigators may import transaction evidence.',403);
+     const data = await body(req), rows = validateTransfers(data.transfers);
+     store.db.prepare('INSERT INTO incident_transfers VALUES(?,?,?) ON CONFLICT(case_id) DO UPDATE SET rows_json=excluded.rows_json,updated_at=excluded.updated_at').run(id,JSON.stringify(rows),now());
+     store.addInternalNote({ caseId:id,authorId:session.user_id,authorName:session.display_name,authorRole:session.role,note:`Imported ${rows.length} unverified transaction rows for analysis.` });
+     return json(res,200,{ count:rows.length, provenance:'INVESTIGATOR_SUBMITTED_UNVERIFIED' });
+   }
+   if(id && sub==='analysis-runs' && method==='GET') {
+     if(!isOfficer) fail('Only investigators may view analysis runs.',403);
+     return json(res,200,store.db.prepare('SELECT payload FROM incident_analysis_runs WHERE case_id=? ORDER BY rowid DESC').all(id).map(r=>JSON.parse(r.payload)));
+   }
+   if(id && sub==='analysis-report' && method==='GET') {
+     if(!isOfficer) fail('Only investigators may download analysis reports.',403);
+     const requestedRun=url.searchParams.get('runId');
+     const saved = requestedRun ? store.db.prepare('SELECT payload FROM incident_analysis_runs WHERE case_id=? AND id=?').get(id,requestedRun) : store.db.prepare('SELECT payload FROM incident_analysis_runs WHERE case_id=? ORDER BY rowid DESC LIMIT 1').get(id);
+     if(!saved) fail('Run evidence analysis first.',409);
+     const run = JSON.parse(saved.payload), doc = new PDFDocument({margin:45});
+     res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="${id}-analysis.pdf"`});
+     doc.pipe(res); doc.fontSize(18).text('CYBER-TRACE Investigation Analysis');
+     doc.fontSize(10).text(`Incident: ${id}\nRun: ${run.id}\nCreated: ${run.createdAt}\nInput SHA-256: ${run.inputSha256}\nRisk: ${run.riskScore ?? 'Unavailable'}/100 (${run.riskCategory})`);
+     doc.moveDown().text('Evidence limitations'); run.limitations.forEach(x=>doc.text(x));
+     doc.moveDown().text('Contributing factors'); run.factors.forEach(x=>doc.text(`${x.factor}: ${x.points}`));
+     doc.moveDown().text(`ML: ${JSON.stringify(run.ml)}`);
+     for(const execution of run.executions) { doc.moveDown().text(`${execution.algorithm}: ${execution.nodesVisited} nodes, ${execution.edgeVisits} edge visits; ${execution.executionMs.toFixed(3)} ms; time ${execution.timeComplexity.replaceAll('α','alpha')}; space ${execution.spaceComplexity.replaceAll('α','alpha')}`); if(execution.path) doc.text(`Path: ${execution.path.map(id=>{const n=run.nodes.find(n=>n.id===id);return n?`${n.address} [${n.network}/${n.asset}]`:id;}).join(' -> ')}`); }
+     doc.moveDown().text('Submitted transactions (not independently verified)');
+     run.edges.forEach(e=>doc.text(`${e.timestamp} | ${e.network} ${e.asset} | ${e.from} -> ${e.to} | ${e.amount} | ${e.reference}`));
+     doc.end(); return;
+   }
+   if(id && sub==='evidence-download' && method==='GET') {
+     const evidence = store.listEvidence(id).find(e=>e.id===url.searchParams.get('evidenceId'));
+     if(!evidence?.storagePath || !existsSync(evidence.storagePath)) fail('Original evidence bytes are unavailable.',404);
+     const bytes = readFileSync(evidence.storagePath), sha256 = createHash('sha256').update(bytes).digest('hex');
+     if(sha256!==evidence.sha256) fail('Evidence integrity check failed.',409);
+     res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename="${evidence.id}.bin"`,'X-Evidence-SHA256':sha256}); return res.end(bytes);
+   }
    if(id && sub==='analyze' && method==='POST') {
-     if (!isOfficer) fail('Only authorized CBI officers can run transaction analytics.', 403);
-     const comp = store.getComplaint(id, true);
-     if (!comp) fail(`Complaint ${id} was not found.`, 404);
-
-     const graph = await getGraphEngine();
-     const riskEngine = new RiskEngine(graph);
-     let analyticsResult = null;
-
-     if (comp.transactionHash) {
-       const txReport = riskEngine.evaluateTransaction(comp.transactionHash);
-       if (txReport.found) {
-         const evidenceCount = (comp.evidence?.length || 0);
-         const topologyScore = txReport.graphFindings.totalNeighbors > 0 ? 25 : 15;
-         const confidencePart = Math.round((txReport.modelConfidence || 75) * 0.25);
-         const labelPart = txReport.knownLabel !== 'unknown' ? 25 : 20;
-         const evidencePart = Math.min(25, Math.max(10, evidenceCount * 12));
-         const readinessScore = Math.min(100, topologyScore + confidencePart + labelPart + evidencePart);
-
-         analyticsResult = {
-           mode: 'ELLIPTIC_RESEARCH_DATASET',
-           txId: comp.transactionHash,
-           riskScore: txReport.riskScore,
-           riskCategory: txReport.riskCategory,
-           readinessScore,
-           readinessStatus: readinessScore >= 75 ? 'HIGH READINESS' : readinessScore >= 50 ? 'ACTIONABLE' : 'PRELIMINARY',
-           modelPrediction: txReport.modelPrediction,
-           modelConfidence: txReport.modelConfidence,
-           knownLabel: txReport.knownLabel,
-           modelParameters: {
-             timeStep: txReport.timeStep,
-             inDegree: txReport.graphFindings.inDegree,
-             outDegree: txReport.graphFindings.outDegree,
-             neighborIllicitExposurePct: txReport.graphFindings.neighborIllicitExposurePct,
-             modelConfidence: txReport.modelConfidence,
-             predictedClass: txReport.modelPrediction,
-             algorithm: 'Random Forest (Weber et al. Benchmark)'
-           },
-           graphFindings: txReport.graphFindings,
-           evidenceIndicators: txReport.evidenceIndicators,
-           explanation: txReport.explanation,
-           recommendations: [
-             'Proceed with Section 91 information request to counterparty virtual asset service providers.',
-             'Preserve full SHA-256 evidence chain of custody for court filing.',
-             'Schedule multi-hop graph expansion on high-risk outgoing transaction nodes.'
-           ],
-           disclaimer: 'Analysis derived from Elliptic Bitcoin Transaction Dataset. Anonymized dataset nodes represent transaction-to-transaction edges.'
-         };
-       }
-     }
-
-     if (!analyticsResult) {
-       // Run Real Algorithmic Tracer (Address Interner + MinHeap Taint Search + UnionFind Clustering + Bloom Filter)
-       const traceReport = await forensicTracer.trace(
-         comp.reportedWallet || '0xba244a0C2c2f62F93C40866A4eec1A7E1544321A',
-         comp.reportedLoss || 250000,
-         comp.createdAt,
-         { chain: comp.chain || 'Ethereum', maxHops: 4 }
-       );
-
-       // Run OpenRouter AI Risk Engine using user's provided API key
-       const aiEvaluation = await aiRiskEngine.evaluateCase(comp, {
-         graphNodesCount: traceReport.nodes.length,
-         hops: Math.max(1, traceReport.nodes.length - 1),
-         vaspCandidate: traceReport.vaspCandidate,
-         clustersCount: traceReport.clustersCount,
-         muleDetected: traceReport.nodes.some(n => (n.behavior || []).some(b => b.includes('Pass-through')))
-       });
-
-       const numericReadiness = typeof aiEvaluation.readinessScore === 'object'
-         ? (aiEvaluation.readinessScore?.overall || 78)
-         : (Number(aiEvaluation.readinessScore) || 78);
-
-       analyticsResult = {
-         mode: 'AI_FORENSIC_INTELLIGENCE',
-         caseId: comp.caseId,
-         reportedWallet: comp.reportedWallet,
-         chain: comp.chain,
-         riskScore: aiEvaluation.riskScore,
-         riskLevel: aiEvaluation.riskLevel,
-         readinessScore: numericReadiness,
-         readinessBreakdown: aiEvaluation.readinessScore?.breakdown || {
-           topologyDepth: 85,
-           identityLinkability: 75,
-           exchangeProximity: 90,
-           temporalUrgency: 88,
-           evidentiarySoundness: 80,
-           legalJurisdiction: 75
-         },
-         readinessStatus: numericReadiness >= 75 ? 'HIGH READINESS' : numericReadiness >= 50 ? 'ACTIONABLE' : 'PRELIMINARY',
-         executiveSummary: aiEvaluation.executiveSummary,
-         forensicRationale: aiEvaluation.forensicRationale,
-         indicators: aiEvaluation.detectedIndicators || [],
-         cbiOfficerFollowUps: aiEvaluation.cbiOfficerFollowUps || [],
-         targetVaspForNotice: aiEvaluation.targetVaspForNotice || traceReport.vaspCandidate,
-         vaspCandidate: traceReport.vaspCandidate || aiEvaluation.targetVaspForNotice,
-         recommendations: (aiEvaluation.cbiOfficerFollowUps || []).map(f => `${f.priority}: ${f.action} (${f.legalBasis})`),
-         graphNodesCount: traceReport.nodes.length,
-         graphEdgesCount: traceReport.edges.length,
-         clustersCount: traceReport.clustersCount,
-         internedCount: traceReport.internedCount,
-         nodes: traceReport.nodes,
-         edges: traceReport.edges,
-         timeline: traceReport.timeline,
-         aiModel: aiEvaluation.model || 'openrouter/auto',
-         aiEvaluated: aiEvaluation.aiEvaluated || false,
-         disclaimer: 'Evaluated using OpenRouter frontier LLM combined with Address-Interned Taint Graph & Bloom-Filtered VASP Identification.'
-       };
-     }
-
-     store.db.prepare(`
-       INSERT INTO case_updates (id, case_id, author_id, author_name, author_role, update_type, message, is_internal, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     `).run(
-       randomUUID(), comp.caseId, session.user_id, session.display_name, 'officer', 'ANALYTICS_EXECUTED',
-       `Cyber Trace AI analytics executed. Risk Score: ${analyticsResult.riskScore}/100, Readiness: ${analyticsResult.readinessScore?.overall || analyticsResult.readinessScore || 75}/100.`, 0, now()
-     );
-
-     store.audit(sid, 'Complaint Analytics Executed', id, { riskScore: analyticsResult.riskScore });
-     return json(res, 200, analyticsResult);
+     if(!isOfficer) fail('Only investigators may run evidence analysis.',403);
+     const options = await body(req);
+     const run = saveAnalysis(store.db,id,session.user_id,options);
+     store.addInternalNote({ caseId:id,authorId:session.user_id,authorName:session.display_name,authorRole:session.role,note:`Analysis ${run.id}: risk ${run.riskScore ?? 'unavailable'}. Input SHA-256 ${run.inputSha256}.` });
+     store.audit(sid,'Complaint Analytics Executed',id,{runId:run.id,inputSha256:run.inputSha256});
+     return json(res,200,run);
    }
    if(id && sub==='claim' && method==='POST') {
      if (!isOfficer) fail('Only authorized CBI / Cyber Cell officers can claim cases.', 403);
@@ -1957,8 +1827,8 @@ const server=http.createServer((req,res)=>{Promise.resolve(handle(req,res)).catc
  json(res,status,{error:status>=500 && status!==501 && status!==503?'An internal error occurred. Please try again.':error.message});
 });});
 server.requestTimeout=35000;server.headersTimeout=15000;server.keepAliveTimeout=5000;
-if (!process.env.VERCEL) {
-  server.listen(PORT,HOST,()=>console.log(JSON.stringify({service:'CRYPTO-TRACE INDIA',port:PORT,host:HOST,mode:'SIMULATED INVESTIGATION DATA',database:'sqlite'})));
+if (!process.env.VERCEL && process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+  server.listen(PORT,HOST,()=>console.log(JSON.stringify({service:'CRYPTO-TRACE INDIA',port:PORT,host:HOST,mode:process.env.DEMO_MODE==='true'?'EXPLICIT DEMONSTRATION':'EVIDENCE INVESTIGATION',database:'sqlite'})));
   function shutdown(){for(const res of sseClients)res.end();server.close(()=>{store.close();process.exit(0);});setTimeout(()=>process.exit(0),2000).unref();}
   process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
 }

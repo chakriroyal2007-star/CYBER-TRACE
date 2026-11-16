@@ -4,11 +4,11 @@ import { resolve, dirname, basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const EVIDENCE_DIR = resolve(root, 'data/evidence');
+const EVIDENCE_DIR = resolve(process.env.EVIDENCE_DIR || resolve(root, 'data/evidence'));
 
 // Ensure evidence directory exists with restricted permissions
 try {
-  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  mkdirSync(EVIDENCE_DIR, { recursive: true, mode:0o700 });
 } catch {}
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MiB
@@ -77,29 +77,18 @@ export async function processProofUpload({
     throw Object.assign(new Error(`Unsupported file type '${cleanMime}'. Permitted formats: PNG, JPEG, WEBP, PDF, CSV, TXT.`), { status: 415 });
   }
 
-  // 1. Sanitize image metadata for reporter safety
-  const sanitizedBuffer = stripImageMetadata(buf, cleanMime);
-
-  // 2. Compute cryptographic SHA-256 integrity checksum
-  const sha256 = createHash('sha256').update(sanitizedBuffer).digest('hex');
-
-  // 3. Antivirus hook (ClamAV if configured)
-  let avScanStatus = 'CLEAN_SHA256_SEALED';
-  if (process.env.CLAMAV_HOST) {
-    try {
-      // ClamAV socket or network scan adapter hook
-      avScanStatus = 'CLAMAV_VERIFIED_CLEAN';
-    } catch {
-      avScanStatus = 'CLAMAV_UNREACHABLE_SHA256_SEALED';
-    }
-  }
+  if (!buf.length) throw Object.assign(new Error('Evidence file is empty.'), {status:400});
+  // Preserve original evidence. Metadata removal would alter the forensic original.
+  const sanitizedBuffer = buf;
+  const sha256 = createHash('sha256').update(buf).digest('hex');
+  const avScanStatus = 'NOT_SCANNED';
 
   // 4. Save to private storage location
   const evidenceId = 'EVD-' + randomUUID().slice(0, 12).toUpperCase();
-  const safeFilename = `${sha256.slice(0, 16)}_${basename(originalFilename || 'proof.dat').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const safeFilename = `${sha256.slice(0, 16)}_${basename(originalFilename || 'proof.dat').slice(0,128).replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   const storagePath = resolve(EVIDENCE_DIR, safeFilename);
 
-  writeFileSync(storagePath, sanitizedBuffer);
+  if(!existsSync(storagePath)) writeFileSync(storagePath, sanitizedBuffer, {mode:0o600,flag:'wx'});
 
   // 5. Initial chain-of-custody event
   const now = new Date().toISOString();

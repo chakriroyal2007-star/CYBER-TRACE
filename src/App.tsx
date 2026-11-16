@@ -167,10 +167,13 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [sessionError, setSessionError] = useState('');
   const [stream, setStream] = useState<any>();
+  const [demoEnabled,setDemoEnabled]=useState(false);
+  useEffect(()=>{api('/health').then(r=>setDemoEnabled(Boolean(r.demoEnabled))).catch(()=>{});},[]);
   const [user, setUser] = useState<any>({ name: 'Demo Investigator', role: 'demo-investigator' });
 
   const isReporter = location.startsWith('/reporter');
   const isOfficerApp = location.startsWith('/app');
+  useEffect(()=>{if(!isOfficerApp && !isReporter)setReady(false);},[isOfficerApp,isReporter]);
 
   useEffect(() => {
     const h = () => {
@@ -215,36 +218,21 @@ export default function App() {
         }
         setReady(true);
       }).catch(() => {
-        const hasSavedToken = typeof localStorage !== 'undefined' && Boolean(localStorage.getItem('ct_token'));
-        if (!hasSavedToken) {
-          const demoEndpoint = isReporter ? '/auth/demo-reporter' : '/auth/demo';
-          api(demoEndpoint, { method: 'POST', body: '{}' }).then(r => {
-            if (r?.token && typeof localStorage !== 'undefined') localStorage.setItem('ct_token', r.token);
-            if (r?.user) {
-              setUser(r.user);
-              if (typeof localStorage !== 'undefined') localStorage.setItem('ct_user', JSON.stringify(r.user));
-            }
-            setReady(true);
-          }).catch(e => setSessionError(e.message));
-        } else {
-          if (typeof localStorage !== 'undefined') {
-            localStorage.removeItem('ct_token');
-            localStorage.removeItem('ct_user');
-          }
-          navigate('/login');
-        }
+        localStorage.removeItem('ct_token');
+        localStorage.removeItem('ct_user');
+        navigate('/login');
       });
     }
   }, [isOfficerApp, isReporter, ready]);
 
   useEffect(() => {
-    if (!ready || !isOfficerApp) return;
+    if (!ready || !isOfficerApp || !demoEnabled) return;
     const source = new EventSource('/api/events');
     source.onmessage = e => {
       try { setStream(JSON.parse(e.data)); } catch { }
     };
     return () => source.close();
-  }, [ready, isOfficerApp]);
+  }, [ready, isOfficerApp, demoEnabled]);
 
   const handleLogout = async () => {
     try { await api('/auth/logout', { method: 'POST', body: '{}' }); } catch { }
@@ -332,6 +320,7 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button
                 onClick={async () => {
+                  if(!demoEnabled){navigate('/login?role=officer');return;}
                   try { await api('/auth/demo-officer', { method: 'POST', body: '{}' }); } catch { }
                   navigate('/app/incoming');
                 }}
@@ -487,14 +476,14 @@ export default function App() {
               <span className="workspace-avatar">{initials}</span>
               <span>
                 {user?.name || 'Investigator Workspace'}
-                <small>{user?.role === 'officer' || user?.role === 'official-investigator' ? 'CBI Officer' : 'Demo Analyst'} · isolated session</small>
+                <small>{['officer','official-investigator','investigating_officer','supervisor','admin'].includes(user?.role) ? 'CBI Officer' : 'Demo Analyst'} · persistent workspace</small>
               </span>
               <ShieldCheck size={14} />
             </div>
 
             <div className="nav-label">WORKSPACE</div>
             <nav>
-              {navItems.map(([navPath, label, Icon]) => (
+              {navItems.filter(([path])=>demoEnabled || !['ai-investigation','cases','investigations','wallets','vasps','cross-chain','patterns','alerts','reports','requests'].includes(path)).map(([navPath, label, Icon]) => (
                 <a
                   key={navPath}
                   href={`/app/${navPath}`}
@@ -529,8 +518,8 @@ export default function App() {
               <div className="sidebar-demo">
                 <span className="pulse-dot" />
                 <div>
-                  {user?.role === 'officer' || user?.role === 'official-investigator' ? 'SECURE OFFICER SESSION' : 'DEMO ENVIRONMENT'}
-                  <small>{user?.role === 'officer' || user?.role === 'official-investigator' ? 'CBI Officer Audit Logged' : 'Synthetic Evidence'}</small>
+                  {['officer','official-investigator','investigating_officer','supervisor','admin'].includes(user?.role) ? 'SECURE OFFICER SESSION' : 'DEMO ENVIRONMENT'}
+                  <small>{['officer','official-investigator','investigating_officer','supervisor','admin'].includes(user?.role) ? 'CBI Officer Audit Logged' : 'Synthetic Evidence'}</small>
                 </div>
               </div>
               <button className="analyst-profile" onClick={handleLogout} title="Sign out of current workspace">
@@ -628,6 +617,7 @@ export default function App() {
               </button>
               <button
                 onClick={async () => {
+                  if(!demoEnabled){navigate('/login?role=reporter');return;}
                   try { await api('/auth/demo-reporter', { method: 'POST', body: '{}' }); } catch { }
                   navigate('/reporter/dashboard');
                 }}
@@ -639,8 +629,8 @@ export default function App() {
               >
                 <UserCheck size={14} /> Citizen Portal
               </button>
-              <Badge variant={user?.role === 'officer' || user?.role === 'official-investigator' ? 'success' : 'info'}>
-                {user?.role === 'officer' || user?.role === 'official-investigator' ? 'CBI OFFICER ACCESS' : 'DEMO DATA'}
+              <Badge variant={['officer','official-investigator','investigating_officer','supervisor','admin'].includes(user?.role) ? 'success' : 'info'}>
+                {['officer','official-investigator','investigating_officer','supervisor','admin'].includes(user?.role) ? 'CBI OFFICER ACCESS' : 'DEMO DATA'}
               </Badge>
               <button className="notification-button icon-button" aria-label="Open alerts" onClick={() => navigate('/app/alerts')}>
                 <Bell size={18} />
@@ -658,7 +648,7 @@ export default function App() {
             <footer className="app-footer">
               <span><ShieldCheck size={13} /> Investigative intelligence · Human verification required</span>
               <button onClick={() => navigate('/app/sources')}>
-                <Radio size={12} />DEMO STREAM<span>{stream?.message || 'Replaying synthetic investigation events'}</span>
+                <Radio size={12} />{demoEnabled?'DEMO STREAM':'PERSISTENT CASEWORK'}<span>{demoEnabled?(stream?.message || 'Replaying synthetic investigation events'):'Saved complaints · Evidence integrity checks · Recorded analysis'}</span>
               </button>
             </footer>
           </div>

@@ -26,3 +26,11 @@ playwright-report/
 tmp/
 .vercel
 .env*
+
+# Private local service state
+data/.app-secret
+data/live-postgres/
+data/ml/*.joblib
+data/ml/research_predictions.json
+data/presentation-access.json
+data/presentation-evidence/

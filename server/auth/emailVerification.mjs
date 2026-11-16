@@ -16,6 +16,7 @@ export async function sendEmailVerificationCode(email) {
     throw Object.assign(new Error('Invalid email address format.'), { status: 400 });
   }
 
+  if(process.env.NODE_ENV==='production' && process.env.DEMO_MODE!=='true')throw Object.assign(new Error('Email delivery is unavailable: no verified SMTP transport is implemented. In-app notifications remain available.'),{status:503});
   const existing = verificationStore.get(cleanEmail);
   const now = Date.now();
 
@@ -47,7 +48,7 @@ export async function sendEmailVerificationCode(email) {
     try {
       // SMTP transport when configured
       console.log(`[SMTP] Sending real verification email to ${cleanEmail}...`);
-      sentViaSmtp = true;
+      sentViaSmtp = false;
     } catch (err) {
       console.warn('[SMTP] Delivery error:', err.message);
     }

@@ -1,3 +1,4 @@
+import { gunzipSync } from 'node:zlib';
 import { createReadStream, existsSync, statSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { resolve, dirname } from 'node:path';
@@ -101,9 +102,9 @@ export class DatasetIngestionPipeline {
           timeStep: null,
           inDegree: 0,
           outDegree: 0,
-          riskScore: label === 'illicit' ? 95 : label === 'licit' ? 15 : 50,
-          predictedClass: label === 'illicit' ? 'illicit' : 'licit',
-          probability: label === 'illicit' ? 0.95 : label === 'licit' ? 0.15 : 0.50
+          riskScore: null,
+          predictedClass: 'unavailable',
+          probability: null
         });
       }
     }
@@ -199,6 +200,7 @@ export class DatasetIngestionPipeline {
             const node = nodeMap.get(txId);
             if (node && timeStep !== undefined) {
               node.timeStep = timeStep;
+              node.timeStepSource='ARCHIVED_METADATA_NOT_REVERIFIED_WITHOUT_FEATURE_CSV';
             }
             if (timeStep !== undefined && timeStep !== null) {
               timeStepCounts[timeStep] = (timeStepCounts[timeStep] || 0) + 1;
@@ -245,25 +247,17 @@ export class DatasetIngestionPipeline {
    * Ingest precomputed model scores if available.
    */
   applyModelScores(nodeMap) {
-    if (!existsSync(this.scoresPath)) return false;
-    try {
-      const data = JSON.parse(readFileSync(this.scoresPath, 'utf8'));
-      for (const [txId, val] of Object.entries(data)) {
-        const node = nodeMap.get(txId);
-        if (node) {
-          node.riskScore = val[0];
-          node.predictedClass = val[2];
-          node.probability = val[3];
-          if (val[4] !== undefined && val[4] !== null) {
-            node.timeStep = val[4];
-          }
-        }
-      }
-      return true;
-    } catch (err) {
-      this.stats.validationErrors.push(`Failed loading model scores: ${err.message}`);
-      return false;
+    const path=resolve(__dirname,'../../data/ml/research_predictions.json.gz');
+    if(!existsSync(path))return false;
+    const artifact=JSON.parse(gunzipSync(readFileSync(path)).toString('utf8'));
+    for(const [txId,prediction]of Object.entries(artifact.predictions)){
+      const node=nodeMap.get(txId);if(!node)continue;
+      node.riskScore=Math.round(prediction.probability*100);
+      node.probability=prediction.probability;
+      node.predictedClass=prediction.probability>=0.5?'illicit':'licit';
+      node.modelRunId=artifact.runId;
     }
+    return true;
   }
 
   /**

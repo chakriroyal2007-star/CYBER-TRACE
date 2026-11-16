@@ -1,25 +1,18 @@
+process.env.NODE_ENV = 'test';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AddressInterner, MinHeap, UnionFind, ForensicTracer } from '../server/tracing/tracer.mjs';
 import { BloomFilter, LabelStore } from '../server/tracing/labelStore.mjs';
 import { OpenRouterRiskEngine } from '../server/ml/openrouterRiskEngine.mjs';
-import { server } from '../server/index.mjs';
+import { launchServer } from './helpers.mjs';
 
-const PORT = 8003;
-const BASE = `http://127.0.0.1:${PORT}`;
+let BASE;
 
 test('Real Tracing Engine, Bloom Filter, DSA & OpenRouter AI Evaluation', async (t) => {
   let appServer;
 
-  await t.test('Start test server on port 8003', async () => {
-    await new Promise((resolve) => {
-      appServer = server.listen(PORT, '127.0.0.1', () => resolve());
-    });
-  });
-
-  t.after(() => {
-    if (appServer) appServer.close();
-  });
+  await t.test('Start isolated test server',async()=>{appServer=await launchServer();BASE=appServer.baseUrl;});
+  t.after(async()=>{if(appServer)await appServer.close();});
 
   await t.test('AddressInterner correctly assigns 32-bit integer IDs and maps back', () => {
     const interner = new AddressInterner();

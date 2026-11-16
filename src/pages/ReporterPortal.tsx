@@ -1,3 +1,4 @@
+import EvidenceDownload from '../components/EvidenceDownload';
 import React, { useState, useEffect } from 'react';
 import {
   FileText, Plus, ShieldCheck, Clock, CheckCircle2, AlertTriangle, ArrowRight,
@@ -238,10 +239,12 @@ export function ReporterDashboard() {
 
 // 2. Submit Complaint Page
 export function SubmitComplaintPage() {
+  const [demoEnabled,setDemoEnabled]=useState(false);
+  useEffect(()=>{api('/health').then(r=>setDemoEnabled(Boolean(r.demoEnabled))).catch(()=>{});},[]);
   const [busy, setBusy] = useState(false);
   const [incidentType, setIncidentType] = useState('Investment Scam');
   const [incidentDate, setIncidentDate] = useState(new Date().toISOString().slice(0, 10));
-  const [reportedLoss, setReportedLoss] = useState('250000');
+  const [reportedLoss, setReportedLoss] = useState('');
   const [currency, setCurrency] = useState('INR');
   const [chain, setChain] = useState('Ethereum');
   const [reportedWallet, setReportedWallet] = useState('');
@@ -335,11 +338,15 @@ export function SubmitComplaintPage() {
     }
   };
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || !files.length) return;
     const file = files[0];
+    if(file.size > 15*1024*1024) { toast('Maximum file size is 15 MiB.','error'); return; }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = ''; for(let i=0;i<bytes.length;i+=32768) binary += String.fromCharCode(...bytes.subarray(i,i+32768));
     const item = {
+      base64: btoa(binary),
       name: file.name,
       type: file.type || 'application/octet-stream',
       size: file.size,
@@ -364,8 +371,8 @@ export function SubmitComplaintPage() {
           reportedLoss: Number(reportedLoss) || 0,
           currency,
           chain,
-          reportedWallet: reportedWallet.trim() || receiverUpiId.trim() || 'invest.fraud@paytm',
-          transactionHash: transactionHash.trim() || utrNumber.trim() || '402819827364',
+          reportedWallet: reportedWallet.trim(),
+          transactionHash: transactionHash.trim() || utrNumber.trim(),
           utrNumber: utrNumber.trim(),
           senderUpiId: senderUpiId.trim(),
           receiverUpiId: receiverUpiId.trim(),
@@ -388,6 +395,7 @@ export function SubmitComplaintPage() {
   if (createdCase) {
     const targetCaseId = createdCase.caseId || createdCase.id;
     const handleSwitchToOfficer = async () => {
+      if(!demoEnabled){navigate('/login?role=officer');return;}
       try {
         await api('/auth/demo-officer', { method: 'POST', body: '{}' });
         navigate(`/app/case-review/${targetCaseId}`);
@@ -427,7 +435,7 @@ export function SubmitComplaintPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Button
+            {demoEnabled && <Button
               onClick={() => navigate(`/app/ai-investigation/${targetCaseId}`)}
               style={{
                 background: 'linear-gradient(90deg, #0284c7 0%, #0369a1 100%)',
@@ -441,13 +449,13 @@ export function SubmitComplaintPage() {
               }}
             >
               <Bot size={16} /> LAUNCH AI INVESTIGATION
-            </Button>
+            </Button>}
             <Button variant="secondary" onClick={() => navigate('/reporter/cases')}>View My Cases</Button>
             <Button variant="secondary" onClick={() => navigate(`/reporter/cases/${targetCaseId}`)}>
               Track as Citizen <ArrowRight size={14} />
             </Button>
             <Button onClick={handleSwitchToOfficer} style={{ background: '#087f94', color: '#fff', border: 'none' }}>
-              <ShieldCheck size={15} /> Switch to CBI Officer &amp; Review Case
+              <ShieldCheck size={15} /> Sign in as investigator to review case
             </Button>
           </div>
         </Card>
@@ -824,6 +832,7 @@ export function CaseTrackingPage({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [evidenceName, setEvidenceName] = useState('');
+  const [evidenceFile,setEvidenceFile]=useState<File|null>(null);
   const [evidenceDesc, setEvidenceDesc] = useState('');
   const [additionalNote, setAdditionalNote] = useState('');
 
@@ -838,20 +847,25 @@ export function CaseTrackingPage({ id }: { id: string }) {
 
   const handleUploadEvidence = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!evidenceName) return;
+    if (!evidenceFile) return;
+    if(evidenceFile.size>15*1024*1024){toast('Maximum file size is 15 MiB.','error');return;}
     setUploading(true);
     try {
+      const bytes=new Uint8Array(await evidenceFile.arrayBuffer());
+      let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
       await api(`/complaints/${encodeURIComponent(id)}/evidence`, {
         method: 'POST',
         body: JSON.stringify({
           filename: evidenceName,
           description: evidenceDesc || 'Additional proof submitted by citizen reporter',
-          fileSize: 1048576,
-          fileType: 'application/pdf'
+          base64:btoa(binary),
+          fileSize: evidenceFile.size,
+          fileType: evidenceFile.type || 'application/octet-stream'
         })
       });
       toast('Supporting evidence uploaded and forwarded to investigating officer.');
       setEvidenceName('');
+      setEvidenceFile(null);
       setEvidenceDesc('');
       loadCase();
     } catch (err: any) {
@@ -973,7 +987,7 @@ export function CaseTrackingPage({ id }: { id: string }) {
                         {ev.description || 'Supporting documentation'} · SHA-256: <code style={{ fontSize: 10 }}>{ev.sha256?.slice(0, 16)}…</code>
                       </div>
                     </div>
-                    <span style={{ fontSize: 11, color: '#64748b' }}>{formatTime(ev.createdAt)}</span>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>{formatTime(ev.createdAt)}<EvidenceDownload caseId={id} evidence={ev}/></span>
                   </div>
                 ))}
               </div>
@@ -983,8 +997,8 @@ export function CaseTrackingPage({ id }: { id: string }) {
               <h3 style={{ fontSize: 13, margin: '0 0 10px', color: '#38bdf8' }}>Upload Additional Supporting Evidence</h3>
               <form onSubmit={handleUploadEvidence} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <input
-                  value={evidenceName}
-                  onChange={e => setEvidenceName(e.target.value)}
+                  type="file"
+                  onChange={e => {const file=e.target.files?.[0] || null;setEvidenceFile(file);setEvidenceName(file?.name || '');}}
                   placeholder="Document Name (e.g. Bank_UTR_Receipt.pdf, Chat_Export.zip)"
                   style={{ width: '100%', padding: '8px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6, fontSize: 12 }}
                 />
@@ -995,7 +1009,7 @@ export function CaseTrackingPage({ id }: { id: string }) {
                   style={{ width: '100%', padding: '8px 12px', background: '#0a1726', border: '1px solid #1a2d42', color: '#fff', borderRadius: 6, fontSize: 12 }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button type="submit" disabled={uploading || !evidenceName}>
+                  <Button type="submit" disabled={uploading || !evidenceFile}>
                     <Upload size={14} /> {uploading ? 'Forwarding…' : 'Attach & Submit to Officer'}
                   </Button>
                 </div>

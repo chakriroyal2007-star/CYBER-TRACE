@@ -154,7 +154,7 @@ test('Phase 3: Officer Investigation Chain, Case Scoping, State Machine & Maker-
       method: 'POST',
       headers: { authorization: `Bearer ${officer2Token}` }
     });
-    assert.equal(conflictRes.response.status, 409);
+    assert.equal(conflictRes.response.status, 404); // Out-of-scope case is concealed.
 
     // 3. Supervisor can reassign case to Officer 2
     const reassignRes = await client.request(`/complaints/${caseId}/assign`, {
@@ -173,7 +173,7 @@ test('Phase 3: Officer Investigation Chain, Case Scoping, State Machine & Maker-
     await client.request(`/complaints/${caseId}/assign`, {
       method: 'POST',
       headers: { authorization: `Bearer ${supervisorToken}` },
-      body: { officerId: 'USR-OFF-01', officerName: 'Insp. Rajesh Sharma' }
+      body: { officerId: 'USR-OFFICER-001', officerName: 'Insp. Rajesh Sharma' }
     });
 
     // 4. Auditor Access: Without justification header -> 400 Bad Request
@@ -206,7 +206,7 @@ test('Phase 3: Officer Investigation Chain, Case Scoping, State Machine & Maker-
     const repScopingRes = await client.request(`/complaints/${caseId}`, {
       headers: { authorization: `Bearer ${rep2Res.data.token}` }
     });
-    assert.equal(repScopingRes.response.status, 403, 'Citizen must not be authorized to view other citizens cases');
+    assert.equal(repScopingRes.response.status, 404, 'Citizen must not be authorized to view other citizens cases');
   });
 
   await t.test('3.3 Full Case State Machine transitions with audit log validation', async () => {

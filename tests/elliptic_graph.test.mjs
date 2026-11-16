@@ -162,8 +162,8 @@ describe('Explainable Risk Scoring Engine', () => {
     assert.equal(illicitReport.found, true);
     assert.equal(illicitReport.knownLabel, 'illicit');
     assert.equal(illicitReport.isGroundTruthIllicit, true);
-    assert.equal(illicitReport.riskCategory, 'HIGH RISK');
-    assert.ok(illicitReport.riskScore >= 70);
+    assert.equal(illicitReport.riskScore, Math.round(illicitReport.modelProvenance.probability*100));
+    assert.equal(illicitReport.confidenceInterval,null);
     assert.equal(illicitReport.dataSource, 'Elliptic Research Dataset');
 
     // 2. Confirmed Licit transaction (232438397)
@@ -171,8 +171,7 @@ describe('Explainable Risk Scoring Engine', () => {
     assert.equal(licitReport.found, true);
     assert.equal(licitReport.knownLabel, 'licit');
     assert.equal(licitReport.isGroundTruthLicit, true);
-    assert.equal(licitReport.riskCategory, 'LOW RISK');
-    assert.ok(licitReport.riskScore < 40);
+    assert.equal(licitReport.riskScore, Math.round(licitReport.modelProvenance.probability*100));
 
     // 3. Unknown transaction (230425980)
     const unknownReport = riskEngine.evaluateTransaction('230425980');

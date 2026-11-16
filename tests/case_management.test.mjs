@@ -75,6 +75,7 @@ test('Reporter and CBI Officer Case Management Workflow', async (t) => {
       transactionHash: '0x9b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c',
       attachments: [
         {
+          base64: Buffer.from('%PDF-1.4 controlled test receipt').toString('base64'),
           name: 'bank_debit_utr.pdf',
           type: 'application/pdf',
           size: 142050,
@@ -118,7 +119,7 @@ test('Reporter and CBI Officer Case Management Workflow', async (t) => {
     assert.ok(myCasesRes.data.every(c => c.reporterId === reporterId));
 
     const forbiddenRes = await otherReporterClient.request(`/complaints/${createdCaseId}`);
-    assert.equal(forbiddenRes.response.status, 403);
+    assert.equal(forbiddenRes.response.status, 404);
 
     const officerView = await officerClient.request(`/complaints/${createdCaseId}`);
     assert.equal(officerView.response.status, 200);
@@ -190,8 +191,9 @@ test('Reporter and CBI Officer Case Management Workflow', async (t) => {
     const uploadRes = await reporterClient.request(`/complaints/${createdCaseId}/evidence`, {
       method: 'POST',
       body: {
-        filename: 'telegram_chat_export.zip',
-        fileType: 'application/zip',
+        base64: Buffer.from('Controlled chat export').toString('base64'),
+        filename: 'telegram_chat_export.txt',
+        fileType: 'text/plain',
         fileSize: 450890,
         description: 'Complete unredacted chat export with fraudster handle'
       }
@@ -232,13 +234,13 @@ test('Reporter and CBI Officer Case Management Workflow', async (t) => {
     });
 
     assert.equal(analyzeRes.response.status, 200);
-    assert.ok(analyzeRes.data.riskScore >= 0 && analyzeRes.data.riskScore <= 100);
-    assert.ok(analyzeRes.data.readinessScore >= 0 && analyzeRes.data.readinessScore <= 100);
+    assert.equal(analyzeRes.data.riskScore, null); // No observed transaction rows imported.
+    assert.equal(analyzeRes.data.confidence.value, null);
     assert.ok(analyzeRes.data.mode);
-    assert.ok(analyzeRes.data.disclaimer);
+    assert.ok(analyzeRes.data.limitations.length);
 
     const updatedComp = (await officerClient.request(`/complaints/${createdCaseId}`)).data;
-    assert.ok(updatedComp.updates.some(u => u.updateType === 'ANALYTICS_EXECUTED'));
+    assert.ok(updatedComp.updates.some(u => u.message.includes('Analysis ')));
   });
 
   await t.test('validates Rejection flow with formal reason requirement', async () => {

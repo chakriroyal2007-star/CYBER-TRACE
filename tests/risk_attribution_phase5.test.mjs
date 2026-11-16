@@ -109,11 +109,10 @@ test('Phase 5: Honest Explainable Risk Engine & Attribution', async (t) => {
     const report = riskEngine.evaluateTransaction('tx-target-01');
 
     assert.equal(report.found, true);
-    assert.equal(report.riskCategory, 'HIGH RISK');
-    assert.ok(report.calibratedProbability >= 0 && report.calibratedProbability <= 1);
-    assert.ok(Array.isArray(report.confidenceInterval));
-    assert.equal(report.confidenceInterval.length, 2);
-    assert.ok(report.confidenceInterval[0] <= report.confidenceInterval[1]);
+    assert.equal(report.riskCategory, 'UNAVAILABLE');
+    assert.equal(report.riskScore,null); // The mock ID is not in a trained dataset.
+    assert.equal(report.calibratedProbability,null);
+    assert.equal(report.confidenceInterval,null);
 
     // Check topContributingFeatures
     assert.ok(Array.isArray(report.topContributingFeatures));
@@ -124,7 +123,7 @@ test('Phase 5: Honest Explainable Risk Engine & Attribution', async (t) => {
       assert.ok(Number.isFinite(feat.contribution), 'Feature must have numerical contribution');
     }
 
-    assert.match(report.explanation, /Calibrated probability/i);
+    assert.match(report.explanation, /No fitted probability calibration/i);
   });
 });
 

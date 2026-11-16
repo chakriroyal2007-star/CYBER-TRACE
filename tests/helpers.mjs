@@ -28,6 +28,7 @@ export async function launchServer(customEnv = {}) {
     DATABASE_PATH: join(directory, 'test.sqlite'),
     JWT_SECRET: 'isolated-test-secret-never-use-for-deployment',
     SESSION_SECRET: 'isolated-test-session-secret-never-use-for-deployment',
+    EVIDENCE_DIR: join(directory,'evidence'),
     ALLOWED_ORIGINS: baseUrl,
     CORS_ORIGIN: baseUrl,
     ...customEnv,

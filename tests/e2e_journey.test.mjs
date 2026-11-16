@@ -86,6 +86,7 @@ test('Cyber Trace India: 19-Step End-to-End Investigation Lifecycle', async (t) 
         description: 'Victim was approached via WhatsApp with promises of automated 35% weekly cryptocurrency arbitrage yields by AlphaTrade Global. Transferred ₹6,42,000 INR converted to Bitcoin.',
         attachments: [
           {
+            base64: Buffer.from('%PDF-1.4 controlled chat export').toString('base64'),
             filename: 'WhatsApp_Chat_AlphaTrade.pdf',
             fileType: 'application/pdf',
             fileSize: 245760,
@@ -129,6 +130,7 @@ test('Cyber Trace India: 19-Step End-to-End Investigation Lifecycle', async (t) 
       body: {
         filename: 'Bank_Transfer_UTR_Receipt.pdf',
         fileType: 'application/pdf',
+        base64: Buffer.from('%PDF-1.4 controlled evidence').toString('base64'),
         fileSize: 182400,
         description: 'Bank UTR transfer voucher for ₹6,42,000'
       }
@@ -229,6 +231,7 @@ test('Cyber Trace India: 19-Step End-to-End Investigation Lifecycle', async (t) 
       body: {
         filename: 'HDFC_Bank_Stamped_Statement.pdf',
         fileType: 'application/pdf',
+        base64: Buffer.from('%PDF-1.4 controlled bank statement').toString('base64'),
         fileSize: 312000,
         description: 'Stamped HDFC account statement confirming ₹6,42,000 debit.'
       }
@@ -279,8 +282,8 @@ test('Cyber Trace India: 19-Step End-to-End Investigation Lifecycle', async (t) 
     assert.equal(analyticsRes.response.status, 200);
     assert.ok(analyticsRes.data.riskScore !== undefined);
     assert.ok(analyticsRes.data.riskCategory);
-    assert.ok(analyticsRes.data.readinessScore !== undefined);
-    assert.ok(analyticsRes.data.modelParameters);
+    assert.equal(analyticsRes.data.confidence.value, null);
+    assert.equal(analyticsRes.data.ml.available, false);
   });
 
   // Step 18: Case resolution with reason and history logging
