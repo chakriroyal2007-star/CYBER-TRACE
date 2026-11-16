@@ -204,7 +204,13 @@ function dashboard(sessionId) {
       fundsTraced: (cases || []).reduce((a, c) => a + (c?.tracedAmount || 0), 0),
       crossChainMovements: investigations.reduce((a, i) => a + (i?.crossChain?.length || 0), 0),
       relatedCases: new Set(investigations.flatMap(i => (i?.relatedCases || []).map(r => [i?.case?.id, r?.caseId].sort().join('/')))).size,
-      activeAlerts: (alerts || []).filter(a => a && a.status === 'Open').length
+      activeAlerts: (alerts || []).filter(a => a && a.status === 'Open').length,
+      totalComplaints: (() => { try { return store.db.prepare('SELECT COUNT(*) as c FROM complaints').get()?.c || 0; } catch { return 0; } })(),
+      newComplaints: (() => { try { return store.db.prepare("SELECT COUNT(*) as c FROM complaints WHERE status IN ('Submitted', 'Pending Review')").get()?.c || 0; } catch { return 0; } })(),
+      underInvestigation: (() => { try { return store.db.prepare("SELECT COUNT(*) as c FROM complaints WHERE status IN ('Under Investigation', 'Trace in Progress')").get()?.c || 0; } catch { return 0; } })(),
+      resolvedCases: (() => { try { return store.db.prepare("SELECT COUNT(*) as c FROM complaints WHERE status IN ('Resolved', 'Closed')").get()?.c || 0; } catch { return 0; } })(),
+      highRiskCases: (() => { try { return store.db.prepare("SELECT COUNT(*) as c FROM complaints WHERE priority IN ('High', 'Critical')").get()?.c || 0; } catch { return 0; } })(),
+      noScamDetectedCount: (cases || []).filter(c => c && (c.riskScore < 25 || c.status === 'Resolved')).length
     },
     fraudTypes: group((cases || []).map(c => c?.fraudType).filter(Boolean)),
     chainFlows: Object.entries(terminalByChain).map(([name, value]) => ({ name, value })),

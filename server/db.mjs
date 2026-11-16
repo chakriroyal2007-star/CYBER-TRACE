@@ -68,10 +68,11 @@ export const hashPassword = (password, salt = 'ct-salt-2026') =>
 const seedDefinitions = [
   ['CR-2026-00192','Investment Scam',812450,'Ethereum','Action Required','High'],
   ['CR-2026-00193','Phishing',350000,'Ethereum','Investigating','High'],
-  ['CR-2026-00194','Financial Fraud',200000,'BNB Chain','Monitoring','Medium'],
+  ['CR-2026-00194','Ponzi Scheme',480000,'BNB Chain','Action Required','High'],
   ['CR-2026-00195','Ransomware',975000,'Bitcoin','Investigating','Critical'],
   ['CR-2026-00196','Task Scam',150000,'TRON','Action Required','High'],
   ['CR-2026-00197','Task Scam',500000,'TRON','Monitoring','Medium'],
+  ['CR-2026-00198','Legitimate Transaction',65000,'Polygon','Resolved','Low'],
 ];
 function base58(buffer) {
   const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';

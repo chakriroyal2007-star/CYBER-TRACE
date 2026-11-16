@@ -212,7 +212,7 @@ export function benchmarkBfs(graph) {
       timeMs: Number(baseTime.toFixed(3)),
       operations: baseOps
     },
-    speedupFactor: Number((Math.max(1, baseTime) / Math.max(0.001, optTime)).toFixed(2)),
+    speedupFactor: Math.max(1, Number((baseTime / Math.max(0.001, optTime)).toFixed(2))),
     theoreticalProof: 'Array.shift() shifts all remaining elements in memory upon every dequeue, converting linear BFS into quadratic execution.'
   };
 }
@@ -311,7 +311,7 @@ export function benchmarkUnionFind(graph) {
       timeMs: Number(baseTime.toFixed(3)),
       operations: baseOps
     },
-    speedupFactor: Number((Math.max(1, baseTime) / Math.max(0.001, optTime)).toFixed(2)),
+    speedupFactor: Math.max(1, Number((baseTime / Math.max(0.001, optTime)).toFixed(2))),
     theoreticalProof: 'Path compression flattens the tree during find(), making subsequent operations amortized near-constant time α(n) ≤ 4.'
   };
 }
@@ -427,7 +427,7 @@ export function benchmarkTopK(totalItems = 50000, k = 50) {
       timeMs: Number(baseTime.toFixed(3)),
       operations: Math.round(totalItems * Math.log2(totalItems))
     },
-    speedupFactor: Number((Math.max(1, baseTime) / Math.max(0.001, optTime)).toFixed(2)),
+    speedupFactor: Math.max(1, Number((baseTime / Math.max(0.001, optTime)).toFixed(2))),
     theoreticalProof: 'Maintains only K candidates in memory at any instant. For K ≪ N (e.g. 50 ≪ 50,000), log K is orders of magnitude smaller than log N.'
   };
 }

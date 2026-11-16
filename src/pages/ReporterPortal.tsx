@@ -378,6 +378,22 @@ export function SubmitComplaintPage() {
       });
       setCreatedCase(res);
       toast('Complaint submitted successfully. Case ID generated.');
+      try {
+        const targetId = res.caseId || res.id;
+        const localTracked = JSON.parse(localStorage.getItem('ct_my_cases') || '[]');
+        const updated = [{
+          caseId: targetId,
+          id: targetId,
+          trackingCode: res.trackingCode,
+          incidentType: res.incidentType,
+          reportedLoss: res.reportedLoss || res.reportedAmount,
+          chain: res.chain,
+          reportedWallet: res.reportedWallet,
+          status: res.status || 'Submitted',
+          createdAt: res.createdAt || new Date().toISOString()
+        }, ...localTracked.filter((c: any) => (c.caseId || c.id) !== targetId)];
+        localStorage.setItem('ct_my_cases', JSON.stringify(updated));
+      } catch {}
     } catch (err: any) {
       toast(err.message || 'Submission failed', 'error');
     } finally {
@@ -708,18 +724,47 @@ export function MyCasesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [trackInput, setTrackInput] = useState('');
 
-  const load = () => {
+  const load = async () => {
+    setLoading(true);
     let url = '/complaints?';
     if (statusFilter) url += `status=${encodeURIComponent(statusFilter)}&`;
     if (search) url += `q=${encodeURIComponent(search)}&`;
-    api(url).then(res => {
-      setCases(res);
+    try {
+      const serverComplaints = await api(url).catch(() => []);
+      const localTracked = JSON.parse(localStorage.getItem('ct_my_cases') || '[]');
+      const combined = [...(Array.isArray(serverComplaints) ? serverComplaints : [])];
+      const seenIds = new Set(combined.map(c => c.caseId || c.id));
+
+      for (const item of localTracked) {
+        const cid = item.caseId || item.id;
+        if (!seenIds.has(cid)) {
+          seenIds.add(cid);
+          try {
+            const fetched = await api(`/complaints/track/${encodeURIComponent(item.trackingCode || cid)}`);
+            if (fetched) combined.push(fetched);
+            else combined.push(item);
+          } catch {
+            combined.push(item);
+          }
+        }
+      }
+      setCases(combined);
+    } catch {
+      setCases([]);
+    } finally {
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }
   };
 
   useEffect(() => { load(); }, [statusFilter]);
+
+  const handleTrackSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trackInput.trim()) return;
+    navigate(`/reporter/cases/${encodeURIComponent(trackInput.trim())}`);
+  };
 
   return (
     <div style={{ padding: '24px 32px' }}>
@@ -738,6 +783,31 @@ export function MyCasesPage() {
           </div>
         }
       />
+
+      <Card style={{ padding: '16px 20px', marginBottom: 20, background: 'linear-gradient(90deg, #091728 0%, #0c2035 100%)', border: '1px solid #1a3c5c' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ShieldCheck size={16} /> Instant Citizen Complaint Tracker
+            </div>
+            <p style={{ margin: '3px 0 0', fontSize: 11.5, color: '#94a3b8' }}>
+              Enter your unique Case ID (e.g. <code>CT-2026-000001</code>) or Tracking Code to view your real-time investigation status.
+            </p>
+          </div>
+          <form onSubmit={handleTrackSubmit} style={{ display: 'flex', gap: 8, flex: '1 1 320px', maxWidth: 460 }}>
+            <input
+              type="text"
+              placeholder="e.g. CT-2026-000001 or TRK-..."
+              value={trackInput}
+              onChange={e => setTrackInput(e.target.value)}
+              style={{ flex: 1, padding: '8px 12px', background: '#07111c', border: '1px solid #1c3652', borderRadius: 6, color: '#fff', fontSize: 12.5 }}
+            />
+            <Button type="submit" style={{ whiteSpace: 'nowrap', padding: '8px 16px' }}>
+              Track Case <ArrowRight size={13} />
+            </Button>
+          </form>
+        </div>
+      </Card>
 
       <Card style={{ padding: 20, marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
@@ -828,10 +898,16 @@ export function CaseTrackingPage({ id }: { id: string }) {
   const [additionalNote, setAdditionalNote] = useState('');
 
   const loadCase = () => {
+    setLoading(true);
     api(`/complaints/${encodeURIComponent(id)}`).then(res => {
       setComplaint(res);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => {
+      api(`/complaints/track/${encodeURIComponent(id)}`).then(res => {
+        setComplaint(res);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    });
   };
 
   useEffect(() => { loadCase(); }, [id]);
