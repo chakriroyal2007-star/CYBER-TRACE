@@ -228,6 +228,28 @@ export default function DsaStudyStudio() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <a
+            href="/CYBER_TRACE_DSA_MASTER_EXPLAINER.pdf"
+            download="CYBER_TRACE_DSA_MASTER_EXPLAINER.pdf"
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              background: '#0d9488',
+              border: '1px solid #14b8a6',
+              color: '#ffffff',
+              padding: '8px 14px',
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              textDecoration: 'none'
+            }}
+          >
+            <BookOpen size={14} color="#ffffff" /> Download DSA Master Explainer (PDF)
+          </a>
           <button
             onClick={() => {
               window.location.href = '/app/dashboard';

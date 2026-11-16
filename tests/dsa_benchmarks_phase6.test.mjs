@@ -75,3 +75,4 @@ test('Phase 6: Explainable DSA Studio & Benchmark Rig', async (t) => {
     assert.equal(full.summary.totalAlgorithmsBenchmarked, 5);
   });
 });
+

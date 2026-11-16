@@ -62,3 +62,4 @@ test('Phase 7: Fully Explainable TRACE AI Assistant', async (t) => {
     assert.ok(res.citations.length > 0);
   });
 });
+
