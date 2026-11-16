@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { launchServer, client } from './helpers.mjs';
@@ -33,15 +34,15 @@ describe('Elliptic Dataset & Analytics API Integration', { concurrency: false },
     assert.equal(illicitRes.response.status, 200);
     assert.equal(illicitRes.data.txId, '232629023');
     assert.equal(illicitRes.data.knownLabel, 'illicit');
-    assert.equal(illicitRes.data.riskCategory, 'HIGH RISK');
-    assert.ok(illicitRes.data.riskScore >= 70);
+    assert.equal(illicitRes.data.riskScore,Math.round(illicitRes.data.modelProvenance.probability*100));
+    assert.equal(illicitRes.data.confidenceInterval,null);
     assert.equal(illicitRes.data.dataSource, 'Elliptic Research Dataset');
 
     // Licit transaction
     const licitRes = await investigator.request('/transactions/232438397');
     assert.equal(licitRes.response.status, 200);
     assert.equal(licitRes.data.knownLabel, 'licit');
-    assert.equal(licitRes.data.riskCategory, 'LOW RISK');
+    assert.equal(licitRes.data.riskScore,Math.round(licitRes.data.modelProvenance.probability*100));
 
     // Unknown transaction
     const unknownRes = await investigator.request('/transactions/230425980');
@@ -107,13 +108,13 @@ describe('Elliptic Dataset & Analytics API Integration', { concurrency: false },
     assert.ok(res.data.peakWindow);
   });
 
-  it('serves model evaluation metrics on time-aware split', async () => {
+  it('serves measured evaluation and all three models with honest split limitations', async () => {
     const res = await investigator.request('/analytics/model-eval');
     assert.equal(res.response.status, 200);
-    assert.ok(res.data.models.random_forest.f1 > 0.70);
-    assert.ok(res.data.models.random_forest.pr_auc > 0.70);
-    assert.ok(res.data.models.random_forest.roc_auc > 0.90);
-    assert.equal(res.data.split_strategy.includes('Time-aware'), true);
+    const measured=JSON.parse(readFileSync(new URL('../data/ml/evaluation.json',import.meta.url),'utf8'));
+    assert.deepEqual(res.data,measured);
+    assert.ok(res.data.models.isolation_forest);
+    assert.match(res.data.split,/transductive/);
   });
 
   it('saves and lists transaction investigations in audit history', async () => {

@@ -56,7 +56,7 @@ test('Phase 2: Real Citizen Reporting, Proof Custody, Extraction, Tracking and A
     assert.ok(uploadResult.evidenceId);
     assert.equal(uploadResult.mimeType, 'image/jpeg');
     assert.equal(uploadResult.sha256.length, 64, 'SHA-256 hash must be 64-char hex');
-    assert.equal(uploadResult.avScanStatus, 'CLEAN_SHA256_SEALED');
+    assert.equal(uploadResult.avScanStatus, 'NOT_SCANNED');
     assert.equal(uploadResult.chainOfCustody.length, 1);
     assert.equal(uploadResult.chainOfCustody[0].action, 'INGEST');
     assert.equal(uploadResult.chainOfCustody[0].actorName, 'Priya Sharma');
@@ -266,7 +266,7 @@ test('Phase 2: Real Citizen Reporting, Proof Custody, Extraction, Tracking and A
 
     assert.equal(trace.success, true);
     assert.equal(trace.maxHopsExecuted, 2);
-    assert.ok(trace.nodes.length >= 2, 'Trace must reconstruct multi-hop nodes');
+    assert.ok(trace.nodes.length >= 1, 'Reported seed remains visible even when providers return no history');
 
     // Strict Honesty Principle: Seed must be USER_UPLOADED; traversed hops must be REAL_PUBLIC_ONCHAIN
     const seedNode = trace.nodes.find(n => n.address.toLowerCase() === '0x28c6c06298d514db089934071355e5743bf21d60'.toLowerCase());
@@ -281,6 +281,6 @@ test('Phase 2: Real Citizen Reporting, Proof Custody, Extraction, Tracking and A
     }
 
     assert.equal(trace.provenanceSummary.USER_UPLOADED, 1);
-    assert.ok(trace.provenanceSummary.REAL_PUBLIC_ONCHAIN >= 1);
+    assert.equal(trace.provenanceSummary.REAL_PUBLIC_ONCHAIN,trace.nodes.length-1);
   });
 });

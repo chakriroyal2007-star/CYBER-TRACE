@@ -29,7 +29,7 @@ export class GraphEngine {
     const featuresFilename = ['elliptic', 'txs', 'features.csv'].join('_');
     this.featuresPath = resolve(datasetDir, featuresFilename);
     this.offsetsPath = resolve(datasetDir, 'features_offsets.json');
-    this.evalPath = resolve(datasetDir, 'model_evaluation.json');
+    this.evalPath = resolve(__dirname, '../../data/ml/evaluation.json');
   }
 
   async initialize() {

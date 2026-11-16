@@ -1,218 +1,73 @@
-# Automated Test Execution Record
+# Verification results — November 16, 2026
 
-This document records the exact results of the automated test suite execution for **CYBER-TRACE**. It is referenced across all documentation to ensure zero drift and complete empirical verification.
+**Total Tests:** 165
+**Passed:** 165
+**Failed:** 0
+**Skipped:** 0
 
-## System & Execution Environment
+Command: `npm test` (`node --test tests/*.test.mjs`). Final recorded full-suite run:
+24 top-level test groups, 8 suites, 165 tests, 7.274 seconds. Node v22.23.2, macOS arm64.
+These are software correctness tests, not a measurement of fraud-detection accuracy.
 
-- **Execution Date:** 2026-11-15T17:45:01Z
-- **Command:** `npm test` (`node --test tests/*.test.mjs`)
-- **Node.js Version:** `v22.23.3` (Engine requirement: `>=22.5.0` / Node 24 ready)
-- **OS Platform:** macOS (`darwin`, `arm64`)
-- **Total Test Suites:** 16
-- **Total Tests:** 156
-- **Passing:** 156
-- **Failing:** 0
-- **Skipped / Cancelled / Todo:** 0
-- **Duration:** 16,396.84 ms (~16.4s)
+Additional checks:
 
----
+- `npm run build`: TypeScript and Vite production build passed.
+- `node scripts/check-doc-consistency.mjs`: documentation paths, input dataset hashes,
+  model/evaluation run identity and measured confusion-matrix sample counts passed.
+- Production-only workflow test: 8/8 tests, including all five scenario subtests,
+  exact evidence bytes/SHA-256, access boundaries, investigator queue/dashboard,
+  notifications, connected complaints, immutable analysis runs, private findings,
+  PDF responses and server restart recovery.
+- Authentication recovery: invitation/TOTP enrollment, lockouts and refresh-token
+  rotation survive restart; reused refresh tokens revoke the token family.
+- Model parity: portable RF, Logistic Regression and Isolation Forest inference
+  matches sklearn outputs to absolute tolerance 1e-10 on 205 deterministically
+  sampled Elliptic nodes. No model score is forced from its known dataset label.
+- Weighted path test: BFS takes a 2-edge shortcut; Dijkstra selects a cheaper 3-edge
+  route. Negative costs, unknown sources/targets, duplicate rows and invalid amounts
+  are rejected. Directed cycles, multi-source distances and asset boundaries are tested.
 
-## Suite-by-Suite Breakdown
+## Live Chrome verification
 
-### 1. Deterministic Analytical Engine (`tests/analytics.test.mjs`)
-- `✔` preserves funds at every wallet and across the synthetic bridge
-- `✔` computes the confidence from documented weighted evidence and rejects invalid weights
-- `✔` changes risk and attribution when transaction timing changes
-- `✔` never claims a VASP exit or deanonymization beyond the privacy-exposure fixture
-- `✔` finds a directed shortest path and does not loop on cyclic data
-- `✔` correlates observed shared cluster evidence and ignores a VASP match alone
-- `✔` keeps all evidence and knowledge-graph relationships referentially valid
-*Suite Total: 7 tests passed.*
+The project was started on localhost using a separate classroom database. Verified:
 
-### 2. CYBER-TRACE Persistent, Evidence-Grounded Demo API (`tests/api.test.mjs`)
-- `✔` serves health, API documentation, source disclosure and secure headers
-- `✔` keeps the flagship case internally consistent: 18 wallets, 47 transactions and INR 642,000 exit
-- `✔` provides graph, cross-chain evidence, scored fingerprint and related-complaint links
-- `✔` creates a normalized wallet and case, performs persisted analysis, and isolates visitors
-- `✔` rejects invalid input and does not expose internal SQL or file-system errors
-- `✔` adds and normalizes an analyst wallet without creating duplicate graph nodes
-- `✔` ingests valid transactions idempotently, updates wallet metrics and preserves evidence when retraced
-- `✔` validates attribution weights, recomputes scores and scopes configuration to the visitor
-- `✔` answers only from case evidence and returns verifiable internal citations
-- `✔` records evidence, alert review and case status changes in the audit trail
-- `✔` generates an actual readable PDF report and review-only information request package
-- `✔` streams explicitly simulated events without representing them as live blockchain ingestion
-- `✔` persists the created investigation and visitor session across a server restart
-- `✔` calculates event-based risk score and 6-parameter investigation readiness score
-- `✔` generates formal Section 91 information request package with statutory notice for cases and transactions
-*Suite Total: 15 tests passed.*
+1. Normal investigator sign-in and persistence across server restart.
+2. Dashboard displays five separately selectable classroom scenarios.
+3. Layering case shows the four-hop BFS path and actual algorithm timings/complexities.
+4. **Next node** updates traversal replay from 0/7 to 1/7 recorded visits.
+5. ML lab executes all three exported models. For research node `232629023`, the live
+   run displayed RF probability 52.73%, LR probability 50.31%, Isolation Forest anomaly
+   score -0.0731, and live inference timing. Values are research outputs, not incident
+   accuracy or proof of wrongdoing.
+6. Generated PDF was opened/rendered in Chrome. A Greek-font problem in Union-Find
+   complexity text was fixed to readable `alpha(V)` and the PDF was rendered again.
+   Paths, input hash, risk factors, limitations and exact transaction amounts fit on
+   the inspected page without clipping. Historical run selection now selects the
+   corresponding report instead of silently downloading a different run.
 
-### 3. Blockchain Provider Integrations & Watchtower Intelligence (`tests/blockchain_provider.test.mjs`)
-- `✔` authenticates officer session
-- `✔` validates address formats correctly across Bitcoin, Ethereum, and TRON
-- `✔` validates transaction hash formats and rejects invalid references
-- `✔` handles unsupported blockchain networks gracefully
-- `✔` retrieves provider health status
-- `✔` supports Watchtower address monitoring lifecycle
-- `✔` retrieves cross-case intelligence correlations
-*Suite Total: 7 tests passed.*
+Proof screenshots: [dashboard](screenshots/live-dashboard.png),
+[DSA execution](screenshots/live-dsa.png), [model inference](screenshots/live-ml.png),
+[rendered PDF](screenshots/live-pdf.png).
 
-### 4. Reporter and CBI Officer Case Management Workflow (`tests/case_management.test.mjs`)
-- `✔` registers and logs in a new Reporter
-- `✔` logs in CBI Officer using demo-officer or official credentials
-- `✔` allows Reporter to submit a cybercrime complaint and receives unique Case ID
-- `✔` immediately surfaces the new complaint in CBI Officer incoming reports queue
-- `✔` enforces RBAC: Reporter can only view their own complaints
-- `✔` validates state transitions and records status changes
-- `✔` allows Officer to assign case to an investigator
-- `✔` supports Evidence Request from Officer and Evidence Submission by Reporter
-- `✔` guarantees internal note privacy: internal notes are NEVER visible to reporters
-- `✔` runs Cyber Trace transaction analytics from officer complaint view
-- `✔` validates Rejection flow with formal reason requirement
-*Suite Total: 11 tests passed.*
+## ML evaluation
 
-### 5. Cyber Trace India: 19-Step End-to-End Investigation Lifecycle (`tests/e2e_journey.test.mjs`)
-- `✔` Step 1: Citizen registration and authentication
-- `✔` Step 2: Backend rejects invalid complaint inputs
-- `✔` Step 3: Successful complaint submission
-- `✔` Step 4: Sequential Case ID adheres to CR-YYYY-XXXXX format
-- `✔` Step 5: Complaint fields stored accurately in database
-- `✔` Step 6: Evidence file upload with SHA-256 integrity hash
-- `✔` Step 7: Officer immediately sees complaint in incoming queue
-- `✔` Step 8: Officer filters queue by status, network, priority
-- `✔` Step 9: Officer accepts complaint and claims investigation
-- `✔` Step 10: Officer assigns case to investigator
-- `✔` Step 11: Officer requests additional evidence from reporter
-- `✔` Step 12: Reporter views evidence request and submits proof
-- `✔` Step 13: Officer executes forensic transaction trace
-- `✔` Step 14: Trace generates deterministic graph and candidate attribution
-- `✔` Step 15: Cross-case correlation identifies linked complaints
-- `✔` Step 16: Officer generates Section 91 information request package
-- `✔` Step 17: Officer logs internal investigation note (hidden from reporter)
-- `✔` Step 18: System audit trail records all transitions and access
-- `✔` Step 19: Demo reset safely purges demo cases while preserving real cases
-*Suite Total: 19 tests passed.*
+See `data/ml/evaluation.json` for exact measured metrics, split IDs/hashes and run ID.
+The topology-only Random Forest holdout F1 is approximately 0.244 and PR-AUC 0.156.
+These limited results are reported honestly. This is a random/transductive graph
+baseline; it is not a reproduction of the historical full-feature time-split benchmark.
+No validated UPI/account-takeover classifier is available. Unknown labels were excluded
+from supervised training, and classroom scenarios were never used as training data.
 
-### 6. Elliptic Dataset & Analytics API Integration (`tests/elliptic_api.test.mjs` & `elliptic_graph.test.mjs`)
-- `✔` serves dataset statistics from actual Elliptic dataset
-- `✔` looks up transaction and returns calibrated score and evidence
-- `✔` executes BFS graph traversal with hop bounds and visited node metrics
-- `✔` executes DFS graph exploration with cycle avoidance
-- `✔` executes Dijkstra weighted shortest path and rejects invalid inputs
-- `✔` computes connected components using Union-Find
-- `✔` retrieves top-k suspicious transactions using priority queue
-- `✔` performs sliding window temporal burst analysis
-- `✔` serves model evaluation metrics on time-aware split
-- `✔` saves and lists transaction investigations in audit history
-- `✔` PriorityQueue maintains correct heap order and handles edge cases
-- `✔` Union-Find correctly manages sets with path compression and union by rank
-- `✔` BFS and DFS handle cyclic and disconnected graphs without infinite loops
-- `✔` Dijkstra computes optimal weighted path and rejects negative weights
-- `✔` verifies actual Elliptic dataset characteristics without hardcoding
-- `✔` correctly categorizes and explains illicit, licit, and unknown transactions
-- `✔` answers transaction questions using actual backend data and evidence citations
-*Suite Total: 17 tests passed.*
+## Exclusions and remaining limits
 
-### 7. Real Tracing Engine, Bloom Filter, DSA & OpenRouter AI Evaluation (`tests/real_tracer.test.mjs`)
-- `✔` Start test server on port 8003
-- `✔` AddressInterner correctly assigns 32-bit integer IDs and maps back
-- `✔` Bloom Filter has zero false negatives for known exchange addresses
-- `✔` LabelStore identifies real public exchange deposits and mixers
-- `✔` MinHeap maintains strict minimum order for taint-cost traversal
-- `✔` UnionFind performs path compression and rank-based union
-- `✔` ForensicTracer executes dynamic multi-hop trace without static fixtures
-- `✔` OpenRouterRiskEngine evaluates case with AI and generates officer action plan
-- `✔` Multi-Role Authentication: Supervisor and Admin endpoints succeed
-*Suite Total: 9 tests passed.*
+Four initially untracked PostgreSQL draft test modules failed import in the baseline
+because their expected backend exports do not exist. They and their helper are
+preserved locally in `tests/postgres-draft/`, outside active SQLite coverage. They are
+not counted as passing or as verified PostgreSQL support. Existing historical browser
+scripts target older demo UI and are not the basis of the current Chrome claims.
 
-### 8. UPI-to-Crypto AI Investigation & Forensic Platform (Tests A - T) (`tests/upi_ai_investigation.test.mjs`)
-- `✔` Test A: Victim submits a valid UPI complaint and records are persisted
-- `✔` Test B: Tool 2 extracts payment details and source references
-- `✔` Test C & D: Tool 1 validates complaint and detects duplicate UTRs
-- `✔` Test E: Tool 3 correlates multiple complaints sharing a verified beneficiary
-- `✔` Test F: Tool 4 retrieves verified banking records
-- `✔` Test G: Tool 5 calculates mule-account behavioral features and rapid pass-through
-- `✔` Test H & I: Tool 6 retrieves exchange conversion and cryptocurrency withdrawal
-- `✔` Test J: Tool 7 executes multi-hop blockchain tracing on target wallet
-- `✔` Test K & L: Tool 8 builds financial graph and Tool 9 executes DSA algorithms
-- `✔` Test M: Tool 10 executes real ML inference without hardcoded data
-- `✔` Test N: Tool 11 generates separate 5-category deterministic risk assessment
-- `✔` Test O & P: Tool 12 compiles statutory report package with SHA-256 seal
-- `✔` Test Q: AI Investigation Orchestrator executes full 10-stage pipeline and handles follow-up Q&A
-*Suite Total: 17 tests passed.*
-
-### 9. Phase 1: Real Authentication, Roles, TOTP, Maker-Checker and Cryptographic Audit Chain (`tests/auth_phase1.test.mjs`)
-- `✔` 1. Citizen email verification: 6-digit code, attempt limit, and verification lifecycle
-- `✔` 2. Password policy: minimum 12 chars and complex character requirements
-- `✔` 3. Failed login lockout: 5 consecutive failures triggers 15-minute lockout
-- `✔` 4. Officer invitations: domain allowlist check and single-use token consumption
-- `✔` 5. Mandatory TOTP authentication challenge on enrolled officer account
-- `✔` 6. Maker-Checker enforcement: Officer prepares freeze request, Supervisor approves, Officer cannot approve
-- `✔` 7. Cryptographic hash-chained audit log and tamper detection
-- `✔` 8. Suspended account: immediate session invalidation and login prohibition
-- `✔` 9. Production DEMO_MODE safety: demo routes refused when NODE_ENV=production
-*Suite Total: 10 tests passed.*
-
-### 10. Phase 2: Real Citizen Reporting, Proof Custody, Extraction, Tracking and Auto-Trace (`tests/citizen_reporting_phase2.test.mjs`)
-- `✔` 2.1 & 2.2 Proof upload: validates size (<=15MB), strips EXIF, computes SHA-256, and records chain of custody
-- `✔` 2.3 Structured extraction: parses UTR, INR amounts, UPI VPA, crypto wallets, and flags low confidence
-- `✔` 2.4 Citizen tracking code & private communication: strict quarantine of internal notes
-- `✔` 2.5 Duplicate & Linkage Detection: O(1) Bloom filter pre-check and multi-attribute linking
-- `✔` 2.6 Public wallet auto-trace: shallow on-chain trace with strict provenance tags
-*Suite Total: 6 tests passed.*
-
-### 11. Phase 3: Officer Investigation Chain, Case Scoping, State Machine & Maker-Checker (`tests/officer_chain_phase3.test.mjs`)
-- `✔` 3.0 Auth Setup: Register Reporter, Officer, Officer2, Supervisor, Auditor
-- `✔` 3.1 Officer queue: priority sorting (high-loss first), linkage badges, and 24h SLA timer
-- `✔` 3.2 Case scoping: Officer claims unassigned case, Supervisor reassigns, Auditor justification enforcement
-- `✔` 3.3 Full Case State Machine transitions with audit log validation
-- `✔` 3.6 Statutory freeze package generator: Section 106 BNSS & Section 94 BNSS requisitions
-- `✔` 3.7 Maker-Checker Freeze Workflow: Officer drafts, Officer cannot self-approve, Supervisor approves, Officer dispatches
-- `✔` 3.8 Nodal Portal Response: Record institutional action, transition case to Freeze Confirmed / Partially Frozen
-- `✔` 3.9 Court Package Compilation with Section 63 BSA Certificate
-*Suite Total: 9 tests passed.*
-
-### 12. Phase 4: Showcase Hybrid Cases with Honest Provenance Tags (`tests/showcase_cases_phase4.test.mjs`)
-- `✔` 4.1 Provenance Tags & Explorer URL Helper specification
-- `✔` 4.2 Showcase Case A (CR-2026-00192): UPI-to-Crypto Mule Network + WazirX Exploit aftermath
-- `✔` 4.3 Showcase Case B (CR-2026-00193): Phishing / Pink Drainer Incident + Cross-Chain Bridge
-- `✔` 4.4 Forensic Citations (docs/CASE_SOURCES.md) verification
-- `✔` 4.5 Database Seed Complaints contain Showcase Cases A and B
-*Suite Total: 6 tests passed.*
-
-### 13. Phase 5: Honest Explainable Risk Engine & Attribution (`tests/risk_attribution_phase5.test.mjs`)
-- `✔` 5.1 Decompose risk into 4 independent, explainable sub-scores
-- `✔` 5.2 Enforce attribution evidence requirements (at least 2 independent factors)
-- `✔` 5.3 Calibrated ML inference in RiskEngine with SHAP-style explainability
-*Suite Total: 4 tests passed.*
-
-### 14. Phase 6: Explainable DSA Studio & Benchmark Rig (`tests/dsa_benchmarks_phase6.test.mjs`)
-- `✔` 6.1 Synthetic Benchmark Graph generator
-- `✔` 6.2 Dijkstra Benchmark: MinHeap O((V+E) log V) vs Unsorted Array Scan O(V^2)
-- `✔` 6.3 BFS Benchmark: Head-Pointer Circular Queue O(1) vs Array.shift() O(V)
-- `✔` 6.4 Union-Find Benchmark: Path Compression + Rank O(alpha(N)) vs Naive DFS
-- `✔` 6.5 Bloom Filter Benchmark: O(k) Bit Probing vs O(N) Array.includes()
-- `✔` 6.6 Top-K Heap Benchmark: Bounded MinHeap O(N log K) vs Array.sort() O(N log N)
-- `✔` 6.7 Full Benchmark Suite Execution
-*Suite Total: 8 tests passed.*
-
-### 15. Phase 7: Fully Explainable TRACE AI Assistant (`tests/trace_ai_phase7.test.mjs`)
-- `✔` 7.1 Refusal on private keys, passwords, or definitive guilt requests
-- `✔` 7.2 Provenance query: explains real on-chain vs synthetic mule nodes with citations
-- `✔` 7.3 Risk query: explains 4-way sub-scores and Platt calibrated probability
-- `✔` 7.4 Attribution query: explains candidate exit and independent factors requirement
-- `✔` 7.5 Money trail summary query: preserves conservation of funds and cites transactions
-*Suite Total: 6 tests passed.*
-
-### 16. Phase 8: Court Packages, Statutory Reports & Cryptographic Hash Seals (`tests/court_package_phase8.test.mjs`)
-- `✔` 8.1 Section 106 BNSS 2023 Seizure & Debit Freeze Notice
-- `✔` 8.2 Section 94 BNSS 2023 Summons to Produce Documents & Records
-- `✔` 8.3 Section 63 BSA 2023 Certificate of Electronic Evidence
-- `✔` 8.4 Master Court Package Hash Seal & Tamper Verification
-*Suite Total: 5 tests passed.*
-
----
-
-## Summary Total: 156/156 Passing Tests
-All tests are 100% deterministic, offline-capable, and run without requiring external cloud credentials or live network connections.
-
+The first dependency install attempt reported npm advisories; a later advisory query
+failed with a network/socket error. No clean dependency-security audit is claimed.
+No production deployment, official bank/UPI/CBI integration, antivirus scan, SMTP
+notification or real ownership attribution was verified. In-app notification delivery
+and local durable storage/restart behavior were verified.

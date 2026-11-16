@@ -74,16 +74,6 @@ export class DuplicateDetector {
     const mayMatchPhone = cleanPhone ? this.phoneBloom.has(cleanPhone) : false;
 
     // If zero Bloom filter matches, guarantee no duplicates exist (zero false negatives)
-    if (!mayMatchUtr && !mayMatchWallet && !mayMatchUpi && !mayMatchPhone) {
-      return {
-        hasDuplicates: false,
-        bloomHit: false,
-        reasons: [],
-        linkedCaseIds: [],
-        linkedCases: []
-      };
-    }
-
     // Step 2: Exact Database Lookup on Bloom filter candidates
     const linkedCasesMap = new Map();
     const reasons = [];
@@ -119,7 +109,7 @@ export class DuplicateDetector {
         // Search in complaints payload or upi_transactions
         const allComplaints = store.db.prepare('SELECT case_id, reporter_name, status, incident_date, payload FROM complaints WHERE case_id != ?').all(excludeCaseId || '');
         for (const c of allComplaints) {
-          if (c.payload && c.payload.includes(cleanUtr)) {
+          if (c.payload && JSON.parse(c.payload).utrNumber === cleanUtr) {
             linkedCasesMap.set(c.case_id, { ...c, reason: `Identical payment UTR: ${cleanUtr}` });
             reasons.push(`Duplicate payment UTR ${cleanUtr} submitted in case ${c.case_id}`);
           }
@@ -134,7 +124,7 @@ export class DuplicateDetector {
 
     return {
       hasDuplicates: linkedCaseIds.length > 0,
-      bloomHit: true,
+      bloomHit: mayMatchUtr || mayMatchWallet || mayMatchUpi || mayMatchPhone,
       reasons,
       linkedCaseIds,
       linkedCases

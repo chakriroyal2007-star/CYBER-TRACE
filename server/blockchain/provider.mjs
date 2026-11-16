@@ -95,7 +95,7 @@ export class MempoolSpaceProvider extends BaseBlockchainProvider {
       }
 
       const tx = await res.json();
-      const stamp = tx.status?.block_time ? new Date(tx.status.block_time * 1000).toISOString() : new Date().toISOString();
+      const stamp = tx.status?.block_time ? new Date(tx.status.block_time * 1000).toISOString() : null;
 
       // Inputs & Outputs parsing
       const inputs = (tx.vin || []).map(vin => ({
@@ -132,7 +132,7 @@ export class MempoolSpaceProvider extends BaseBlockchainProvider {
         blockHash: tx.status?.block_hash || null,
         blockTimestamp: stamp,
         isConfirmed: Boolean(tx.status?.confirmed),
-        confirmations: tx.status?.confirmed ? Math.max(1, (tx.status.block_height ? 850000 - tx.status.block_height : 6)) : 0,
+        confirmations: tx.status?.confirmed ? null : 0,
         fromAddress: primarySender,
         toAddress: primaryRecipient,
         value: totalOutputValue,
@@ -436,7 +436,7 @@ export class TronProvider extends BaseBlockchainProvider {
         retrievedAt: new Date().toISOString(),
         txHash: tx.txID,
         blockHeight: tx.blockNumber || null,
-        blockTimestamp: tx.block_timestamp ? new Date(tx.block_timestamp).toISOString() : new Date().toISOString(),
+        blockTimestamp: tx.block_timestamp ? new Date(tx.block_timestamp).toISOString() : null,
         contractType,
         fromAddress: contractVal.owner_address || null,
         toAddress: contractVal.to_address || null,
@@ -515,11 +515,11 @@ export class BlockchainProviderManager {
 
   async getProviderHealth() {
     return {
-      bitcoin: { name: this.btcProvider.name, status: 'ONLINE', url: this.btcProvider.baseUrl },
-      ethereum: { name: this.ethProvider.name, status: 'ONLINE', url: this.ethProvider.rpcUrl },
-      polygon: { name: this.polygonProvider.name, status: 'ONLINE', url: this.polygonProvider.rpcUrl },
-      bnbChain: { name: this.bnbProvider.name, status: 'ONLINE', url: this.bnbProvider.rpcUrl },
-      tron: { name: this.tronProvider.name, status: 'ONLINE', url: this.tronProvider.baseUrl }
+      bitcoin: { name: this.btcProvider.name, status: 'NOT_CHECKED', url: this.btcProvider.baseUrl },
+      ethereum: { name: this.ethProvider.name, status: 'NOT_CHECKED', url: this.ethProvider.rpcUrl },
+      polygon: { name: this.polygonProvider.name, status: 'NOT_CHECKED', url: this.polygonProvider.rpcUrl },
+      bnbChain: { name: this.bnbProvider.name, status: 'NOT_CHECKED', url: this.bnbProvider.rpcUrl },
+      tron: { name: this.tronProvider.name, status: 'NOT_CHECKED', url: this.tronProvider.baseUrl }
     };
   }
 }

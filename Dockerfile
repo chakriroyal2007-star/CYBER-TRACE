@@ -21,6 +21,9 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node server ./server
 COPY --chown=node:node migrations ./migrations
+COPY --chown=node:node scripts/create-admin.mjs scripts/presentation.mjs ./scripts/
+COPY --chown=node:node data/elliptic/elliptic_txs_classes.csv data/elliptic/elliptic_txs_edgelist.csv data/elliptic/model_scores.json data/elliptic/features_offsets.json data/elliptic/model_evaluation.json ./data/elliptic/
+COPY --chown=node:node data/ml/evaluation.json data/ml/research_predictions.json.gz data/ml/portable_models.json.gz ./data/ml/
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8000

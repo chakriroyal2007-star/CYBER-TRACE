@@ -14,7 +14,7 @@ export default function Dashboard(){
     try {
       const d = await api('/dashboard');
       let featuredRelated = 0;
-      try {
+      if(!d.evidenceRuntime) try {
         const related = await api('/cases/CR-2026-00192/related');
         featuredRelated = Array.isArray(related) ? related.length : 0;
       } catch {
@@ -40,9 +40,17 @@ export default function Dashboard(){
 
   useEffect(()=>{
     loadDashboard();
+    const timer=setInterval(loadDashboard,15000);
+    return ()=>clearInterval(timer);
   },[]);
   if(error)return <ErrorState message={error} retry={loadDashboard}/>;
   if(!data)return <LoadingState/>;
+  if(data.evidenceRuntime) return <div className="dashboard page-content">
+    <PageHeader eyebrow="INVESTIGATOR INTELLIGENCE CONSOLE" title="Intelligence overview" description="Persistent citizen complaints and evidence analysis." action={<Button onClick={()=>navigate('/app/incoming')}>Incoming Reports <Inbox size={16}/></Button>}/>
+    <div className="metrics-grid"><MetricCard label="Active cases" value={data.metrics.activeCases} detail="Open citizen complaints" icon={BriefcaseBusiness}/><MetricCard label="Complaints" value={data.metrics.submittedComplaints} detail="Permanently stored in the case database" icon={Inbox}/><MetricCard label="Analyzed cases" value={data.metrics.analyzedCases} detail="At least one saved transaction analysis" icon={Network}/><MetricCard label="Reported loss" value={money(data.metrics.reportedLoss,true)} detail="Citizen reported; not independently verified" icon={FileText}/></div>
+    {data.cases.some((c:any)=>c.payload?.presentationScenario) && <Card style={{padding:20,marginBottom:20}}><h2>Five investigation scenarios</h2><Badge variant="warning">FICTIONAL CLASSROOM INPUTS · REAL ALGORITHM EXECUTION</Badge><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:12,marginTop:14}}>{data.cases.filter((c:any)=>c.payload?.presentationScenario).map((c:any)=><div key={c.id} style={{padding:14,border:'1px solid #29445e',borderRadius:6}}><h3>{c.incidentType}</h3><p style={{fontSize:12,color:'#94a3b8'}}>Explore submitted transfers, multi-hop paths, DSA execution and persistent findings.</p><Button onClick={()=>navigate(`/app/case-review/${c.id}`)}>Open scenario</Button></div>)}</div><Button variant="secondary" style={{marginTop:14}} onClick={()=>navigate('/app/ml-benchmark')}>View trained ML model results</Button></Card>}
+    <Card className="recent-cases"><h3>Citizen investigation queue</h3>{!data.cases.length && <p>No complaints submitted yet.</p>}<div className="table-scroll"><table><thead><tr><th>Incident</th><th>Type</th><th>Reported loss</th><th>Risk</th><th>Status</th><th>Updated</th></tr></thead><tbody>{data.cases.map((c:any)=><tr key={c.id} onClick={()=>navigate(`/app/case-review/${c.id}`)}><td><Button variant="secondary" onClick={()=>navigate(`/app/case-review/${c.id}`)}>{c.id}</Button></td><td>{c.incidentType}</td><td>{money(c.reportedLoss)}</td><td>{c.riskScore===null?'Not analyzed':`${c.riskScore}/100`}</td><td><StatusBadge status={c.status}/></td><td>{formatTime(c.updatedAt)}</td></tr>)}</tbody></table></div></Card>
+  </div>;
   const m = data?.metrics || {
     activeCases: 6,
     fundsTraced: 642000,

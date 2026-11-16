@@ -1,3 +1,5 @@
+import { predictResearchFeatures } from './portableInference.mjs';
+import { loadResearchPrediction } from '../investigation/evidenceAnalysis.mjs';
 /**
  * Cyber Trace - Explainable Risk Scoring Engine
  * Combines:
@@ -68,9 +70,14 @@ export class RiskEngine {
       : 0;
 
     // Model outputs
-    const prob = node.probability ?? 0.5;
-    const modelScore = node.riskScore ?? Math.round(prob * 100);
-    const predictedClass = node.predictedClass || (prob >= 0.5 ? 'illicit' : 'licit');
+    let trainedPrediction=loadResearchPrediction(id);
+    if(trainedPrediction.available && Number.isFinite(node.inDegree) && Number.isFinite(node.outDegree)){
+      const i=node.inDegree,o=node.outDegree;
+      trainedPrediction={...trainedPrediction,...predictResearchFeatures([i,o,i+o,o/(i+1),Number(i===0),Number(o===0)])};
+    }
+    const prob = trainedPrediction.available ? trainedPrediction.probability : null;
+    const modelScore = prob===null ? null : Math.round(prob * 100);
+    const predictedClass = prob===null ? 'unavailable' : prob >= 0.5 ? 'illicit' : 'licit';
     const knownLabel = node.label; // 'licit' | 'illicit' | 'unknown'
 
     // Build evidence indicators
@@ -84,8 +91,8 @@ export class RiskEngine {
       category: 'Model Inference',
       weight: modelWeight,
       score: modelScore,
-      description: `Random Forest model calibrated on time-aware split predicts ${predictedClass.toUpperCase()} with confidence ${(prob * 100).toFixed(1)}%.`,
-      method: 'Time-aware Random Forest (Weber et al. benchmark, PR-AUC 0.7805, ROC-AUC 0.9254)',
+      description: prob===null ? 'Reproducible model artifact unavailable.' : `Topology-only research Random Forest illicit probability: ${(prob*100).toFixed(1)}%. Uncalibrated.`,
+      method: 'Reproducible Elliptic transductive topology baseline; see model evaluation limitations',
       finding: predictedClass === 'illicit' ? 'High statistical resemblance to historical illicit patterns' : 'Consistent with licit transaction profile'
     });
 
@@ -152,22 +159,8 @@ export class RiskEngine {
     // Composite calibrated risk score
     // Primary score comes from the calibrated Random Forest model, modulated by neighborhood and ground truth
     let finalRiskScore = modelScore;
-    if (knownLabel === 'illicit') {
-      finalRiskScore = Math.max(85, modelScore);
-    } else if (knownLabel === 'licit') {
-      finalRiskScore = Math.min(35, modelScore);
-    }
-
-    const riskCategory = this.getRiskCategory(finalRiskScore);
-
-    // Platt Sigmoid Calibration & Confidence Interval
-    const z = (finalRiskScore - 50) / 16;
-    const calibratedProb = Number((1 / (1 + Math.exp(-z))).toFixed(4));
-    const margin = Number((Math.max(0.03, 0.07 * (1 - Math.abs(calibratedProb - 0.5) * 2))).toFixed(4));
-    const confidenceInterval = [
-      Math.max(0, Number((calibratedProb - margin).toFixed(4))),
-      Math.min(1, Number((calibratedProb + margin).toFixed(4)))
-    ];
+    const riskCategory = finalRiskScore===null ? 'UNAVAILABLE' : this.getRiskCategory(finalRiskScore);
+    const calibratedProb = null, confidenceInterval = null;
 
     // Top Contributing Factors (SHAP-style explainability breakdown)
     const sortedIndicators = [...evidenceIndicators].sort((a, b) => (b.weight * b.score) - (a.weight * a.score));
@@ -183,8 +176,8 @@ export class RiskEngine {
 
     // Score explanation
     const explanation = [
-      `Overall calibrated risk score is ${finalRiskScore}/100 (${riskCategory}).`,
-      `Calibrated probability of illicit activity: ${(calibratedProb * 100).toFixed(1)}% (95% CI: [${(confidenceInterval[0] * 100).toFixed(1)}%, ${(confidenceInterval[1] * 100).toFixed(1)}%]).`,
+      `Research model score: ${finalRiskScore ?? "unavailable"}/100 (${riskCategory}).`,
+      'No fitted probability calibration or statistical confidence interval is available.',
       knownLabel !== 'unknown'
         ? `Ground truth label: ${knownLabel.toUpperCase()}.`
         : 'Ground truth label is UNKNOWN (not automatically presumed legitimate).',
@@ -199,7 +192,8 @@ export class RiskEngine {
       riskScore: finalRiskScore,
       riskCategory,
       modelPrediction: predictedClass,
-      modelConfidence: Number((prob * 100).toFixed(2)),
+      modelConfidence: prob===null ? null : Number((prob * 100).toFixed(2)),
+      modelProvenance: trainedPrediction,
       calibratedProbability: calibratedProb,
       confidenceInterval,
       topContributingFeatures,

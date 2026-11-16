@@ -673,7 +673,7 @@ export class Store {
         this.db.exec('COMMIT');
       } catch(error) { this.db.exec('ROLLBACK'); throw error; }
     }
-    this.seedCaseManagement();
+    if(process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true') this.seedCaseManagement();
   }
   close() { try { this.db.close(); } catch {} }
   session(token) {
@@ -709,7 +709,7 @@ export class Store {
     }
     this.db.prepare('INSERT INTO sessions VALUES(?,?,?,?,?,?)').run(id, hash(token), uid, createdAt, expiresAt, JSON.stringify(DEFAULT_WEIGHTS));
     const session = this.session(token);
-    if (role !== 'reporter') {
+    if (role !== 'reporter' && (process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true')) {
       this.seedCases(id, session.weights);
     }
     this.audit(id,role==='officer'||role==='official-investigator'?'CBI Officer Signed In':role==='reporter'?'Reporter Signed In':'Demo Session Created','workspace',{datasetVersion:'2026.09.24-v1'});
@@ -1392,6 +1392,7 @@ export class Store {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       for (const cid of caseIds) {
+        for(const table of ['incident_analysis_runs','incident_transfers']) { if(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table)) this.db.prepare(`DELETE FROM ${table} WHERE case_id=?`).run(cid); }
         this.db.prepare('DELETE FROM case_evidence WHERE case_id=?').run(cid);
         this.db.prepare('DELETE FROM case_updates WHERE case_id=?').run(cid);
         this.db.prepare('DELETE FROM notifications WHERE case_id=?').run(cid);
@@ -1412,7 +1413,7 @@ export class Store {
     if (!cleanEmail || !cleanEmail.includes('@')) throw Object.assign(new Error('Valid email address is required.'), { status: 400 });
     if (!password || String(password).length < 4) throw Object.assign(new Error('Password must be at least 4 characters.'), { status: 400 });
     const displayName = String(name || '').trim() || cleanEmail.split('@')[0];
-    const userRole = role === 'officer' || role === 'cbi-officer' || role === 'investigating_officer' ? 'investigating_officer' : role === 'supervisor' ? 'supervisor' : role === 'admin' ? 'admin' : 'reporter';
+    const userRole = ['officer','cbi-officer','investigating_officer'].includes(role) ? 'investigating_officer' : ['supervisor','admin','auditor','bank_nodal'].includes(role) ? role : 'reporter';
 
     const existing = this.db.prepare('SELECT id FROM system_users WHERE email=?').get(cleanEmail);
     if (existing) throw Object.assign(new Error('An account with this email address already exists.'), { status: 409 });
@@ -1436,19 +1437,20 @@ export class Store {
     const cleanEmail = String(email || '').trim().toLowerCase();
     const user = this.db.prepare('SELECT * FROM system_users WHERE email=?').get(cleanEmail);
     if (!user) {
-      if (cleanEmail === 'investigator@cryptotrace.gov.in' && password === 'Admin@2026') {
+      if ((process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true') && cleanEmail === 'investigator@cryptotrace.gov.in' && password === 'Admin@2026') {
         const id = 'USR-OFFICER-001';
         return { id, email: cleanEmail, name: 'Investigator (CBI Officer)', role: 'officer' };
       }
       return null;
     }
+    if (process.env.NODE_ENV!=='test' && process.env.DEMO_MODE!=='true' && ['USR-OFFICER-001','USR-REPORTER-001','USR-REPORTER-002','USR-SUPERVISOR-001','USR-ADMIN-001'].includes(user.id)) return null;
     if (user.status === 'SUSPENDED') {
       throw Object.assign(new Error('This account has been suspended by administration. All sessions revoked.'), { status: 403 });
     }
-    const isPwValid = verifyPasswordSecure(password, user.password_hash) ||
+    const isPwValid = verifyPasswordSecure(password, user.password_hash) || ((process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true') && (
       (cleanEmail === 'officer.sharma@cbi.gov.in' && (password === 'Sharma@2026' || password === 'Admin@2026')) ||
       (cleanEmail === 'priya.nair@example.in' && password === 'Reporter@2026') ||
-      (cleanEmail === 'amit.verma@example.in' && password === 'Reporter@2026');
+      (cleanEmail === 'amit.verma@example.in' && password === 'Reporter@2026')));
 
     if (!isPwValid) {
       return null;
@@ -1652,6 +1654,12 @@ export class Store {
   }
 
   createComplaint(data) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try { const result = this._createComplaint(data); this.db.exec('COMMIT'); return result; }
+    catch(error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+
+  _createComplaint(data) {
     const caseId = data.caseId || this.generateCaseId();
     const id = randomUUID();
     const stamp = now();
@@ -1682,12 +1690,14 @@ export class Store {
       uuid: id,
       caseId,
       trackingCode,
+      utrNumber: data.utrNumber || null,
       reporterId,
       reporterName,
       reporterEmail,
       incidentType,
       incidentDate,
       incidentChannel,
+      presentationScenario: data.presentationScenario || null,
       description,
       reportedLoss,
       reportedAmount: reportedLoss,
@@ -1748,11 +1758,14 @@ export class Store {
           uploadedById: reporterId,
           uploadedByName: reporterName,
           uploaderRole: 'reporter',
-          filename: att.name || 'evidence_file',
-          fileType: att.type || 'application/octet-stream',
-          fileSize: att.size || 1024,
+          filename: att.filename || att.name || 'evidence_file',
+          fileType: att.mimeType || att.type || 'application/octet-stream',
+          fileSize: att.sizeBytes || att.size || 0,
           description: att.description || 'Initial complaint attachment',
-          sha256: att.sha256 || hash(caseId + att.name + stamp)
+          sha256: att.sha256 || '',
+          storagePath: att.storagePath || null,
+          avScanStatus: att.avScanStatus || 'NOT_SCANNED',
+          chainOfCustody: att.chainOfCustody || null
         });
       }
     }
@@ -1991,9 +2004,9 @@ export class Store {
     if (!trackingCode) return null;
     let row;
     try {
-      row = this.db.prepare('SELECT * FROM complaints WHERE tracking_code=? OR case_id=?').get(trackingCode, trackingCode);
+      row = this.db.prepare('SELECT * FROM complaints WHERE tracking_code=?').get(trackingCode);
     } catch {
-      row = this.db.prepare('SELECT * FROM complaints WHERE case_id=?').get(trackingCode);
+      return null;
     }
     if (!row) return null;
 
@@ -2144,14 +2157,14 @@ export class Store {
     return this.getComplaint(actualCaseId, true);
   }
 
-  addEvidence({ caseId, uploadedById, uploadedByName, uploaderRole, filename, fileType = 'application/octet-stream', fileSize = 0, description = '', sha256 = '', chainOfCustody = null, avScanStatus = 'CLEAN_SHA256_SEALED', storagePath = null }) {
+  addEvidence({ caseId, uploadedById, uploadedByName, uploaderRole, filename, fileType = 'application/octet-stream', fileSize = 0, description = '', sha256 = '', chainOfCustody = null, avScanStatus = 'NOT_SCANNED', storagePath = null }) {
     const comp = this.db.prepare('SELECT * FROM complaints WHERE case_id=? OR id=?').get(caseId, caseId);
     if (!comp) throw Object.assign(new Error(`Complaint ${caseId} was not found.`), { status: 404 });
 
     const actualCaseId = comp.case_id;
     const id = randomUUID();
     const stamp = now();
-    const fileHash = sha256 || hash(`${actualCaseId}:${filename}:${stamp}`);
+    const fileHash = storagePath ? sha256 : '';
     const cocJson = chainOfCustody ? (typeof chainOfCustody === 'string' ? chainOfCustody : JSON.stringify(chainOfCustody)) : null;
 
     try {
