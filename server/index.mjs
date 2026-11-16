@@ -789,7 +789,7 @@ async function handle(req,res) {
  if(group==='dsa') {
    if(id==='catalog' && method==='GET') return json(res, 200, DSA_CATALOG);
    if(id==='benchmarks' && method==='GET') {
-     const size = Number(params?.get('size') || 500);
+     const size = Number(url.searchParams.get('size') || 500);
      return json(res, 200, runFullDsaBenchmarks(size));
    }
    if(id==='benchmarks' && method==='POST') {
