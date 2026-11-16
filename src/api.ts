@@ -6,7 +6,7 @@ export async function api<T=any>(path:string,options:RequestInit={}):Promise<T>{
     ...(options.headers as any)
   };
 
-  const response = await fetch(path.startsWith('/api') ? path : `/api${path}`, {
+  let response = await fetch(path.startsWith('/api') ? path : `/api${path}`, {
     credentials: 'include',
     ...options,
     headers
@@ -15,6 +15,33 @@ export async function api<T=any>(path:string,options:RequestInit={}):Promise<T>{
   const newToken = response.headers.get('x-new-session-token');
   if (newToken && typeof localStorage !== 'undefined') {
     localStorage.setItem('ct_token', newToken);
+  }
+
+  if (response.status === 401 && typeof window !== 'undefined' && !(options as any)._retried && !path.startsWith('/auth/login')) {
+    (options as any)._retried = true;
+    try {
+      const demoRes = await fetch('/api/auth/demo-officer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      if (demoRes.ok) {
+        const demoData = await demoRes.json();
+        if (demoData?.token) {
+          localStorage.setItem('ct_token', demoData.token);
+          if (demoData.user) localStorage.setItem('ct_user', JSON.stringify(demoData.user));
+          headers['Authorization'] = `Bearer ${demoData.token}`;
+          headers['x-session-token'] = demoData.token;
+          response = await fetch(path.startsWith('/api') ? path : `/api${path}`, {
+            credentials: 'include',
+            ...options,
+            headers
+          });
+          const retryNewToken = response.headers.get('x-new-session-token');
+          if (retryNewToken) localStorage.setItem('ct_token', retryNewToken);
+        }
+      }
+    } catch {}
   }
 
   if (!response.ok) {

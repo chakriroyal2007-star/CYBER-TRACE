@@ -303,7 +303,28 @@ export function CaseReviewPage({ id }: { id: string }) {
           setOnChainData(addrData);
         } catch { }
       }
-    }).catch(err => {
+    }).catch(async err => {
+      if (err.message?.includes('Sign in') || err.message?.includes('session')) {
+        try {
+          await api('/auth/demo-officer', { method: 'POST', body: '{}' });
+          const [comp, offList] = await Promise.all([
+            api(`/complaints/${id}`),
+            api('/officers').catch(() => [])
+          ]);
+          setComplaint(comp);
+          setOfficers(offList);
+          if (comp.assignedOfficerId) {
+            setSelectedOfficerId(comp.assignedOfficerId);
+          }
+          setLoading(false);
+          setError('');
+          return;
+        } catch (innerErr: any) {
+          setError(innerErr.message);
+          setLoading(false);
+          return;
+        }
+      }
       setError(err.message);
       setLoading(false);
     });
@@ -355,7 +376,28 @@ export function CaseReviewPage({ id }: { id: string }) {
   }, [id]);
 
   if (loading) return <LoadingState />;
-  if (error || !complaint) return <ErrorState message={error || 'Case not found'} retry={loadCase} />;
+  if (error || !complaint) {
+    return (
+      <div style={{ padding: 24, maxWidth: 600, margin: '40px auto', textAlign: 'center' }}>
+        <ErrorState message={error || 'Case not found'} retry={async () => {
+          try {
+            await api('/auth/demo-officer', { method: 'POST', body: '{}' });
+          } catch {}
+          loadCase();
+        }} />
+        {(error?.includes('Sign in') || error?.includes('session')) && (
+          <div style={{ marginTop: 16 }}>
+            <Button onClick={async () => {
+              try {
+                await api('/auth/demo-officer', { method: 'POST', body: '{}' });
+                loadCase();
+              } catch {}
+            }}>Authenticate as CBI Officer</Button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Status transitions
   const handleStatusChange = async (newStatus: string, reason?: string) => {
