@@ -3,7 +3,7 @@ import {
   Play, Pause, SkipForward, SkipBack, RotateCcw,
   BookOpen, GitBranch, Network, Activity, Cpu,
   CheckCircle, ArrowRight, ShieldAlert, Zap,
-  Layers, Database, Compass, Clock, Sparkles, AlertTriangle
+  Layers, Database, Compass, Clock, Sparkles, AlertTriangle, ShieldCheck
 } from 'lucide-react';
 import { api } from '../api';
 import { Badge, Button } from '../components/ui';
@@ -43,14 +43,14 @@ interface Step {
 export default function DsaStudyStudio() {
   const [catalog, setCatalog] = useState<AlgorithmMeta[]>([]);
   const [selectedAlgo, setSelectedAlgo] = useState<string>('bfs');
-  const [selectedPreset, setSelectedPreset] = useState<string>('mule-ring');
+  const [selectedPreset, setSelectedPreset] = useState<string>('case-00192');
   const [simulation, setSimulation] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Real Investigation Case Integration
   const urlCaseId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('caseId') : null;
-  const [sourceMode, setSourceMode] = useState<'case' | 'preset'>(urlCaseId ? 'case' : 'case');
+  const [sourceMode, setSourceMode] = useState<'case' | 'preset'>(urlCaseId ? 'case' : 'preset');
   const [selectedCaseId, setSelectedCaseId] = useState<string>(urlCaseId || 'CR-2026-00192');
   const [casesList, setCasesList] = useState<any[]>([]);
 
@@ -228,28 +228,6 @@ export default function DsaStudyStudio() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <a
-            href="/CYBER_TRACE_DSA_MASTER_EXPLAINER.pdf"
-            download="CYBER_TRACE_DSA_MASTER_EXPLAINER.pdf"
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              background: '#0d9488',
-              border: '1px solid #14b8a6',
-              color: '#ffffff',
-              padding: '8px 14px',
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              textDecoration: 'none'
-            }}
-          >
-            <BookOpen size={14} color="#ffffff" /> Download DSA Master Explainer (PDF)
-          </a>
           <button
             onClick={() => {
               window.location.href = '/app/dashboard';
@@ -453,8 +431,9 @@ export default function DsaStudyStudio() {
                 fontWeight: 600
               }}
             >
-              <optgroup label="Real Investigation Case Reports">
-                <option value="case:CR-2026-00192">Case CR-2026-00192 (Showcase Case A: WazirX & Mule Ring)</option>
+              <optgroup label="Real Multi-Hop Investigation Cases">
+                <option value="case-00192">Case CR-2026-00192: Multi-Hop Trail (SBI UPI → Mules → Bridge → Binance)</option>
+                <option value="case:CR-2026-00192">Case CR-2026-00192 (Investigation Report Graph)</option>
                 <option value="case:CR-2026-00193">Case CR-2026-00193 (Showcase Case B: Phishing & Pink Drainer)</option>
                 {casesList.filter(c => c.caseId !== 'CR-2026-00192' && c.caseId !== 'CR-2026-00193').map(c => (
                   <option key={c.caseId} value={`case:${c.caseId}`}>
@@ -462,7 +441,7 @@ export default function DsaStudyStudio() {
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="Educational Benchmark Presets">
+              <optgroup label="Educational Benchmark Topologies">
                 <option value="mule-ring">Money Mule Ring (Layering)</option>
                 <option value="wash-trading-cycle">Wash Trading Cycle (Cycles)</option>
                 <option value="deposit-sweep">Multi-Victim Deposit Sweep (Union-Find)</option>
@@ -533,6 +512,47 @@ export default function DsaStudyStudio() {
           </Button>
         </div>
       )}
+
+      {/* REAL CASE MULTI-HOP MONEY TRAIL BANNER */}
+      <div style={{
+        background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.15) 0%, rgba(2, 6, 23, 0.6) 100%)',
+        border: '1px solid rgba(56, 189, 248, 0.3)',
+        borderRadius: 10,
+        padding: '12px 18px',
+        marginBottom: 18,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            background: 'rgba(56, 189, 248, 0.2)',
+            padding: 8,
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Sparkles size={18} color="#38bdf8" />
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>Showcase Case A Multi-Hop Laundering Trail (CR-2026-00192)</span>
+              <Badge variant="info">₹8,12,450 SBI UPI ➔ 15 Entities ➔ Binance Exit</Badge>
+            </div>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
+              Victim SBI UPI ➔ HDFC Collector ➔ ICICI Layering Mule ➔ P2P Desk ➔ WazirX Exploiter ➔ Across Bridge Router ➔ Binance Exit
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, background: '#0284c7', color: '#fff', padding: '4px 8px', borderRadius: 6, fontWeight: 600 }}>15 Forensic Vertices</span>
+          <span style={{ fontSize: 11, background: '#064e3b', color: '#34d399', padding: '4px 8px', borderRadius: 6, fontWeight: 600 }}>18 Evidence Edges</span>
+          <span style={{ fontSize: 11, background: '#3b0764', color: '#d8b4fe', padding: '4px 8px', borderRadius: 6, fontWeight: 600 }}>Section 106 & 94 BNSS</span>
+        </div>
+      </div>
 
       {/* MAIN SIMULATOR VIEWPORT */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20, marginBottom: 24 }}>
@@ -695,6 +715,16 @@ export default function DsaStudyStudio() {
                         textAnchor="middle"
                       >
                         {n.id.length > 8 ? n.id.slice(0, 7) + '…' : n.id}
+                      </text>
+                      <text
+                        x={x}
+                        y={y + (isCurrent ? 36 : 30)}
+                        fill={isCurrent ? '#fef08a' : '#94a3b8'}
+                        fontSize="9"
+                        fontWeight={isCurrent ? '700' : '500'}
+                        textAnchor="middle"
+                      >
+                        {(n.label || n.id).length > 20 ? (n.label || n.id).slice(0, 19) + '…' : (n.label || n.id)}
                       </text>
                     </g>
                   );
@@ -919,6 +949,42 @@ export default function DsaStudyStudio() {
                     <div>Circular Cycle Detected: <strong>{simulation.summary.hasCycle ? 'YES (Wash Trading Loop)' : 'No Cycles'}</strong></div>
                   )}
                 </div>
+
+                {simulation.summary.forensicFinding && (
+                  <div style={{
+                    marginTop: 12,
+                    paddingTop: 10,
+                    borderTop: '1px solid rgba(56, 189, 248, 0.2)',
+                    fontSize: 12,
+                    lineHeight: '1.5'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#38bdf8', fontWeight: 700, marginBottom: 4 }}>
+                      <ShieldCheck size={14} /> What this Algorithm Proves to the Court:
+                    </div>
+                    <div style={{ marginBottom: 4 }}>
+                      <span style={{ color: '#94a3b8' }}>Statute: </span>
+                      <strong style={{ color: '#38bdf8' }}>{simulation.summary.forensicFinding.statutoryBasis}</strong>
+                    </div>
+                    <div style={{ marginBottom: 4 }}>
+                      <span style={{ color: '#94a3b8' }}>Evidence: </span>
+                      <span style={{ color: '#f8fafc' }}>{simulation.summary.forensicFinding.courtProof}</span>
+                    </div>
+                    <div style={{ marginBottom: 6 }}>
+                      <span style={{ color: '#94a3b8' }}>Officer Action: </span>
+                      <span style={{ color: '#fef08a' }}>{simulation.summary.forensicFinding.officerAction}</span>
+                    </div>
+                    <div style={{
+                      background: '#020617',
+                      padding: '6px 8px',
+                      borderRadius: 4,
+                      borderLeft: '3px solid #38bdf8',
+                      fontSize: 11
+                    }}>
+                      <strong style={{ color: '#38bdf8' }}>Exam/Interview Tip for Mam: </strong>
+                      <span style={{ color: '#e2e8f0' }}>{simulation.summary.forensicFinding.academicTakeaway}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

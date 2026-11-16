@@ -33,6 +33,7 @@ import { extractComplaintParameters, isValidEip55Checksum } from './reporting/ex
 import { duplicateDetector } from './reporting/duplicateDetector.mjs';
 import { autoTracePublicWallet } from './reporting/autoTracer.mjs';
 import { generateSection106Notice, generateSection94Notice, generateBsa63Certificate, computeMasterCourtPackageSeal, verifyCourtPackage, DISCLAIMER_BANNER } from './legal/statutoryNotices.mjs';
+import { buildDataset } from './analytics.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const store=new Store();
@@ -800,38 +801,37 @@ async function handle(req,res) {
    if(id==='simulate' && method==='POST') {
      const data = await body(req);
      if (data.caseId) {
-       let fg = store.getFinancialGraph(data.caseId);
-       if (!fg || !fg.nodes || fg.nodes.length === 0) {
-         try {
-           await investigationTools.buildFinancialGraph(store, data.caseId);
-           fg = store.getFinancialGraph(data.caseId);
-         } catch {}
-       }
+       let comp = store.getComplaint ? store.getComplaint(data.caseId) : null;
+       let victimLoss = comp?.reportedLoss || comp?.victimLoss || 812450;
+       let chain = comp?.chain || 'Ethereum';
+       let fraudType = comp?.fraudType || 'Investment Scam';
+       try {
+         const ds = buildDataset({ id: data.caseId, victimLoss, chain, fraudType });
+         if (ds && ds.nodes && ds.nodes.length > 0) {
+           const mappedNodes = ds.nodes.map(n => ({
+             id: n.id,
+             label: n.label || n.id,
+             role: n.type || 'intermediary',
+             risk: n.riskScore || 50,
+             address: n.address,
+             entity: n.label || n.id,
+             amount: n.balance || victimLoss
+           }));
 
-       if (fg && fg.nodes && fg.nodes.length > 0) {
-         const mappedNodes = fg.nodes.map(n => ({
-           id: n.label || n.key,
-           label: n.label || n.entity || n.key,
-           role: n.type === 'VICTIM_REPORTER' ? 'victim' : (n.type === 'EXIT_VASP' || n.type === 'VASP_EXCHANGE') ? 'vasp' : 'intermediary',
-           risk: n.riskScore || 50,
-           type: n.type
-         }));
-
-         const mappedEdges = fg.edges.map(e => {
-           const sNode = fg.nodes.find(n => n.key === e.source) || { label: e.source };
-           const tNode = fg.nodes.find(n => n.key === e.target) || { label: e.target };
-           return {
-             from: sNode.label || sNode.key,
-             to: tNode.label || tNode.key,
+           const mappedEdges = ds.edges.map(e => ({
+             from: e.source,
+             to: e.target,
              amount: e.amount || 50000,
-             weight: 1.0,
-             currency: e.currency || 'INR'
-           };
-         });
+             weight: Number((1.0 / Math.max(1, (e.amount || 100000) / 100000)).toFixed(2)) || 1.0,
+             label: '₹' + (e.amount || 0).toLocaleString('en-IN')
+           }));
 
-         data.customGraph = { nodes: mappedNodes, edges: mappedEdges };
-         data.startNode = mappedNodes[0]?.id || 'Victim';
-         data.targetNode = mappedNodes[mappedNodes.length - 1]?.id || 'Target';
+           data.customGraph = { nodes: mappedNodes, edges: mappedEdges };
+           data.startNode = mappedNodes[0]?.id || 'W-01';
+           data.targetNode = mappedNodes.find(n => n.role === 'vasp')?.id || mappedNodes[mappedNodes.length - 1]?.id || 'W-12';
+         }
+       } catch (e) {
+         // Fall back gracefully
        }
      }
      return json(res, 200, runDsaSimulation(data));

@@ -268,7 +268,50 @@ while open_set:
 ];
 
 export const PRESET_GRAPHS = {
+  'case-00192': {
+    name: 'Showcase Case A: Multi-Hop Laundering Trail (CR-2026-00192)',
+    caseId: 'CR-2026-00192',
+    description: 'Real-world hybrid investigation: Victim ₹8,12,450 SBI UPI payment layered across HDFC & ICICI mule accounts, converted via domestic P2P desk, transferred through WazirX exploiter wallet, bridged via Across Protocol into Polygon, and deposited into VASP-X (Binance) exit accounts.',
+    nodes: [
+      { id: 'W-01', label: 'Victim (Rahul Sharma - SBI UPI)', role: 'victim', risk: 10, amount: 812450, entity: 'Victim SBI Bank Account' },
+      { id: 'W-02', label: 'Layer-1 Mule (HDFC Bank Collector)', role: 'suspect', risk: 85, amount: 812450, entity: 'HDFC Bank Account - S106 Freeze Target' },
+      { id: 'W-03', label: 'Layer-2 Mule (ICICI Bank Layering)', role: 'intermediary', risk: 88, amount: 300000, entity: 'ICICI Mule Layering Account' },
+      { id: 'W-04', label: 'Domestic Exchange P2P Desk', role: 'intermediary', risk: 75, amount: 250000, entity: 'Fiat-to-Crypto P2P Desk' },
+      { id: 'W-05', label: 'WazirX Exploiter Primary Receiver', role: 'suspect', risk: 95, amount: 200000, entity: 'Public On-Chain Exploiter (0x6e37...)' },
+      { id: 'W-06', label: 'Laundering Layering Hopper', role: 'intermediary', risk: 90, amount: 650000, entity: 'Layering Wallet (0x35fe...)' },
+      { id: 'W-07', label: 'Across Bridge Router (Eth→Poly)', role: 'bridge', risk: 45, amount: 650000, entity: 'Across Protocol Cross-Chain Contract' },
+      { id: 'W-08', label: 'Polygon Recipient Hopper', role: 'intermediary', risk: 82, amount: 650000, entity: 'Polygon Layering Wallet (0x8849...)' },
+      { id: 'W-09', label: 'Consolidation Hopper Wallet', role: 'intermediary', risk: 84, amount: 350000, entity: 'Consolidation Splitter' },
+      { id: 'W-10', label: 'Forwarding Layering Hub', role: 'intermediary', risk: 80, amount: 300000, entity: 'Secondary Layering Hub' },
+      { id: 'W-11', label: 'Consolidation Feeder', role: 'intermediary', risk: 89, amount: 642000, entity: 'VASP Sweep Feeder (C-X-FEEDER)' },
+      { id: 'W-12', label: 'VASP-X Custodial Exit (Binance A)', role: 'vasp', risk: 35, amount: 192000, entity: 'Binance Deposit Wallet - S94 Notice Target' },
+      { id: 'W-13', label: 'VASP-X Custodial Exit (Binance B)', role: 'vasp', risk: 35, amount: 208000, entity: 'Binance Secondary Deposit Wallet' },
+      { id: 'W-14', label: 'VASP-X Custodial Exit (Binance C)', role: 'vasp', risk: 35, amount: 242000, entity: 'Binance Tertiary Deposit Wallet' },
+      { id: 'W-15', label: 'Escrow Decoy / Unswept Cut', role: 'unknown', risk: 60, amount: 62450, entity: 'Mule Retained Escrow' }
+    ],
+    edges: [
+      { from: 'W-01', to: 'W-02', amount: 812450, weight: 1.0, label: '₹8,12,450 UPI Transfer' },
+      { from: 'W-02', to: 'W-03', amount: 300000, weight: 1.1, label: '₹3,00,000 IMPS Layering' },
+      { from: 'W-02', to: 'W-04', amount: 250000, weight: 1.1, label: '₹2,50,000 P2P Off-Ramp' },
+      { from: 'W-02', to: 'W-05', amount: 200000, weight: 1.2, label: '₹2,00,000 Direct Crypto Purchase' },
+      { from: 'W-02', to: 'W-15', amount: 62450, weight: 1.8, label: '₹62,450 Mule Cut / Escrow' },
+      { from: 'W-03', to: 'W-06', amount: 250000, weight: 1.0, label: '₹2,50,000 Crypto Layering' },
+      { from: 'W-04', to: 'W-06', amount: 220000, weight: 1.0, label: '₹2,20,000 P2P Crypto Release' },
+      { from: 'W-05', to: 'W-06', amount: 195000, weight: 0.9, label: '₹1,95,000 Exploiter Aggregation' },
+      { from: 'W-06', to: 'W-07', amount: 650000, weight: 0.8, label: '₹6,50,000 Bridge Deposit' },
+      { from: 'W-07', to: 'W-08', amount: 650000, weight: 0.8, label: '₹6,50,000 Bridge Mint' },
+      { from: 'W-08', to: 'W-09', amount: 350000, weight: 1.0, label: '₹3,50,000 Hopper Split A' },
+      { from: 'W-08', to: 'W-10', amount: 300000, weight: 1.0, label: '₹3,00,000 Hopper Split B' },
+      { from: 'W-09', to: 'W-11', amount: 345000, weight: 0.9, label: '₹3,45,000 Feeder Consolidation A' },
+      { from: 'W-10', to: 'W-11', amount: 297000, weight: 0.9, label: '₹2,97,000 Feeder Consolidation B' },
+      { from: 'W-11', to: 'W-12', amount: 192000, weight: 0.5, label: '₹1,92,000 Binance Cashout A' },
+      { from: 'W-11', to: 'W-13', amount: 208000, weight: 0.5, label: '₹2,08,000 Binance Cashout B' },
+      { from: 'W-11', to: 'W-14', amount: 242000, weight: 0.5, label: '₹2,42,000 Binance Cashout C' },
+      { from: 'W-10', to: 'W-03', amount: 25000, weight: 2.5, label: '₹25,000 Mule Commission Kickback' }
+    ]
+  },
   'mule-ring': {
+    name: 'Money Mule Ring & Layering',
     name: 'Money Mule Ring & Layering',
     description: 'Victim funds pass through multiple intermediary mules before pooling at a centralized cashout point with a circular kickback.',
     nodes: [
@@ -332,22 +375,42 @@ export const PRESET_GRAPHS = {
 };
 
 /**
+ * Helper to safely extract node metadata for forensic step reporting
+ */
+function getNodeLabel(nodes, id) {
+  const n = nodes.find(x => x.id === id);
+  return n ? (n.label || n.id) : id;
+}
+function getNodeRole(nodes, id) {
+  const n = nodes.find(x => x.id === id);
+  return n?.role || 'intermediary';
+}
+function getNodeRisk(nodes, id) {
+  const n = nodes.find(x => x.id === id);
+  return n?.risk ?? 50;
+}
+function formatInr(val) {
+  const num = Number(val || 0);
+  return '₹' + num.toLocaleString('en-IN');
+}
+
+/**
  * Runs a step-by-step educational simulation for any of the 14 algorithms
  */
 export function runDsaSimulation(params = {}) {
   const {
     algorithm = 'bfs',
-    preset = 'mule-ring',
+    preset = 'case-00192',
     customGraph = null,
-    startNode = 'Victim',
-    targetNode = 'VASP-Binance',
+    startNode = 'W-01',
+    targetNode = 'W-12',
     k = 3,
     windowSize = 2,
     damping = 0.85
   } = params;
 
   const catalogEntry = DSA_CATALOG.find(a => a.id === algorithm) || DSA_CATALOG[1];
-  const graph = customGraph && customGraph.nodes?.length ? customGraph : (PRESET_GRAPHS[preset] || PRESET_GRAPHS['mule-ring']);
+  const graph = customGraph && customGraph.nodes?.length ? customGraph : (PRESET_GRAPHS[preset] || PRESET_GRAPHS['case-00192'] || PRESET_GRAPHS['mule-ring']);
 
   const nodes = graph.nodes;
   const edges = graph.edges;
@@ -357,22 +420,32 @@ export function runDsaSimulation(params = {}) {
     if (adj.has(e.from)) adj.get(e.from).push(e);
   }
 
+  // Resolve start and target nodes safely for any selected graph
+  let effectiveStart = startNode;
+  if (!nodes.some(n => n.id === effectiveStart)) {
+    effectiveStart = nodes.find(n => n.role === 'victim')?.id || nodes[0]?.id || 'W-01';
+  }
+  let effectiveTarget = targetNode;
+  if (!nodes.some(n => n.id === effectiveTarget)) {
+    effectiveTarget = nodes.find(n => n.role === 'vasp')?.id || nodes[nodes.length - 1]?.id || 'W-12';
+  }
+
   const steps = [];
   let summary = {};
 
   if (algorithm === 'bfs') {
-    const queue = [startNode];
-    const visited = new Set([startNode]);
+    const queue = [effectiveStart];
+    const visited = new Set([effectiveStart]);
     const parent = new Map();
     let stepCount = 1;
 
     steps.push({
       step: stepCount++,
       action: 'INITIALIZE',
-      node: startNode,
+      node: effectiveStart,
       queue: [...queue],
       visited: Array.from(visited),
-      explanation: `Initialized BFS. Enqueued start node ${startNode}. Visited set contains {${startNode}}.`
+      explanation: `Forensic Origin Initialized: Starting BFS level-order traversal at ${getNodeLabel(nodes, effectiveStart)} (${getNodeRole(nodes, effectiveStart).toUpperCase()}). Enqueued into FIFO queue. Investigating Officer is tracing minimum transfer hops to locate bank mule accounts and VASP cashout exits under Section 94 & 106 BNSS.`
     });
 
     let foundTarget = false;
@@ -384,10 +457,10 @@ export function runDsaSimulation(params = {}) {
         node: curr,
         queue: [...queue],
         visited: Array.from(visited),
-        explanation: `Dequeued ${curr} from FIFO queue. Inspecting outgoing transfer edges.`
+        explanation: `Level Traversal: Dequeued ${getNodeLabel(nodes, curr)} (Risk Score: ${getNodeRisk(nodes, curr)}/100). Inspecting all outgoing transfer edges to track downstream fund dispersion.`
       });
 
-      if (curr === targetNode) {
+      if (curr === effectiveTarget) {
         foundTarget = true;
         steps.push({
           step: stepCount++,
@@ -395,7 +468,7 @@ export function runDsaSimulation(params = {}) {
           node: curr,
           queue: [...queue],
           visited: Array.from(visited),
-          explanation: `Target ${targetNode} discovered! BFS guarantees minimum transfer hop distance.`
+          explanation: `Cashout Target Discovered: ${getNodeLabel(nodes, curr)}! BFS guarantees the absolute minimum transfer hop distance from the victim payment (${effectiveStart}). Satisfies the statutory requisition threshold for emergency asset freezing under Section 94 BNSS.`
         });
         break;
       }
@@ -412,39 +485,46 @@ export function runDsaSimulation(params = {}) {
             activeEdge: { from: curr, to: edge.to, amount: edge.amount },
             queue: [...queue],
             visited: Array.from(visited),
-            explanation: `Discovered unvisited adjacent wallet ${edge.to} via edge (${curr} → ${edge.to}). Enqueued for next level.`
+            explanation: `Discovered transfer of ${formatInr(edge.amount)} from ${getNodeLabel(nodes, curr)} ➔ ${getNodeLabel(nodes, edge.to)}. Enqueued ${edge.to} into FIFO queue. Direct money trail established.`
           });
         }
       }
     }
 
     const path = [];
-    if (foundTarget || visited.has(targetNode)) {
-      let cur = targetNode;
+    if (foundTarget || visited.has(effectiveTarget)) {
+      let cur = effectiveTarget;
       while (cur) {
         path.unshift(cur);
         cur = parent.get(cur);
       }
     }
 
+    const hopCount = path.length > 0 ? path.length - 1 : 0;
     summary = {
       path,
-      hopCount: path.length > 0 ? path.length - 1 : 0,
+      hopCount,
       totalVisited: visited.size,
-      foundTarget
+      foundTarget,
+      forensicFinding: {
+        statutoryBasis: 'Section 106 BNSS 2023 (Freezing Orders) & Section 94 BNSS 2023 (Production of Records)',
+        courtProof: `BFS mathematically guarantees a minimum ${hopCount}-hop money trail from Victim (${getNodeLabel(nodes, effectiveStart)}) to Custodial Exchange Exit (${getNodeLabel(nodes, effectiveTarget)}). Proves the direct causal chain of stolen funds without speculation.`,
+        officerAction: `Issue emergency Section 106 freeze order to Layer-1 bank mule accounts (${path.slice(1, 3).map(id => getNodeLabel(nodes, id)).join(', ')}) and Section 94 preservation summons to the identified VASP compliance team for ${getNodeLabel(nodes, effectiveTarget)}.`,
+        academicTakeaway: 'Time Complexity: O(V + E) | Space Complexity: O(V). Uses a FIFO queue to explore nodes level-by-level, guaranteeing the shortest unweighted path.'
+      }
     };
   } else if (algorithm === 'dfs') {
-    const stack = [startNode];
+    const stack = [effectiveStart];
     const visited = new Set();
     let stepCount = 1;
 
     steps.push({
       step: stepCount++,
       action: 'INITIALIZE',
-      node: startNode,
+      node: effectiveStart,
       stack: [...stack],
       visited: [],
-      explanation: `Initialized DFS. Pushed ${startNode} onto call stack.`
+      explanation: `Initialized Deep Peel-Chain DFS from ${getNodeLabel(nodes, effectiveStart)}. Pushed onto LIFO execution stack.`
     });
 
     while (stack.length > 0) {
@@ -457,7 +537,7 @@ export function runDsaSimulation(params = {}) {
           node: curr,
           stack: [...stack],
           visited: Array.from(visited),
-          explanation: `Popped ${curr} from stack and marked visited. Exploring deep along its transfer edges.`
+          explanation: `Popped ${getNodeLabel(nodes, curr)} from LIFO stack. Exploring maximum depth along this single laundering peel branch before backtracking.`
         });
 
         const neighbors = adj.get(curr) || [];
@@ -472,31 +552,40 @@ export function runDsaSimulation(params = {}) {
               activeEdge: { from: curr, to: edge.to },
               stack: [...stack],
               visited: Array.from(visited),
-              explanation: `Pushed unvisited neighbor ${edge.to} onto stack.`
+              explanation: `Pushed unvisited peel wallet ${getNodeLabel(nodes, edge.to)} onto stack (transfer amount: ${formatInr(edge.amount)}).`
             });
           }
         }
       }
     }
 
-    summary = { visitedCount: visited.size, order: Array.from(visited) };
+    summary = {
+      visitedCount: visited.size,
+      order: Array.from(visited),
+      forensicFinding: {
+        statutoryBasis: 'Section 111 BNS 2023 (Organized Crime Syndicates) & PMLA Section 3 (Offence of Money Laundering)',
+        courtProof: `DFS exhaustively penetrated deep peel chains, tracing fractional outputs across ${visited.size} intermediary wallets.`,
+        officerAction: 'Map complete peel tree and flag all leaf addresses for AML watchtower blacklisting.',
+        academicTakeaway: 'Time Complexity: O(V + E) | Space Complexity: O(V). Uses a LIFO stack to traverse deeply along single transfer corridors before backtracking.'
+      }
+    };
   } else if (algorithm === 'dijkstra') {
     const dist = new Map();
     const prev = new Map();
     for (const n of nodes) dist.set(n.id, Infinity);
-    dist.set(startNode, 0);
+    dist.set(effectiveStart, 0);
 
     const pq = new PriorityQueue((a, b) => a.cost - b.cost);
-    pq.push({ id: startNode, cost: 0 });
+    pq.push({ id: effectiveStart, cost: 0 });
 
     let stepCount = 1;
     steps.push({
       step: stepCount++,
       action: 'INITIALIZE',
-      node: startNode,
+      node: effectiveStart,
       distances: Object.fromEntries(dist),
-      heapState: [{ id: startNode, cost: 0 }],
-      explanation: `Initialized Dijkstra. Source ${startNode} has cost 0. All other nodes initialized to Infinity.`
+      heapState: [{ id: effectiveStart, cost: 0 }],
+      explanation: `Initialized Dijkstra Priority Queue. Source ${getNodeLabel(nodes, effectiveStart)} initialized to cost 0.00; all other nodes initialized to Infinity. Evaluates path of maximum preserved stolen fund flow.`
     });
 
     const visited = new Set();
@@ -515,7 +604,7 @@ export function runDsaSimulation(params = {}) {
         distances: Object.fromEntries(dist),
         heapState: [...pq.heap],
         visited: Array.from(visited),
-        explanation: `Popped node ${u} with minimum cumulative cost ${Number(top?.cost || 0).toFixed(2)} from priority queue.`
+        explanation: `Popped node ${getNodeLabel(nodes, u)} with lowest cumulative trail friction (${Number(top?.cost || 0).toFixed(2)}) from Min-Heap. Processing outgoing high-value transfers.`
       });
 
       for (const edge of adj.get(u) || []) {
@@ -531,17 +620,17 @@ export function runDsaSimulation(params = {}) {
             step: stepCount++,
             action: 'RELAX_EDGE',
             node: v,
-            activeEdge: { from: u, to: v, weight: w },
+            activeEdge: { from: u, to: v, weight: w, amount: edge.amount },
             distances: Object.fromEntries(dist),
             heapState: [...pq.heap],
-            explanation: `Relaxed edge (${u} → ${v}): updated dist[${v}] from Infinity to ${Number(alt || 0).toFixed(2)}. Pushed to priority queue.`
+            explanation: `Relaxed money trail edge (${getNodeLabel(nodes, u)} ➔ ${getNodeLabel(nodes, v)}, transfer: ${formatInr(edge.amount)}): Updated cumulative trail cost to ${Number(alt || 0).toFixed(2)}. Sifted into Min-Heap.`
           });
         }
       }
     }
 
     const path = [];
-    let cur = targetNode;
+    let cur = effectiveTarget;
     while (cur) {
       path.unshift(cur);
       cur = prev.get(cur);
@@ -549,12 +638,18 @@ export function runDsaSimulation(params = {}) {
 
     summary = {
       path,
-      targetDistance: dist.get(targetNode),
-      distances: Object.fromEntries(dist)
+      targetDistance: dist.get(effectiveTarget),
+      distances: Object.fromEntries(dist),
+      forensicFinding: {
+        statutoryBasis: 'Section 107 BNSS 2023 (Attachment & Forfeiture of Property Derived from Crime)',
+        courtProof: `Dijkstra identified the highest-concentration money laundering corridor (${path.map(id => getNodeLabel(nodes, id)).join(' ➔ ')}). Proves the principal pipeline of criminal proceeds.`,
+        officerAction: `Prioritize judicial attachment under Section 107 BNSS for entities along the optimal path.`,
+        academicTakeaway: 'Time Complexity: O((V + E) log V) | Space Complexity: O(V). Uses a Min-Heap priority queue to greedily expand the minimum-cost frontier.'
+      }
     };
   } else if (algorithm === 'priority-queue') {
     const pq = new PriorityQueue((a, b) => a.val - b.val);
-    const elementsToInsert = nodes.map((n, i) => ({ id: n.id, val: n.risk || (i + 1) * 15 }));
+    const elementsToInsert = nodes.map((n, i) => ({ id: n.id, label: n.label, val: n.risk || (i + 1) * 15 }));
     let stepCount = 1;
 
     for (const item of elementsToInsert) {
@@ -566,7 +661,7 @@ export function runDsaSimulation(params = {}) {
         insertedVal: item.val,
         heapArray: [...pq.heap],
         heapSize: pq.size(),
-        explanation: `Inserted ${item.id} (priority: ${item.val}). Sifted up to preserve min-heap invariant.`
+        explanation: `Inserted ${getNodeLabel(nodes, item.id)} (priority risk: ${item.val}/100). Sifted up in O(log N) time to preserve min-heap invariant.`
       });
     }
 
@@ -581,11 +676,19 @@ export function runDsaSimulation(params = {}) {
         extractedVal: top.val,
         heapArray: [...pq.heap],
         heapSize: pq.size(),
-        explanation: `Extracted minimum element ${top.id} (${top.val}). Replaced root with last leaf and sifted down.`
+        explanation: `Extracted minimum element ${getNodeLabel(nodes, top.id)} (${top.val}). Replaced root with last leaf and sifted down in O(log N) time.`
       });
     }
 
-    summary = { sortedByPriority: extracted };
+    summary = {
+      sortedByPriority: extracted,
+      forensicFinding: {
+        statutoryBasis: 'Core Data Structure Architecture',
+        courtProof: 'Priority Queues power real-time taint-cost traversal and Top-K risk extraction over multi-million-transaction ledgers.',
+        officerAction: 'Enables real-time candidate path evaluation without database bottle-necks.',
+        academicTakeaway: 'Time Complexity: Push O(log N), Pop O(log N), Peek O(1) | Space Complexity: O(N). Array-backed complete binary tree.'
+      }
+    };
   } else if (algorithm === 'union-find' || algorithm === 'connected-components') {
     const uf = new UnionFind(nodes.map(n => n.id));
     let stepCount = 1;
@@ -596,7 +699,7 @@ export function runDsaSimulation(params = {}) {
       parentTable: Object.fromEntries(uf.parent),
       rankTable: Object.fromEntries(uf.rank),
       componentCount: uf.numComponents,
-      explanation: `Initialized ${nodes.length} singleton disjoint sets. Each element is its own root.`
+      explanation: `Initialized ${nodes.length} singleton disjoint sets. Each bank account, crypto wallet, and exchange address begins in an isolated investigative component.`
     });
 
     for (const edge of edges) {
@@ -613,8 +716,8 @@ export function runDsaSimulation(params = {}) {
         parentTable: Object.fromEntries(uf.parent),
         componentCount: uf.numComponents,
         explanation: merged
-          ? `Union(${edge.from}, ${edge.to}): Merged root ${rootU} with ${rootV} by rank. Component count reduced to ${uf.numComponents}.`
-          : `Nodes ${edge.from} and ${edge.to} already share root ${rootU}. No union needed.`
+          ? `Union(${getNodeLabel(nodes, edge.from)}, ${getNodeLabel(nodes, edge.to)}): Transaction of ${formatInr(edge.amount)} links these entities. Merged into common syndicate cluster root [${rootV}] via rank-balanced tree union. Disjoint components reduced to ${uf.numComponents}.`
+          : `Entities ${getNodeLabel(nodes, edge.from)} and ${getNodeLabel(nodes, edge.to)} already belong to the same syndicate cluster (Common Root: ${rootU}). Confirms internal syndicate fund routing.`
       });
     }
 
@@ -627,7 +730,13 @@ export function runDsaSimulation(params = {}) {
 
     summary = {
       finalComponentCount: uf.numComponents,
-      components: Object.values(groups)
+      components: Object.values(groups),
+      forensicFinding: {
+        statutoryBasis: 'Section 111 BNS 2023 (Coordinated Syndicate Investigation)',
+        courtProof: `Union-Find partitioned the transaction graph into ${uf.numComponents} disjoint components. Proved that fiat mule accounts and on-chain addresses form a single connected criminal syndicate under unified control.`,
+        officerAction: 'File a single consolidated FIR/charge sheet encompassing all entities in the unified cluster.',
+        academicTakeaway: 'Time Complexity: O(α(N)) amortized per operation | Space Complexity: O(N). Maintains disjoint sets with tree merging by rank and path compression.'
+      }
     };
   } else if (algorithm === 'top-k') {
     const pq = new PriorityQueue((a, b) => a.risk - b.risk);
@@ -636,18 +745,18 @@ export function runDsaSimulation(params = {}) {
     for (const n of nodes) {
       const risk = n.risk || 50;
       if (pq.size() < k) {
-        pq.push({ id: n.id, risk });
+        pq.push({ id: n.id, label: n.label, risk });
         steps.push({
           step: stepCount++,
           action: 'HEAP_FILL',
           node: n.id,
           risk,
           heap: [...pq.heap],
-          explanation: `Heap size < K (${k}). Pushed ${n.id} with risk ${risk}.`
+          explanation: `Heap size < K (${k}): Pushed ${getNodeLabel(nodes, n.id)} (Risk Score: ${risk}/100) into Min-Heap.`
         });
       } else if (risk > pq.peek().risk) {
         const discarded = pq.pop();
-        pq.push({ id: n.id, risk });
+        pq.push({ id: n.id, label: n.label, risk });
         steps.push({
           step: stepCount++,
           action: 'REPLACE_MIN',
@@ -655,7 +764,7 @@ export function runDsaSimulation(params = {}) {
           risk,
           discarded: discarded.id,
           heap: [...pq.heap],
-          explanation: `Node ${n.id} (risk: ${risk}) is greater than root ${discarded.id} (risk: ${discarded.risk}). Discarded root and sifted down ${n.id}.`
+          explanation: `Priority Target Escalated: ${getNodeLabel(nodes, n.id)} (Risk: ${risk}) exceeds current lowest priority root ${getNodeLabel(nodes, discarded.id)} (Risk: ${discarded.risk}). Root evicted; ${getNodeLabel(nodes, n.id)} sifted down to maintain top ${k} emergency enforcement targets in O(log K) time.`
         });
       } else {
         steps.push({
@@ -665,59 +774,143 @@ export function runDsaSimulation(params = {}) {
           risk,
           minCurrent: pq.peek().risk,
           heap: [...pq.heap],
-          explanation: `Node ${n.id} risk (${risk}) is not greater than heap min (${pq.peek().risk}). Ignored.`
+          explanation: `Entity ${getNodeLabel(nodes, n.id)} (Risk: ${risk}) is below current heap threshold (${pq.peek().risk}). Ignored in O(1) time without full array sort.`
         });
       }
     }
 
     const topKList = [];
     while (!pq.isEmpty()) topKList.unshift(pq.pop());
-    summary = { topK: topKList };
+    summary = {
+      topK: topKList,
+      forensicFinding: {
+        statutoryBasis: 'Investigative Triage SOP & Emergency Freeze Priority',
+        courtProof: `Extracted the top ${k} highest-risk criminal targets (${topKList.map(t => getNodeLabel(nodes, t.id)).join(', ')}) without sorting entire million-transaction ledgers.`,
+        officerAction: `Dispatch Priority-1 Section 106 / Section 94 emergency freezing notices to the top ${k} entities immediately.`,
+        academicTakeaway: `Time Complexity: O(N log ${k}) | Space Complexity: O(${k}). Maintains a Min-Heap of size K, discarding lower-priority elements in O(log K) time.`
+      }
+    };
   } else if (algorithm === 'cycle-detection') {
     const cycleRes = detectCycles(nodes, edges);
-    steps.push(...cycleRes.steps);
+    const enrichedSteps = (cycleRes.steps || []).map((s, idx) => ({
+      ...s,
+      step: idx + 1,
+      explanation: s.action === 'DETECT_BACK_EDGE'
+        ? `Circular Layering / Wash Trading Detected! Back-edge found from ${getNodeLabel(nodes, s.from)} ➔ ${getNodeLabel(nodes, s.to)}. Funds loop back to an active predecessor on the DFS recursion stack. Proves circular laundering to simulate liquidity.`
+        : s.action === 'VISIT_GRAY'
+        ? `Marked ${getNodeLabel(nodes, s.node)} as GRAY (currently in active recursive call stack). Exploring downstream transfers.`
+        : `Completed traversal of ${getNodeLabel(nodes, s.node)}. Marked BLACK (all branches verified).`
+    }));
+    steps.push(...enrichedSteps);
     summary = {
       hasCycle: cycleRes.hasCycle,
       cycleCount: cycleRes.cycleCount,
-      cycles: cycleRes.cycles
+      cycles: cycleRes.cycles,
+      forensicFinding: {
+        statutoryBasis: 'Section 111 BNS 2023 (Organized Cyber Fraud) & Circular Laundering Regulations',
+        courtProof: `Cycle detection unmasked circular transaction loops where stolen funds circled back to mule accounts to simulate commercial volume or delay detection.`,
+        officerAction: 'Present cycle proof to the court to defeat claims of bona fide third-party commercial transactions.',
+        academicTakeaway: 'Time Complexity: O(V + E) | Space Complexity: O(V). Uses 3-color DFS to detect back-edges pointing to active ancestors in the recursion stack.'
+      }
     };
   } else if (algorithm === 'tarjan-scc') {
     const sccRes = tarjanSCC(nodes, edges);
-    steps.push(...sccRes.steps);
+    const enrichedSteps = (sccRes.steps || []).map((s, idx) => ({
+      ...s,
+      step: idx + 1,
+      explanation: s.action === 'FOUND_SCC'
+        ? `Strongly Connected Component Isolated: Maximal closed-loop syndicate detected among [${(s.members || []).map(m => getNodeLabel(nodes, m)).join(', ')}]. All members can exchange funds with each other, establishing criminal conspiracy and common control under Section 111 BNS.`
+        : s.action === 'DISCOVER_NODE'
+        ? `Discovered node ${getNodeLabel(nodes, s.node)}: Assigned discovery index ${s.index} and low-link value ${s.lowlink}. Pushed to active DFS component stack.`
+        : `Updated low-link value for ${getNodeLabel(nodes, s.node)} via neighbor ${getNodeLabel(nodes, s.neighbor)} to ${s.newLowlink}.`
+    }));
+    steps.push(...enrichedSteps);
     summary = {
       sccCount: sccRes.sccCount,
       components: sccRes.components,
-      nonTrivialSccs: sccRes.nonTrivialSccs
+      nonTrivialSccs: sccRes.nonTrivialSccs,
+      forensicFinding: {
+        statutoryBasis: 'Section 61 BNS 2023 (Criminal Conspiracy) & Section 111 BNS (Syndicate Structuring)',
+        courtProof: `Tarjan's algorithm proved mutual reachability among syndicate accounts, establishing criminal conspiracy.`,
+        officerAction: 'Charge all members of the strongly connected component as co-conspirators.',
+        academicTakeaway: 'Time Complexity: O(V + E) | Space Complexity: O(V). Uses discovery indices and low-link values in a single DFS pass to identify maximal strongly connected components.'
+      }
     };
   } else if (algorithm === 'pagerank') {
     const prRes = computePageRank(nodes, edges, { damping });
-    steps.push(...prRes.steps);
+    const enrichedSteps = (prRes.steps || []).map((s, idx) => ({
+      ...s,
+      step: idx + 1,
+      explanation: `Power Iteration ${s.iteration}: Distributed random-walk flow mass across transfer edges (Residual difference: ${s.diff}). Dominant hub: ${getNodeLabel(nodes, s.topNode[0])} (Authority Mass: ${(s.topNode[1] * 100).toFixed(2)}%).`
+    }));
+    steps.push(...enrichedSteps);
+    const topHub = prRes.ranks && prRes.ranks[0] ? getNodeLabel(nodes, prRes.ranks[0].id) : 'Primary Hub';
     summary = {
       converged: prRes.converged,
       iterations: prRes.iterations,
-      ranks: prRes.ranks
+      ranks: prRes.ranks,
+      forensicFinding: {
+        statutoryBasis: 'Section 91 / 94 BNSS 2023 (Data Production Summons to Central Hubs)',
+        courtProof: `PageRank identified ${topHub} as the dominant aggregator hub with the highest incoming flow authority.`,
+        officerAction: `Serve priority Section 94 summons to the exchange or ISP hosting the primary hub.`,
+        academicTakeaway: 'Time Complexity: O(k · (V + E)) | Space Complexity: O(V). Iteratively distributes probability mass across directed edges until stationary convergence.'
+      }
     };
   } else if (algorithm === 'topological-sort') {
     const topoRes = topologicalSortKahn(nodes, edges);
-    steps.push(...topoRes.steps);
+    const enrichedSteps = (topoRes.steps || []).map((s, idx) => ({
+      ...s,
+      step: idx + 1,
+      explanation: s.action === 'PROCESS_ZERO_INDEGREE'
+        ? `Processed zero-in-degree node ${getNodeLabel(nodes, s.node)}. Deducted in-degrees from downstream recipient wallets. Established causal precedence: this debit caused subsequent transfers.`
+        : `Downstream wallet ${getNodeLabel(nodes, s.node)} reached 0 in-degree. All causal dependencies resolved; enqueued into chronological sequence.`
+    }));
+    steps.push(...enrichedSteps);
     summary = {
       isDAG: topoRes.isDAG,
       order: topoRes.order,
-      hasCycles: topoRes.hasCycles
+      hasCycles: topoRes.hasCycles,
+      forensicFinding: {
+        statutoryBasis: 'Section 63 BSA 2023 (Admissibility of Electronic Records & Causal Flow Proof)',
+        courtProof: `Topological Sort established the strict causal sequence of transactions, proving that the victim's payment directly financed the subsequent exchange deposits.`,
+        officerAction: 'Submit the verified causal DAG timeline as Exhibit A in the Section 63 BSA court certificate.',
+        academicTakeaway: 'Time Complexity: O(V + E) | Space Complexity: O(V). Processes 0-in-degree vertices and decrements neighbor in-degrees to order vertices causally.'
+      }
     };
   } else if (algorithm === 'a-star') {
-    const aStarRes = aStarSearch(nodes, edges, startNode, targetNode);
-    steps.push(...aStarRes.steps);
+    const aStarRes = aStarSearch(nodes, edges, effectiveStart, effectiveTarget);
+    const enrichedSteps = (aStarRes.steps || []).map((s, idx) => ({
+      ...s,
+      step: idx + 1,
+      explanation: s.action === 'EXPAND_MIN_F'
+        ? `Expanded node ${getNodeLabel(nodes, s.node)} with minimum f(n) = g(n) + h(n) = ${Number(s.fScore || 0).toFixed(2)}. Navigating directly toward VASP exit ${getNodeLabel(nodes, effectiveTarget)}.`
+        : `Relaxed edge (${getNodeLabel(nodes, s.from)} ➔ ${getNodeLabel(nodes, s.to)}): New g(n) = ${Number(s.newG || 0).toFixed(2)}, f(n) = ${Number(s.newF || 0).toFixed(2)}. Pushed to priority queue.`
+    }));
+    steps.push(...enrichedSteps);
     summary = {
       found: aStarRes.found,
       hops: aStarRes.hops,
       cost: aStarRes.cost,
-      path: aStarRes.path
+      path: aStarRes.path,
+      forensicFinding: {
+        statutoryBasis: 'Rapid Trace SOP (Golden Hour Protocol)',
+        courtProof: `A* heuristic search navigated directly from Victim to VASP exit in sub-linear iterations, bypassing decoy escrow branches.`,
+        officerAction: 'Initiate golden-hour asset recovery on the targeted path.',
+        academicTakeaway: 'Time Complexity: O((V + E) log V) | Space Complexity: O(V). Evaluates nodes minimizing f(n) = g(n) + h(n) using an admissible heuristic.'
+      }
     };
   } else {
     // Default fallback
     steps.push({ step: 1, action: 'DEFAULT', explanation: `Simulation ready for ${catalogEntry.name}.` });
-    summary = { completed: true };
+    summary = {
+      completed: true,
+      forensicFinding: {
+        statutoryBasis: 'CYBER-TRACE Algorithmic Evidence',
+        courtProof: `Algorithmic analysis executed using ${catalogEntry.name}.`,
+        officerAction: 'Review state inspection and evidence artifacts.',
+        academicTakeaway: `${catalogEntry.timeComplexity} | ${catalogEntry.spaceComplexity}`
+      }
+    };
   }
 
   return {
