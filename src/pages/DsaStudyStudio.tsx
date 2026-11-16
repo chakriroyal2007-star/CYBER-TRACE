@@ -51,7 +51,7 @@ export default function DsaStudyStudio() {
   // Real Investigation Case Integration
   const urlCaseId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('caseId') : null;
   const [sourceMode, setSourceMode] = useState<'case' | 'preset'>(urlCaseId ? 'case' : 'case');
-  const [selectedCaseId, setSelectedCaseId] = useState<string>(urlCaseId || 'CR-2026-90413');
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(urlCaseId || 'CR-2026-00192');
   const [casesList, setCasesList] = useState<any[]>([]);
 
   useEffect(() => {
@@ -432,9 +432,9 @@ export default function DsaStudyStudio() {
               }}
             >
               <optgroup label="Real Investigation Case Reports">
-                <option value="case:CR-2026-90413">Case CR-2026-90413 (Rahul Sharma - PhonePe ₹1,00,000)</option>
-                <option value="case:CR-2026-00192">Case CR-2026-00192 (Flagship Cross-Chain Investigation)</option>
-                {casesList.filter(c => c.caseId !== 'CR-2026-90413' && c.caseId !== 'CR-2026-00192').map(c => (
+                <option value="case:CR-2026-00192">Case CR-2026-00192 (Showcase Case A: WazirX & Mule Ring)</option>
+                <option value="case:CR-2026-00193">Case CR-2026-00193 (Showcase Case B: Phishing & Pink Drainer)</option>
+                {casesList.filter(c => c.caseId !== 'CR-2026-00192' && c.caseId !== 'CR-2026-00193').map(c => (
                   <option key={c.caseId} value={`case:${c.caseId}`}>
                     Case {c.caseId} ({c.reporterName || 'Citizen'} - ₹{(c.reportedLoss || 0).toLocaleString('en-IN')})
                   </option>

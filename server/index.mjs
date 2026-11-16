@@ -785,6 +785,59 @@ async function handle(req,res) {
    return json(res, 200, record);
  }
 
+
+ if(group==='dsa') {
+   if(id==='catalog' && method==='GET') return json(res, 200, DSA_CATALOG);
+   if(id==='benchmarks' && method==='GET') {
+     const size = Number(params?.get('size') || 500);
+     return json(res, 200, runFullDsaBenchmarks(size));
+   }
+   if(id==='benchmarks' && method==='POST') {
+     const data = await body(req);
+     const size = Number(data?.size || 500);
+     return json(res, 200, runFullDsaBenchmarks(size));
+   }
+   if(id==='simulate' && method==='POST') {
+     const data = await body(req);
+     if (data.caseId) {
+       let fg = store.getFinancialGraph(data.caseId);
+       if (!fg || !fg.nodes || fg.nodes.length === 0) {
+         try {
+           await investigationTools.buildFinancialGraph(store, data.caseId);
+           fg = store.getFinancialGraph(data.caseId);
+         } catch {}
+       }
+
+       if (fg && fg.nodes && fg.nodes.length > 0) {
+         const mappedNodes = fg.nodes.map(n => ({
+           id: n.label || n.key,
+           label: n.label || n.entity || n.key,
+           role: n.type === 'VICTIM_REPORTER' ? 'victim' : (n.type === 'EXIT_VASP' || n.type === 'VASP_EXCHANGE') ? 'vasp' : 'intermediary',
+           risk: n.riskScore || 50,
+           type: n.type
+         }));
+
+         const mappedEdges = fg.edges.map(e => {
+           const sNode = fg.nodes.find(n => n.key === e.source) || { label: e.source };
+           const tNode = fg.nodes.find(n => n.key === e.target) || { label: e.target };
+           return {
+             from: sNode.label || sNode.key,
+             to: tNode.label || tNode.key,
+             amount: e.amount || 50000,
+             weight: 1.0,
+             currency: e.currency || 'INR'
+           };
+         });
+
+         data.customGraph = { nodes: mappedNodes, edges: mappedEdges };
+         data.startNode = mappedNodes[0]?.id || 'Victim';
+         data.targetNode = mappedNodes[mappedNodes.length - 1]?.id || 'Target';
+       }
+     }
+     return json(res, 200, runDsaSimulation(data));
+   }
+ }
+
  const authHeader = req.headers.authorization || '';
  const tokenFromHeader = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
  const token = tokenFromHeader || req.headers['x-session-token'] || cookies(req).ct_session || '';
@@ -793,9 +846,8 @@ async function handle(req,res) {
    fail('This account has been suspended by administration. All active sessions revoked.', 403);
  }
 
- if (!session && token) {
-   // A token was provided by the client, but it was not found in this container's SQLite DB
-   // (e.g. serverless cold start, cross-instance invocation, or expired demo token).
+ if (!session && (token || process.env.ALLOW_PRODUCTION_DEMO === 'true' || process.env.DEMO_MODE === 'true' || process.env.VERCEL)) {
+   // A token was provided by the client, or serverless cold start / first-time visitor in demo mode.
    // Auto-revive session with full seeded cases and officer access so the dashboard never breaks.
    try {
      const isReporter = path.startsWith('/api/reporter') || path.startsWith('/api/complaint');
@@ -915,57 +967,6 @@ async function handle(req,res) {
    if (type) all = all.filter(l => l.type === type);
    if (chain) all = all.filter(l => l.chain?.toLowerCase() === chain.toLowerCase());
    return json(res, 200, all);
- }
- if(group==='dsa') {
-   if(id==='catalog' && method==='GET') return json(res, 200, DSA_CATALOG);
-   if(id==='benchmarks' && method==='GET') {
-     const size = Number(params?.get('size') || 500);
-     return json(res, 200, runFullDsaBenchmarks(size));
-   }
-   if(id==='benchmarks' && method==='POST') {
-     const data = await body(req);
-     const size = Number(data?.size || 500);
-     return json(res, 200, runFullDsaBenchmarks(size));
-   }
-   if(id==='simulate' && method==='POST') {
-     const data = await body(req);
-     if (data.caseId) {
-       let fg = store.getFinancialGraph(data.caseId);
-       if (!fg || !fg.nodes || fg.nodes.length === 0) {
-         try {
-           await investigationTools.buildFinancialGraph(store, data.caseId);
-           fg = store.getFinancialGraph(data.caseId);
-         } catch {}
-       }
-
-       if (fg && fg.nodes && fg.nodes.length > 0) {
-         const mappedNodes = fg.nodes.map(n => ({
-           id: n.label || n.key,
-           label: n.label || n.entity || n.key,
-           role: n.type === 'VICTIM_REPORTER' ? 'victim' : (n.type === 'EXIT_VASP' || n.type === 'VASP_EXCHANGE') ? 'vasp' : 'intermediary',
-           risk: n.riskScore || 50,
-           type: n.type
-         }));
-
-         const mappedEdges = fg.edges.map(e => {
-           const sNode = fg.nodes.find(n => n.key === e.source) || { label: e.source };
-           const tNode = fg.nodes.find(n => n.key === e.target) || { label: e.target };
-           return {
-             from: sNode.label || sNode.key,
-             to: tNode.label || tNode.key,
-             amount: e.amount || 50000,
-             weight: 1.0,
-             currency: e.currency || 'INR'
-           };
-         });
-
-         data.customGraph = { nodes: mappedNodes, edges: mappedEdges };
-         data.startNode = mappedNodes[0]?.id || 'Victim';
-         data.targetNode = mappedNodes[mappedNodes.length - 1]?.id || 'Target';
-       }
-     }
-     return json(res, 200, runDsaSimulation(data));
-   }
  }
  // AI Investigation Agent & Tool Suite
  if(group==='investigation') {

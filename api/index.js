@@ -1,5 +1,9 @@
 import { handle } from '../server/index.mjs';
 
+// Vercel serverless runtime serves public demonstration and judge evaluation sandbox
+process.env.ALLOW_PRODUCTION_DEMO = process.env.ALLOW_PRODUCTION_DEMO || 'true';
+process.env.DEMO_MODE = process.env.DEMO_MODE || 'true';
+
 export default async function handler(req, res) {
   try {
     await handle(req, res);

@@ -1,4 +1,8 @@
 {
+  "env": {
+    "ALLOW_PRODUCTION_DEMO": "true",
+    "DEMO_MODE": "true"
+  },
   "functions": {
     "api/index.js": {
       "excludeFiles": "data/elliptic/elliptic_txs_features.csv"
