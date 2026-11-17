@@ -1271,20 +1271,20 @@ export function WatchtowerPage() {
         <MetricCard
           label="MONITORED TARGETS"
           value={watchlist.length}
-          helper="Active suspect wallets in watch pool"
-          icon={<Eye size={18} color="#38bdf8" />}
+          detail="Active suspect wallets in watch pool"
+          icon={Eye}
         />
         <MetricCard
           label="ALERTS TRIGGERED"
           value={alerts.length}
-          helper="Balance shifts or movements recorded"
-          icon={<Bell size={18} color="#f59e0b" />}
+          detail="Balance shifts or movements recorded"
+          icon={Bell}
         />
         <MetricCard
           label="NETWORKS MONITORED"
           value="3"
-          helper="Bitcoin, Ethereum, TRON Mainnets"
-          icon={<Network size={18} color="#4fd7c1" />}
+          detail="Bitcoin, Ethereum, TRON Mainnets"
+          icon={Network}
         />
       </div>
 
