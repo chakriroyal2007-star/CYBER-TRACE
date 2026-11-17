@@ -20,12 +20,17 @@ export default function AiInvestigationWorkspace({ caseId = 'CR-2026-00192' }: P
   const [activeTab, setActiveTab] = useState<'graph' | 'risk' | 'banking' | 'dsa' | 'report'>('graph');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const autoLaunched = useRef<boolean>(false);
 
   const fetchStatus = async () => {
     try {
       const res = await api(`/investigation/${caseId}/status`);
       setData(res);
       setLoading(false);
+      if (res && (!res.graph?.nodes || res.graph.nodes.length === 0) && !autoLaunched.current) {
+        autoLaunched.current = true;
+        handleLaunchAgent();
+      }
     } catch {
       setLoading(false);
     }
@@ -466,6 +471,31 @@ export default function AiInvestigationWorkspace({ caseId = 'CR-2026-00192' }: P
                     alignItems: 'center',
                     justifyContent: 'center'
                   }}>
+                    {graph.nodes.length === 0 ? (
+                      <div style={{ textAlign: 'center', zIndex: 10, padding: 20 }}>
+                        {isLaunching ? (
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#38bdf8', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                              <RefreshCw size={20} className="animate-spin" />
+                              Tracing Multi-Hop Financial Flows & Building Relationship Graph...
+                            </div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>Executing BFS shortest-path & mule entity correlation</div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', marginBottom: 6 }}>
+                              Financial Relationship Graph Ready to Generate
+                            </div>
+                            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>
+                              Click below to trace the complete money trail from UPI to Ethereum blockchain
+                            </div>
+                            <Button onClick={handleLaunchAgent} style={{ background: '#0284c7', color: '#fff' }}>
+                              <Zap size={14} style={{ marginRight: 6 }} /> Launch AI Multi-Hop Trace
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
                     <svg width="100%" height="100%" viewBox="0 0 880 340">
                       <defs>
                         <marker id="arrow-fin" markerWidth="8" markerHeight="6" refX="20" refY="3" orient="auto">
@@ -540,6 +570,7 @@ export default function AiInvestigationWorkspace({ caseId = 'CR-2026-00192' }: P
                         );
                       })}
                     </svg>
+                    )}
                   </div>
 
                   {/* Flow Summary Legend */}

@@ -936,9 +936,17 @@ async function handle(req,res) {
      return json(res, 200, answer);
    }
    if(id && sub==='status' && method==='GET') {
-     const session = store.getOrCreateAiSession(id);
-     const risk = store.getRiskAssessment(id);
-     const graph = store.getFinancialGraph(id);
+     let session = store.getOrCreateAiSession(id);
+     let risk = store.getRiskAssessment(id);
+     let graph = store.getFinancialGraph(id);
+     if((!graph || !graph.nodes || graph.nodes.length === 0) && session?.status === 'INITIALIZED') {
+       try {
+         await aiOrchestrator.launchInvestigation(store, id);
+         session = store.getOrCreateAiSession(id);
+         risk = store.getRiskAssessment(id);
+         graph = store.getFinancialGraph(id);
+       } catch {}
+     }
      const upi = store.getUpiTransactions(id);
      const bank = store.getBankingRecords(id);
      const ex = store.getExchangeRecords(id);
