@@ -217,7 +217,20 @@ export default function App() {
           }
         }
         setReady(true);
-      }).catch(() => {
+      }).catch(async () => {
+        if (isOfficerApp) {
+          try {
+            const authRes = await api('/auth/demo-officer', { method: 'POST', body: '{}' });
+            if (authRes?.user) {
+              setUser(authRes.user);
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('ct_user', JSON.stringify(authRes.user));
+              }
+              setReady(true);
+              return;
+            }
+          } catch {}
+        }
         localStorage.removeItem('ct_token');
         localStorage.removeItem('ct_user');
         navigate('/login');
