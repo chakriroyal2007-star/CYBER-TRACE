@@ -17,6 +17,7 @@ import { labelStore } from './tracing/labelStore.mjs';
 import { aiRiskEngine } from './ml/openrouterRiskEngine.mjs';
 import { DSA_CATALOG, runDsaSimulation } from './graph/dsaSimulator.mjs';
 import { runFullDsaBenchmarks } from './graph/benchmarkRig.mjs';
+import { PrefixTrie } from './graph/prefixTrie.mjs';
 import { aiOrchestrator } from './investigation/agentOrchestrator.mjs';
 import * as investigationTools from './investigation/tools.mjs';
 import { classifyScamMessage, classifyScamMessageAsync } from './ml/scamClassifier.mjs';
@@ -48,6 +49,18 @@ initializeEvidenceAnalysis(store.db);
 configureSessionPersistence(store.db);
 configureInvitationPersistence(store.db);
 const entityIntelligence = new EntityIntelligenceService(store.db);
+const intelligenceTrie = new PrefixTrie();
+function populateIntelligenceTrie() {
+  try {
+    const complaints = store.db.prepare('SELECT case_id, incident_type, reported_wallet, suspect_upi, suspect_phone FROM complaints').all();
+    for (const c of complaints) {
+      if (c.case_id) intelligenceTrie.insert(c.case_id, { type: 'Case', title: c.case_id, subtitle: c.incident_type, path: `/app/case-review/${encodeURIComponent(c.case_id)}` });
+      if (c.reported_wallet) intelligenceTrie.insert(c.reported_wallet, { type: 'Wallet', title: c.reported_wallet, subtitle: `Reported Wallet (${c.case_id})`, path: `/app/wallets?address=${encodeURIComponent(c.reported_wallet)}` });
+      if (c.suspect_upi) intelligenceTrie.insert(c.suspect_upi, { type: 'UPI VPA', title: c.suspect_upi, subtitle: `Suspect VPA (${c.case_id})`, path: `/app/case-review/${encodeURIComponent(c.case_id)}` });
+    }
+  } catch {}
+}
+populateIntelligenceTrie();
 const PORT=Number(process.env.PORT || 8000),HOST=process.env.HOST || '0.0.0.0';
 const dist=resolve(root,'dist');
 const rateBuckets=new Map(),streamCounts=new Map();
@@ -220,6 +233,19 @@ function search(sessionId,q) {
   if(!q || q.length<2) return [];
   q=q.toLowerCase().trim();
   const hits=[],match=(...values)=>values.some(v=>String(v??'').toLowerCase().includes(q));
+
+  // 1. Prefix Trie Accelerated Autocomplete (O(L) non-graph DSA lookup)
+  const trieMatches = intelligenceTrie.autocomplete(q, 10);
+  for (const tm of trieMatches) {
+    hits.push({
+      type: tm.type || 'Entity',
+      title: tm.title || tm.rawKey,
+      subtitle: `${tm.subtitle} · [Prefix Trie O(L)]`,
+      id: tm.title || tm.rawKey,
+      caseId: tm.caseId || null,
+      path: tm.path || `/app/wallets?address=${encodeURIComponent(tm.title || tm.rawKey)}`
+    });
+  }
 
   if (/^\d{2,15}$/.test(q)) {
     hits.push({
@@ -939,7 +965,7 @@ async function handle(req,res) {
      let session = store.getOrCreateAiSession(id);
      let risk = store.getRiskAssessment(id);
      let graph = store.getFinancialGraph(id);
-     if((!graph || !graph.nodes || graph.nodes.length === 0) && session?.status === 'INITIALIZED') {
+     if(!graph || !graph.nodes || graph.nodes.length === 0) {
        try {
          await aiOrchestrator.launchInvestigation(store, id);
          session = store.getOrCreateAiSession(id);

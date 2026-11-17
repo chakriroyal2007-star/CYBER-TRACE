@@ -13,7 +13,9 @@ import {
   tarjanSCC,
   computePageRank,
   topologicalSortKahn,
-  aStarSearch
+  aStarSearch,
+  PrefixTrie,
+  LRUCache
 } from './algorithms.mjs';
 
 export const DSA_CATALOG = [
@@ -264,6 +266,55 @@ while open_set:
       f_score = tentative_g + h(neighbor)
       open_set.push((f_score, neighbor))`,
     realApplication: 'Fast-path recovery when law enforcement already knows which exchange hot wallet received the final deposit.'
+  },
+  {
+    id: 'prefix-trie',
+    name: 'Prefix Trie (Radix Search Tree)',
+    category: 'String & Retrieval Structures (Non-Graph)',
+    timeComplexity: 'O(L) Search & Insert (L = key length)',
+    spaceComplexity: 'O(Σ · L · N) where Σ is character set',
+    whyInCyberTrace: 'Instantly matches wallet addresses (e.g. 0x6e37..., 1A1z..., TNPee...), UPI handles, and sanctioned entities with O(L) complexity as an investigator types.',
+    concept: 'A multi-way tree structure where edges represent characters. Nodes share common prefixes, enabling character-by-character autocomplete and fast lookups without full-table database scans.',
+    pseudocode: `class TrieNode:
+  children = {}
+  is_terminal = False
+  metadata = None
+
+def insert(key, meta):
+  curr = root
+  for ch in key:
+    if ch not in curr.children:
+      curr.children[ch] = TrieNode()
+    curr = curr.children[ch]
+  curr.is_terminal = True
+  curr.metadata = meta`,
+    realApplication: 'Powers real-time wallet address autocomplete, instant UPI VPA domain indexing, and OFAC sanction list matching in the global intelligence palette.'
+  },
+  {
+    id: 'lru-cache',
+    name: 'LRU Cache (Doubly Linked List + Hash Map)',
+    category: 'Memory & Storage Optimization (Non-Graph)',
+    timeComplexity: 'O(1) Get | O(1) Put',
+    spaceComplexity: 'O(Capacity)',
+    whyInCyberTrace: 'Caches expensive blockchain RPC calls and forensic risk evaluations with constant-time retrieval and strictly bounded memory consumption.',
+    concept: 'Pairs a doubly linked list with sentinel HEAD and TAIL nodes with a fast hash map. Accesses splice nodes to the head; insertions beyond capacity evict the tail node in O(1).',
+    pseudocode: `class LRUCache:
+  def get(key):
+    if key not in map: return -1
+    node = map[key]
+    move_to_head(node)
+    return node.value
+
+  def put(key, value):
+    if key in map:
+      update_and_move_to_head(key, value)
+    else:
+      node = Node(key, value)
+      add_to_head(node)
+      if len(map) > capacity:
+        tail = pop_tail()
+        del map[tail.key]`,
+    realApplication: 'Caches on-chain balance lookups, Etherscan API queries, and ML entity risk embeddings to prevent API rate-limiting during live investigations.'
   }
 ];
 
@@ -766,7 +817,64 @@ export function runDsaSimulation(params = {}) {
           heap: [...pq.heap],
           explanation: `Priority Target Escalated: ${getNodeLabel(nodes, n.id)} (Risk: ${risk}) exceeds current lowest priority root ${getNodeLabel(nodes, discarded.id)} (Risk: ${discarded.risk}). Root evicted; ${getNodeLabel(nodes, n.id)} sifted down to maintain top ${k} emergency enforcement targets in O(log K) time.`
         });
-      } else {
+      } else if (algorithm === 'prefix-trie') {
+    const trie = new PrefixTrie();
+    // Dynamically index graph nodes and sample identifiers
+    for (const n of nodes) {
+      trie.insert(n.id, { label: n.label, role: n.role, risk: n.risk, entity: n.entity });
+      if (n.label) trie.insert(n.label, { nodeId: n.id, role: n.role, risk: n.risk });
+    }
+    trie.insert('0x6e37e96b34b17f52f36070a75f8485293297a7de', { label: 'WazirX Exploiter', risk: 95 });
+    trie.insert('TNPeeaaTKFZLLqZf48jZZBxfkKxGfTQ9PZ', { label: 'TRON Syndicate Mule', risk: 85 });
+    trie.insert('victim@okhdfcbank', { label: 'Victim VPA', risk: 5 });
+    trie.insert('paytm.mule@paytm', { label: 'Paytm Mule VPA', risk: 88 });
+    trie.insert('Binance_Hot_Vault_14', { label: 'Binance Custodial Exit', risk: 35 });
+
+    const query = effectiveTarget || '0x6e';
+    const trieSim = trie.simulateSearch(query.startsWith('W-') ? query : '0x6e');
+    steps.push(...(trieSim.steps || []).map((s, idx) => ({
+      ...s,
+      step: idx + 1,
+      trieStats: trie.getStats()
+    })));
+
+    summary = {
+      query: query.startsWith('W-') ? query : '0x6e',
+      trieStats: trie.getStats(),
+      matches: trieSim.matches,
+      forensicFinding: {
+        statutoryBasis: 'Real-Time Sanction & Mule Screening Protocol',
+        courtProof: `Prefix Trie executed character-by-character search in O(L) time, retrieving matching entities without linear database scans.`,
+        officerAction: 'Screen suspect wallets against sanction and mule lists instantaneously as input is received.',
+        academicTakeaway: 'Time Complexity: O(L) | Space Complexity: O(Σ · L · N). Multi-way tree where shared prefixes optimize space and eliminate duplicate lookups.'
+      }
+    };
+  } else if (algorithm === 'lru-cache') {
+    const cache = new LRUCache(4);
+    const operations = [
+      { type: 'PUT', key: '0x6e37... (Exploiter)', value: { risk: 95, chain: 'Ethereum' } },
+      { type: 'PUT', key: 'TNPee... (TRON Mule)', value: { risk: 85, chain: 'TRON' } },
+      { type: 'PUT', key: '1A1zP... (Genesis)', value: { risk: 10, chain: 'Bitcoin' } },
+      { type: 'GET', key: '0x6e37... (Exploiter)' },
+      { type: 'PUT', key: '0x35fe... (Layering)', value: { risk: 90, chain: 'Ethereum' } },
+      { type: 'PUT', key: 'Binance_Hot_14', value: { risk: 35, chain: 'Ethereum' } },
+      { type: 'GET', key: 'TNPee... (TRON Mule)' }
+    ];
+
+    const cacheSteps = cache.simulateOperations(operations);
+    steps.push(...cacheSteps);
+
+    summary = {
+      finalStats: cache.getStats(),
+      cacheSnapshot: cache.getSnapshot(),
+      forensicFinding: {
+        statutoryBasis: 'High-Throughput Intelligence Query Infrastructure',
+        courtProof: `LRU Cache maintained strictly bounded memory while executing O(1) cache lookups, evicting cold forensic records automatically.`,
+        officerAction: 'Accelerate repetitive multi-hop address queries while respecting external blockchain RPC rate limits.',
+        academicTakeaway: 'Time Complexity: O(1) Get / Put | Space Complexity: O(Capacity). Built with a Doubly Linked List and Hash Map with sentinel Head and Tail.'
+      }
+    };
+  } else {
         steps.push({
           step: stepCount++,
           action: 'IGNORE_LESSER',
@@ -897,6 +1005,63 @@ export function runDsaSimulation(params = {}) {
         courtProof: `A* heuristic search navigated directly from Victim to VASP exit in sub-linear iterations, bypassing decoy escrow branches.`,
         officerAction: 'Initiate golden-hour asset recovery on the targeted path.',
         academicTakeaway: 'Time Complexity: O((V + E) log V) | Space Complexity: O(V). Evaluates nodes minimizing f(n) = g(n) + h(n) using an admissible heuristic.'
+      }
+    };
+  } else if (algorithm === 'prefix-trie') {
+    const trie = new PrefixTrie();
+    // Dynamically index graph nodes and sample identifiers
+    for (const n of nodes) {
+      trie.insert(n.id, { label: n.label, role: n.role, risk: n.risk, entity: n.entity });
+      if (n.label) trie.insert(n.label, { nodeId: n.id, role: n.role, risk: n.risk });
+    }
+    trie.insert('0x6e37e96b34b17f52f36070a75f8485293297a7de', { label: 'WazirX Exploiter', risk: 95 });
+    trie.insert('TNPeeaaTKFZLLqZf48jZZBxfkKxGfTQ9PZ', { label: 'TRON Syndicate Mule', risk: 85 });
+    trie.insert('victim@okhdfcbank', { label: 'Victim VPA', risk: 5 });
+    trie.insert('paytm.mule@paytm', { label: 'Paytm Mule VPA', risk: 88 });
+    trie.insert('Binance_Hot_Vault_14', { label: 'Binance Custodial Exit', risk: 35 });
+
+    const query = effectiveTarget || '0x6e';
+    const trieSim = trie.simulateSearch(query.startsWith('W-') ? query : '0x6e');
+    steps.push(...(trieSim.steps || []).map((s, idx) => ({
+      ...s,
+      step: idx + 1,
+      trieStats: trie.getStats()
+    })));
+
+    summary = {
+      query: query.startsWith('W-') ? query : '0x6e',
+      trieStats: trie.getStats(),
+      matches: trieSim.matches,
+      forensicFinding: {
+        statutoryBasis: 'Real-Time Sanction & Mule Screening Protocol',
+        courtProof: `Prefix Trie executed character-by-character search in O(L) time, retrieving matching entities without linear database scans.`,
+        officerAction: 'Screen suspect wallets against sanction and mule lists instantaneously as input is received.',
+        academicTakeaway: 'Time Complexity: O(L) | Space Complexity: O(Σ · L · N). Multi-way tree where shared prefixes optimize space and eliminate duplicate lookups.'
+      }
+    };
+  } else if (algorithm === 'lru-cache') {
+    const cache = new LRUCache(4);
+    const operations = [
+      { type: 'PUT', key: '0x6e37... (Exploiter)', value: { risk: 95, chain: 'Ethereum' } },
+      { type: 'PUT', key: 'TNPee... (TRON Mule)', value: { risk: 85, chain: 'TRON' } },
+      { type: 'PUT', key: '1A1zP... (Genesis)', value: { risk: 10, chain: 'Bitcoin' } },
+      { type: 'GET', key: '0x6e37... (Exploiter)' },
+      { type: 'PUT', key: '0x35fe... (Layering)', value: { risk: 90, chain: 'Ethereum' } },
+      { type: 'PUT', key: 'Binance_Hot_14', value: { risk: 35, chain: 'Ethereum' } },
+      { type: 'GET', key: 'TNPee... (TRON Mule)' }
+    ];
+
+    const cacheSteps = cache.simulateOperations(operations);
+    steps.push(...cacheSteps);
+
+    summary = {
+      finalStats: cache.getStats(),
+      cacheSnapshot: cache.getSnapshot(),
+      forensicFinding: {
+        statutoryBasis: 'High-Throughput Intelligence Query Infrastructure',
+        courtProof: `LRU Cache maintained strictly bounded memory while executing O(1) cache lookups, evicting cold forensic records automatically.`,
+        officerAction: 'Accelerate repetitive multi-hop address queries while respecting external blockchain RPC rate limits.',
+        academicTakeaway: 'Time Complexity: O(1) Get / Put | Space Complexity: O(Capacity). Built with a Doubly Linked List and Hash Map with sentinel Head and Tail.'
       }
     };
   } else {

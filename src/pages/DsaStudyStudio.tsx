@@ -38,6 +38,13 @@ interface Step {
   colorState?: string;
   cycle?: string[];
   ranks?: Record<string, number>;
+  accumulated?: string;
+  activeNode?: string;
+  char?: string;
+  isTerminal?: boolean;
+  childNodes?: string[];
+  stats?: any;
+  snapshot?: any[];
 }
 
 export default function DsaStudyStudio() {
@@ -891,6 +898,74 @@ export default function DsaStudyStudio() {
                       <div style={{ fontSize: 10, color: '#38bdf8' }}>{item.val || item.risk || ''}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Prefix Trie (Radix Tree Node Traversal) */}
+            {selectedAlgo === 'prefix-trie' && (
+              <div style={{ background: '#090d16', border: '1px solid #1e293b', borderRadius: 8, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#38bdf8', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Prefix Trie Active Branch [O(L) Traversal]</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>Path: <strong style={{ color: '#ffffff' }}>{currentStep?.accumulated || 'ROOT'}</strong></span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                  <div style={{ background: '#0284c7', color: '#fff', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                    Active Node: {currentStep?.activeNode || 'ROOT'}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                    Current Char: <strong style={{ color: '#f59e0b', fontSize: 14 }}>{currentStep?.char || '—'}</strong>
+                  </div>
+                  {currentStep?.isTerminal && (
+                    <span style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid #10b981', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>
+                      Terminal Node (Key Match)
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Available Child Edges from this Node:</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {(currentStep?.childNodes || []).map((ch: string) => (
+                    <span key={ch} style={{ background: '#1e293b', color: '#38bdf8', padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                      '{ch}'
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* LRU Cache Doubly Linked List & Hash Map */}
+            {selectedAlgo === 'lru-cache' && (
+              <div style={{ background: '#090d16', border: '1px solid #1e293b', borderRadius: 8, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#38bdf8', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>LRU Doubly Linked List [MRU Head ⇄ ... ⇄ LRU Tail]</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                    Hits: <strong style={{ color: '#10b981' }}>{currentStep?.stats?.hits ?? 0}</strong> · Misses: <strong style={{ color: '#ef4444' }}>{currentStep?.stats?.misses ?? 0}</strong>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto', padding: '6px 0' }}>
+                  <div style={{ background: '#1e293b', color: '#94a3b8', padding: '6px 10px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>
+                    HEAD (MRU)
+                  </div>
+                  <span style={{ color: '#38bdf8', fontWeight: 700 }}>⇄</span>
+                  {(currentStep?.snapshot || []).map((item: any, i: number) => (
+                    <React.Fragment key={item.key || i}>
+                      <div style={{
+                        background: i === 0 ? 'rgba(56, 189, 248, 0.2)' : '#0f172a',
+                        border: i === 0 ? '1px solid #38bdf8' : '1px solid #334155',
+                        padding: '6px 10px',
+                        borderRadius: 6,
+                        minWidth: 120,
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc' }}>{item.key}</div>
+                        <div style={{ fontSize: 9.5, color: '#94a3b8' }}>Access: {item.accessCount}x</div>
+                      </div>
+                      <span style={{ color: '#38bdf8', fontWeight: 700 }}>⇄</span>
+                    </React.Fragment>
+                  ))}
+                  <div style={{ background: '#1e293b', color: '#94a3b8', padding: '6px 10px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>
+                    TAIL (LRU)
+                  </div>
                 </div>
               </div>
             )}

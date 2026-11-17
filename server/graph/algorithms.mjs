@@ -1231,3 +1231,6 @@ export function aStarSearch(nodes, edges, startId, goalId, heuristicWeights = {}
   };
 }
 
+export { PrefixTrie, TrieNode } from './prefixTrie.mjs';
+export { LRUCache, LRUNode } from './lruCache.mjs';
+
