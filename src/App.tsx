@@ -49,23 +49,13 @@ const AiInvestigationWorkspace = lazy(() => import('./pages/AiInvestigationWorks
 const CitizenScamAnalyzer = lazy(() => import('./pages/CitizenScamAnalyzer'));
 
 const navItems = [
-  ['dashboard', 'Dashboard', LayoutDashboard],
-  ['scam-analyzer', 'Threat & scam scanner', Sparkles],
-  ['ai-investigation', 'AI Investigation Agent', Bot],
-  ['incoming', 'Incoming reports', Inbox],
-  ['cases', 'Cases', BriefcaseBusiness],
+  ['dashboard', 'Overview', LayoutDashboard],
+  ['incoming', 'Incoming Reports', Inbox],
   ['investigations', 'Investigations', ScanSearch],
-  ['watchtower', 'Watchtower', Eye],
-  ['wallets', 'Wallet intelligence', Wallet],
-  ['graph', 'Transaction graph', Network],
-  ['vasps', 'VASP intelligence', Landmark],
-  ['cross-chain', 'Cross-chain', GitBranch],
-  ['patterns', 'Fraud patterns', Fingerprint],
-  ['alerts', 'Alerts', Bell],
-  ['reports', 'Reports', FileText],
-  ['requests', 'Information requests', FileOutput],
-  ['dsa-studio', 'DSA Study Studio', BookOpen],
-  ['ml-benchmark', 'ML Benchmark Lab', Activity]
+  ['graph', 'Transaction Graph', Network],
+  ['ml-benchmark', 'Risk Intelligence', Activity],
+  ['dsa-studio', 'DSA Studio', BookOpen],
+  ['reports', 'Evidence & Reports', FileText],
 ] as const;
 
 class Boundary extends Component<{ children: ReactNode }, { error: string }> {
@@ -506,7 +496,6 @@ export default function App() {
                   <Icon size={17} />
                   <span>{label}</span>
                   {navPath === 'incoming' && <span className="nav-dot" style={{ background: '#38bdf8' }} />}
-                  {navPath === 'alerts' && <span className="nav-dot" />}
                   {navPath === 'investigations' && <small>TRACE</small>}
                 </a>
               ))}

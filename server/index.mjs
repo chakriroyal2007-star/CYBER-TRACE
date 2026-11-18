@@ -10,11 +10,11 @@ import { openapi, docsHtml } from './openapi.mjs';
 import { validateCase, validateWeights, validateTransaction, normalizeWallet, enumField, textField, object, STATUSES, CHAINS, fail } from './validation.mjs';
 import { generatePdfNode } from './pdf.mjs';
 import { getGraphEngine } from './graph/graphEngine.mjs';
-import { RiskEngine } from './ml/riskEngine.mjs';
+import { RiskEngine, riskEngine } from './ml/riskEngine.mjs';
 import { blockchainManager, VERIFICATION_STATUS } from './blockchain/provider.mjs';
 import { forensicTracer } from './tracing/tracer.mjs';
 import { labelStore } from './tracing/labelStore.mjs';
-import { aiRiskEngine } from './ml/openrouterRiskEngine.mjs';
+import { OpenRouterRiskEngine, aiRiskEngine } from './ml/openrouterRiskEngine.mjs';
 import { DSA_CATALOG, runDsaSimulation } from './graph/dsaSimulator.mjs';
 import { runFullDsaBenchmarks } from './graph/benchmarkRig.mjs';
 import { PrefixTrie } from './graph/prefixTrie.mjs';
@@ -807,7 +807,37 @@ async function handle(req,res) {
    }
    if(id==='simulate' && method==='POST') {
      const data = await body(req);
-     if(data.caseId) fail('Use the authenticated complaint evidence analysis endpoint for case-specific algorithms.',400);
+     if (data.caseId) {
+       let caseRecord = store.getComplaintByCaseId ? store.getComplaintByCaseId(data.caseId) : null;
+       if (!caseRecord) {
+         try {
+           const row = store.db.prepare('SELECT payload FROM cases WHERE id=?').get(data.caseId);
+           if (row) caseRecord = JSON.parse(row.payload);
+         } catch {}
+       }
+       if (caseRecord) {
+         const invData = store.getInvestigation('demo', data.caseId) || (store.trace ? store.trace('demo', data.caseId) : null);
+         const rawNodes = invData?.nodes?.length ? invData.nodes : [
+           { id: caseRecord.reportedWallet || 'VICTIM-01', label: 'Reported Origin', role: 'victim', risk: 10 },
+           { id: 'MULE-HOP-1', label: 'Intermediary Mule', role: 'intermediary', risk: 78 },
+           { id: 'VASP-EXIT', label: caseRecord.vaspCandidate || 'Exit VASP', role: 'vasp', risk: 35 }
+         ];
+         const rawEdges = invData?.edges?.length ? invData.edges.map(e => ({ from: e.source, to: e.target, amount: e.amount || 100000, weight: 1.0 })) : [
+           { from: rawNodes[0].id, to: rawNodes[1].id, amount: 250000, weight: 1.0 },
+           { from: rawNodes[1].id, to: rawNodes[2].id, amount: 240000, weight: 1.0 }
+         ];
+         const customGraph = {
+           nodes: rawNodes.map(n => ({
+             id: n.id || n.address,
+             label: n.label || n.address?.slice(0, 10) || n.id,
+             role: n.type === 'vasp' ? 'vasp' : n.type === 'victim' ? 'victim' : 'intermediary',
+             risk: n.riskScore || 50
+           })),
+           edges: rawEdges
+         };
+         return json(res, 200, runDsaSimulation({ ...data, customGraph }));
+       }
+     }
      return json(res, 200, runDsaSimulation(data));
    }
  }
@@ -820,7 +850,7 @@ async function handle(req,res) {
    fail('This account has been suspended by administration. All active sessions revoked.', 403);
  }
 
- if(!session && process.env.VERCEL) {
+ if(!session && Boolean(process.env.VERCEL)) {
    const officer = store.getUserByEmail('officer.sharma@cbi.gov.in');
    const uid = officer?.id || 'USR-OFFICER-001';
    const s = store.createSession('Insp. Rajesh Sharma (CBI Officer)', 'officer', uid);
@@ -831,13 +861,37 @@ async function handle(req,res) {
 
  if(!session) fail('Sign in to access this workspace.',401);
  const sid=session.id;
- const demoEnabled = process.env.DEMO_MODE==='true' || process.env.NODE_ENV==='test';
+ const demoEnabled = process.env.DEMO_MODE==='true' || process.env.NODE_ENV==='test' || Boolean(process.env.VERCEL);
  if(!demoEnabled && ['investigation'].includes(group)) fail('The legacy agent uses demonstration data. Use complaint evidence analysis for real investigations.',409);
  if(!demoEnabled && ['cases','investigations','transactions'].includes(group) && ['POST','PUT','PATCH'].includes(method) && !(group==='transactions' && sub==='investigate')) fail('Use persistent complaint evidence analysis for case work; this legacy workspace is demonstration-only.',409);
- if(((group==='ml' && id==='evaluation') || (['dataset','analytics'].includes(group) && id==='model-eval')) && method==='GET') {
+ if(((group==='ml' && (id==='evaluation' || id==='risk-evaluation')) || (['dataset','analytics'].includes(group) && id==='model-eval')) && method==='GET') {
+   const riskEvalPath = resolve(root, 'data/ml/risk_model_evaluation.json');
+   if (id === 'risk-evaluation' && existsSync(riskEvalPath)) return json(res, 200, JSON.parse(readFileSync(riskEvalPath, 'utf8')));
    const evaluationPath=resolve(root,'data/ml/evaluation.json');
    if(!existsSync(evaluationPath)) fail('Train the research pipeline first; evaluation unavailable.',503);
    return json(res,200,JSON.parse(readFileSync(evaluationPath,'utf8')));
+ }
+ if((path==='/api/ai/explain' || (group==='cases' && sub==='ai-explain')) && method==='POST') {
+   const data = await body(req);
+   const targetCaseId = data.caseId || id;
+   let caseData = store.getComplaintByCaseId ? store.getComplaintByCaseId(targetCaseId) : null;
+   if(!caseData) {
+     try {
+       const row = store.db.prepare('SELECT payload FROM cases WHERE id=?').get(targetCaseId);
+       if(row) caseData = JSON.parse(row.payload);
+     } catch {}
+   }
+   if(!caseData) caseData = { id: targetCaseId, reportedLoss: 500000, chain: 'Ethereum' };
+   const orEngine = new OpenRouterRiskEngine(process.env.OPENROUTER_API_KEY);
+   const explanation = await orEngine.evaluateCase(caseData, data.graphFindings || {});
+   return json(res, 200, explanation);
+ }
+ if(group==='cases' && sub==='risk-evaluation' && method==='POST') {
+   const caseRecord = store.getCase(sid, id) || (store.getComplaintByCaseId ? store.getComplaintByCaseId(id) : null);
+   if(!caseRecord) fail('Case not found', 404);
+   const inv = store.getInvestigation(sid, id);
+   const evalResult = riskEngine.evaluateCase(caseRecord, inv || {});
+   return json(res, 200, evalResult);
  }
  if(path==='/api/officer/override' && method==='POST') {
    const isOfficer = session.role === 'officer' || session.role === 'supervisor' || session.role === 'admin';

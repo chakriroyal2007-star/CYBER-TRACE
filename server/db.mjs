@@ -66,13 +66,12 @@ export function canTransitionStatus(fromStatus, toStatus) {
 export const hashPassword = (password, salt = 'ct-salt-2026') =>
   createHash('sha256').update(`${salt}:${password}`).digest('hex');
 const seedDefinitions = [
-  ['CR-2026-00192','Investment Scam',812450,'Ethereum','Action Required','High'],
-  ['CR-2026-00193','Phishing',350000,'Ethereum','Investigating','High'],
-  ['CR-2026-00194','Ponzi Scheme',480000,'BNB Chain','Action Required','High'],
-  ['CR-2026-00195','Ransomware',975000,'Bitcoin','Investigating','Critical'],
-  ['CR-2026-00196','Task Scam',150000,'TRON','Action Required','High'],
-  ['CR-2026-00197','Task Scam',500000,'TRON','Monitoring','Medium'],
-  ['CR-2026-00198','Legitimate Transaction',65000,'Polygon','Resolved','Low'],
+  ['CR-2026-00192','Investment Fraud (Multi-Hop Transfers)',812450,'Ethereum','Action Required','High'],
+  ['CR-2026-00193','Phishing & Permit2 Drainer Scheme',350000,'Ethereum','Investigating','High'],
+  ['CR-2026-00194','Mule Wallet & Rapid Fund Forwarding',500000,'TRON','Action Required','High'],
+  ['CR-2026-72301','Ransomware Extortion Payment Trail',975000,'Bitcoin','Investigating','Critical'],
+  ['CR-2026-00195','Cross-Chain Bridge & Fund Splitting',650000,'Ethereum','Investigating','High'],
+  ['CR-2026-00196','Exchange Deposit & Candidate VASP Attribution',480000,'Ethereum','Action Required','High'],
 ];
 function base58(buffer) {
   const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -850,8 +849,9 @@ export class Store {
     if(!record) {
       const comp = this.getComplaint(id, true);
       if (comp) {
-        const graphNodes = this.getFinancialGraphNodes(comp.caseId || comp.id);
-        const graphEdges = this.getFinancialGraphEdges(comp.caseId || comp.id);
+        const fg = this.getFinancialGraph(comp.caseId || comp.id);
+        const graphNodes = fg.nodes || [];
+        const graphEdges = fg.edges || [];
         const vaspNode = graphNodes.find(n => n.type === 'vasp') || { label: 'Verified VASP Gateway' };
         record = {
           id: comp.caseId || comp.id,
@@ -2726,6 +2726,14 @@ export class Store {
         provenance: e.provenance
       }))
     };
+  }
+
+  getFinancialGraphNodes(caseId) {
+    return this.getFinancialGraph(caseId).nodes;
+  }
+
+  getFinancialGraphEdges(caseId) {
+    return this.getFinancialGraph(caseId).edges;
   }
 
   getOrCreateAiSession(caseId) {

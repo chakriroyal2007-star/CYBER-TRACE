@@ -1,0 +1,247 @@
+{
+  "version": "CYBER-TRACE-ML-v2.6",
+  "generated_at": "2026-11-18T01:57:01Z",
+  "training_dataset": "Multimodal Cryptocurrency Fraud & Flow Dataset (Elliptic Graph Topology + UPI On-Ramp Typologies)",
+  "samples_count": 3000,
+  "features_count": 24,
+  "selected_production_model": "RandomForest",
+  "model_comparison": {
+    "RandomForest": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "brier_score": 0.0,
+      "confusion_matrix": [
+        [
+          324,
+          0
+        ],
+        [
+          0,
+          126
+        ]
+      ]
+    },
+    "HistGradientBoosting": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "brier_score": 0.0,
+      "confusion_matrix": [
+        [
+          324,
+          0
+        ],
+        [
+          0,
+          126
+        ]
+      ]
+    },
+    "LogisticRegression": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "brier_score": 0.0,
+      "confusion_matrix": [
+        [
+          324,
+          0
+        ],
+        [
+          0,
+          126
+        ]
+      ]
+    },
+    "IsolationForest_Unsupervised": {
+      "precision": 0.9147,
+      "recall": 0.9365,
+      "f1_score": 0.9255,
+      "confusion_matrix": [
+        [
+          313,
+          11
+        ],
+        [
+          8,
+          118
+        ]
+      ],
+      "role": "Unsupervised Velocity & Network Anomaly Detection"
+    }
+  },
+  "feature_families": {
+    "Transaction": "Velocity, frequency, burst patterns, single-transfer concentration",
+    "Graph": "Multi-hop depth, in/out degree, fan-in/fan-out, peeling, cycle detection",
+    "Temporal": "Holding time, rapid forwarding (<60m), time burstiness",
+    "Wallet Behaviour": "Account maturity, repeated intermediary role, volume throughput",
+    "Cross-Chain": "Bridge hops, protocol verification",
+    "Complaint & Evidence": "Evidence completeness, verified on-chain hashes"
+  },
+  "category_importance_weights": {
+    "Graph": 50.22,
+    "Temporal": 32.11,
+    "Transaction": 14.26,
+    "Cross-Chain": 3.39,
+    "Wallet Behaviour": 0.0,
+    "Complaint & Evidence": 0.0
+  },
+  "top_features": [
+    {
+      "name": "fan_in_ratio",
+      "label": "Fan-In Ratio (Aggregation pattern)",
+      "category": "Graph",
+      "importance_pct": 16.83
+    },
+    {
+      "name": "transfer_burstiness_score",
+      "label": "Temporal Burstiness Score (0-100)",
+      "category": "Temporal",
+      "importance_pct": 15.65
+    },
+    {
+      "name": "avg_holding_period_mins",
+      "label": "Average Wallet Holding Period (mins)",
+      "category": "Temporal",
+      "importance_pct": 15.21
+    },
+    {
+      "name": "fan_out_ratio",
+      "label": "Fan-Out Ratio (Dispersal pattern)",
+      "category": "Graph",
+      "importance_pct": 14.68
+    },
+    {
+      "name": "velocity_inr_per_min",
+      "label": "Transaction Velocity (INR movement / min)",
+      "category": "Transaction",
+      "importance_pct": 7.69
+    },
+    {
+      "name": "connected_component_size",
+      "label": "Connected Component Size",
+      "category": "Graph",
+      "importance_pct": 7.32
+    },
+    {
+      "name": "intermediary_wallet_count",
+      "label": "Intermediary Wallets in Active Path",
+      "category": "Graph",
+      "importance_pct": 5.51
+    },
+    {
+      "name": "rapid_successive_transfers",
+      "label": "Rapid Successive Transfers Count (< 5 min)",
+      "category": "Transaction",
+      "importance_pct": 5.23
+    },
+    {
+      "name": "multi_hop_depth",
+      "label": "Multi-Hop Path Depth to Exit Target",
+      "category": "Graph",
+      "importance_pct": 3.42
+    },
+    {
+      "name": "cross_chain_hop_count",
+      "label": "Cross-Chain Bridge Transfers Count",
+      "category": "Cross-Chain",
+      "importance_pct": 3.39
+    },
+    {
+      "name": "fund_splitting_detected",
+      "label": "Fund Splitting / Peeling Detected (0/1)",
+      "category": "Graph",
+      "importance_pct": 1.46
+    },
+    {
+      "name": "rapid_forwarding_flag",
+      "label": "Rapid Forwarding (< 60 min pass-through) (0/1)",
+      "category": "Temporal",
+      "importance_pct": 1.25
+    },
+    {
+      "name": "small_value_burst_count",
+      "label": "Repeated Small Value Transfers Count",
+      "category": "Transaction",
+      "importance_pct": 1.1
+    },
+    {
+      "name": "out_degree",
+      "label": "Out-Degree (Outgoing counterparties)",
+      "category": "Graph",
+      "importance_pct": 1.0
+    },
+    {
+      "name": "tx_frequency_per_hr",
+      "label": "Transaction Frequency (transfers / hour)",
+      "category": "Transaction",
+      "importance_pct": 0.22
+    },
+    {
+      "name": "max_single_tx_ratio",
+      "label": "Max Single Transfer / Total Loss Ratio",
+      "category": "Transaction",
+      "importance_pct": 0.02
+    },
+    {
+      "name": "in_degree",
+      "label": "In-Degree (Incoming counterparties)",
+      "category": "Graph",
+      "importance_pct": 0.0
+    },
+    {
+      "name": "high_volume_forwarding",
+      "label": "High-Volume Forwarding Pass-Through (0/1)",
+      "category": "Wallet Behaviour",
+      "importance_pct": 0.0
+    },
+    {
+      "name": "is_new_wallet_flag",
+      "label": "New / Low-History Wallet Indicator (0/1)",
+      "category": "Wallet Behaviour",
+      "importance_pct": 0.0
+    },
+    {
+      "name": "cycle_detected",
+      "label": "Directed Cycle / Wash Loop Detected (0/1)",
+      "category": "Graph",
+      "importance_pct": 0.0
+    },
+    {
+      "name": "avg_tx_value_inr",
+      "label": "Average Transaction Value (INR equivalent)",
+      "category": "Transaction",
+      "importance_pct": 0.0
+    },
+    {
+      "name": "evidence_completeness_score",
+      "label": "Evidence Completeness Score (0-100)",
+      "category": "Complaint & Evidence",
+      "importance_pct": 0.0
+    },
+    {
+      "name": "unverified_bridge_flag",
+      "label": "Missing / Unverified Bridge Evidence (0/1)",
+      "category": "Cross-Chain",
+      "importance_pct": 0.0
+    },
+    {
+      "name": "tx_hash_verified_flag",
+      "label": "Verified Transaction Hash Present (0/1)",
+      "category": "Complaint & Evidence",
+      "importance_pct": 0.0
+    }
+  ],
+  "calibration": {
+    "method": "Isotonic Regression",
+    "uncalibrated_brier": 0.0,
+    "calibrated_brier": 0.0
+  }
+}

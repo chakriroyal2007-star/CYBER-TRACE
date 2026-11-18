@@ -35,7 +35,7 @@
           1023
         ]
       ],
-      "execution_seconds": 0.7010157909999999
+      "execution_seconds": 0.8657145420000001
     },
     "logistic_regression": {
       "precision": 0.1223205964585275,
@@ -53,7 +53,7 @@
           1050
         ]
       ],
-      "execution_seconds": 0.029548250000000387
+      "execution_seconds": 0.04107937500000025
     },
     "isolation_forest": {
       "precision": 0.01105379513633014,
@@ -71,7 +71,7 @@
           15
         ]
       ],
-      "execution_seconds": 0.4364634999999999
+      "execution_seconds": 0.5520420420000001
     }
   },
   "python": "3.9.6",
@@ -109,6 +109,6 @@
       "importance": 0.015306466019117233
     }
   ],
-  "execution_seconds": 1.4813780830000003,
+  "execution_seconds": 1.8868064160000002,
   "run_id": "ebbb8e06934ea47b6d39061e546740ab26908ba82cda0fd942b8a57a102ce487"
 }
