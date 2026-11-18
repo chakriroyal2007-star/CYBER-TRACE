@@ -432,6 +432,7 @@ export class RiskEngine {
     return {
       caseId: caseRecord.id || caseRecord.caseId,
       compositeScore,
+      compositeRiskScore: compositeScore,
       riskLevel,
       modelClassification: modelProbability >= 0.5 ? 'ILLICIT_LAUNDERING_SCHEME' : 'LICIT_COMMERCIAL_ACTIVITY',
       calibratedProbability: modelProbability,
